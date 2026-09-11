@@ -22,6 +22,15 @@ export interface NodeInfo {
   genres: string;
   /** True if the node came from the overlay, not the packed graph. */
   overlay: boolean;
+  /** TMDB id when the packed graph (format v2) knows it. */
+  tmdbId?: number;
+}
+
+/** One credit on a title, with the character name when the packed graph has it (format v2). */
+export interface CastEntry {
+  node: NodeInfo;
+  tier: number;
+  character: string | null;
 }
 
 export interface OverlayNode {
@@ -218,6 +227,24 @@ export class IndustryGraph {
 
   degree(id: number): number {
     return this.neighbors(id).length;
+  }
+
+  /**
+   * Character name for a (person, title) credit from the packed character
+   * table (format v2), or null when unknown / v1 file / overlay edge.
+   * Stub until the v2 pipeline lands: always null.
+   */
+  character(personId: number, titleId: number): string | null {
+    void personId;
+    void titleId;
+    return null;
+  }
+
+  /** Everyone credited on a title (or a person's titles), most prominent first, with characters. */
+  castOf(id: number): CastEntry[] {
+    return this.neighbors(id)
+      .map((n) => ({ node: this.node(n.id), tier: n.tier, character: this.character(this.node(n.id).kind === "person" ? n.id : id, this.node(n.id).kind === "person" ? id : n.id) }))
+      .sort((a, b) => b.node.votes - a.node.votes || a.node.id - b.node.id);
   }
 
   // ---- name lookup -------------------------------------------------------
