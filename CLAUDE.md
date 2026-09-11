@@ -24,7 +24,7 @@ The shared brain of who was in what with whom. Read `SPEC.md` first; it is the s
 - Fresh UI. Do not copy Cinema Daddy styling. Tailwind v4 with a hand-written token layer.
 - Node.js runtime (Fluid Compute). Never `runtime = 'edge'`.
 - Run `pnpm typecheck && pnpm lint && pnpm test` before claiming anything works.
-- Keyless dev: `HEADSHOT_GRAPH_PATH=data/fixture.bin` + `HEADSHOT_MOCK_AGENT=1` in `.env.local` runs the fixture graph with the scripted model in `src/lib/agent/mockModel.ts`. `window.__headshot` exposes sigma and the store in dev for QA.
+- Keyless dev: `HEADSHOT_GRAPH_PATH=data/fixture.bin` + `HEADSHOT_MOCK_AGENT=1` in `.env.local` runs the fixture graph with the scripted model in `src/lib/agent/mockModel.ts`. `window.__headshot` exposes sigma and the store in dev for QA. `HEADSHOT_DEV_USER=<id>` signs every request in as that id outside production, so Tonight and the taste routes can be exercised without the magic-link email loop.
 - The model is told to wrap every entity name in `**bold**`; the client resolves those against the message's `data-node` parts and renders links that open the drawer ("cursor for movies"). Keep that rule in the system prompt.
 - Thread views are `noindex`; only `/a/...` answer pages are indexable.
 - Brain tests run against embedded Postgres (PGlite + pgvector) and the memory brain through one shared conformance suite in `tests/brain`.

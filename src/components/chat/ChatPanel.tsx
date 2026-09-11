@@ -9,6 +9,7 @@ import { PathGraphic } from "./PathGraphic";
 import { FaceGrid } from "./FaceGrid";
 import { faceTapAction } from "./faceGridRule";
 import { egoDefaultFor, egoDelayMs } from "./egoDefault";
+import { TonightPanel } from "@/components/tonight/TonightPanel";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 
@@ -131,19 +132,21 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
       <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[720px] px-5 py-6">
           {messages.length === 0 && (
-            <div className="rise flex min-h-[50vh] flex-col justify-end space-y-4 pb-6">
-              <p className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
-                That guy. From that thing.
-                <br />
-                With that other guy.
-              </p>
-              <p className="max-w-[46ch] text-[14px] text-ink-dim">
-                Ask about connections between anyone in film and TV. Every answer grows the shared brain on the right.
-              </p>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {EXAMPLES.map((e) => (
-                  <Chip key={e} onClick={() => ask(e)}>{e}</Chip>
-                ))}
+            <div className="rise flex min-h-[50vh] flex-col justify-end space-y-6 pb-6">
+              <TonightPanel
+                onSelectNode={onSelectNode}
+                onAsk={ask}
+                onLater={(imdbId) => {
+                  void fetch("/api/taste/later", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) }).catch(() => {});
+                }}
+              />
+              <div className="space-y-3 border-t border-line pt-5">
+                <p className="text-[13px] text-ink-dim">or ask the brain anything about who was in what with whom.</p>
+                <div className="flex flex-wrap gap-2">
+                  {EXAMPLES.map((e) => (
+                    <Chip key={e} onClick={() => ask(e)}>{e}</Chip>
+                  ))}
+                </div>
               </div>
             </div>
           )}

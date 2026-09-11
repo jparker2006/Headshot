@@ -56,7 +56,15 @@ export const auth: NeonAuth | null = getAuth();
  * tests), no session, and an unreachable auth server all mean "signed out".
  * Protected API routes call this themselves and answer 401; nothing redirects.
  */
+/** Dev-only: HEADSHOT_DEV_USER=<id> signs every request in as that id (never in production). */
+function devUser(): string | null {
+  const id = process.env.HEADSHOT_DEV_USER;
+  return id && process.env.NODE_ENV !== "production" ? id : null;
+}
+
 export async function currentUserId(): Promise<string | null> {
+  const dev = devUser();
+  if (dev) return dev;
   const instance = getAuth();
   if (!instance) return null;
   try {
@@ -71,6 +79,8 @@ export async function currentUserId(): Promise<string | null> {
 
 /** The signed-in user's id and email, or null. Used by the sidebar's account row. */
 export async function currentUser(): Promise<{ id: string; email: string | null } | null> {
+  const dev = devUser();
+  if (dev) return { id: dev, email: `${dev}@dev.local` };
   const instance = getAuth();
   if (!instance) return null;
   try {

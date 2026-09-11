@@ -19,6 +19,7 @@ export class MemoryTasteStore implements TasteStore {
   private watchedByUser = new Map<string, Map<string, WatchedRow>>();
   private servicesByUser = new Map<string, ServicesRow>();
   private tasteByUser = new Map<string, TasteRow>();
+  private tonightByUser = new Map<string, { data: Record<string, unknown>; generatedAt: string }>();
   private now: () => Date;
 
   constructor(opts: { now?: () => Date } = {}) {
@@ -116,7 +117,17 @@ export class MemoryTasteStore implements TasteStore {
     });
   }
 
+  async setTonight(userId: string, data: Record<string, unknown>): Promise<void> {
+    this.tonightByUser.set(userId, { data: structuredClone(data), generatedAt: this.stamp() });
+  }
+
+  async getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null> {
+    const row = this.tonightByUser.get(userId);
+    return row ? { data: structuredClone(row.data), generatedAt: row.generatedAt } : null;
+  }
+
   async deleteUser(userId: string): Promise<void> {
+    this.tonightByUser.delete(userId);
     this.watchedByUser.delete(userId);
     this.servicesByUser.delete(userId);
     this.tasteByUser.delete(userId);

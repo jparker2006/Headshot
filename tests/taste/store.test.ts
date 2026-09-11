@@ -31,7 +31,7 @@ afterAll(async () => {
 
 async function truncate() {
   await db.execute(
-    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste"`,
+    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "tonight"`,
   );
 }
 
@@ -193,6 +193,20 @@ function describeStore(name: string, factory: StoreFactory) {
       expect(await store.listWatched("u2")).toHaveLength(1);
       expect(await store.getServices("u2")).not.toBeNull();
       expect(await store.getTaste("u2")).not.toBeNull();
+    });
+
+    it("tonight round-trips a stored result, replaces on write, and is gone after deleteUser", async () => {
+      const store = await factory();
+      expect(await store.getTonight("u1")).toBeNull();
+      await store.setTonight("u1", { picks: [{ imdbId: "tt0000002" }], deck: [] });
+      const first = await store.getTonight("u1");
+      expect(first?.data).toEqual({ picks: [{ imdbId: "tt0000002" }], deck: [] });
+      expect(typeof first?.generatedAt).toBe("string");
+      await store.setTonight("u1", { picks: [], deck: ["tt0000001"] });
+      expect((await store.getTonight("u1"))?.data).toEqual({ picks: [], deck: ["tt0000001"] });
+      expect(await store.getTonight("u2")).toBeNull();
+      await store.deleteUser("u1");
+      expect(await store.getTonight("u1")).toBeNull();
     });
 
     it("the injected clock stamps updatedAt", async () => {

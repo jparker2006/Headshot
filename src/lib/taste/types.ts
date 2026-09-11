@@ -100,6 +100,9 @@ export interface TasteStore {
   getTaste(userId: string): Promise<TasteRow | null>;
   /** Bump series progress on an existing row; a missing row is created as `liked`. */
   setProgress(userId: string, titleImdbId: string, progress: ProgressInput): Promise<void>;
-  /** Delete account: all three tables, nothing left behind. */
+  /** Tonight's stored picks and deck (any JSON the picks service produced), or null before the first run. */
+  setTonight(userId: string, data: Record<string, unknown>): Promise<void>;
+  getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null>;
+  /** Delete account: every per-user table, nothing left behind. */
   deleteUser(userId: string): Promise<void>;
 }

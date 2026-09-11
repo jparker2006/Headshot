@@ -181,6 +181,13 @@ export interface TasteFactsJson {
   genresAvoided: string[];
 }
 
+/** Tonight, as the nightly job (or an on-demand refresh) left it: picks, deck, and when. */
+export const tonight = pgTable("tonight", {
+  userId: text("user_id").primaryKey(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
 /** One row per user: the nightly taste vector plus the facts derived with it. */
 export const taste = pgTable("taste", {
   userId: text("user_id").primaryKey(),

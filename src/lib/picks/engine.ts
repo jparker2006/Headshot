@@ -170,15 +170,21 @@ function ordinal(n: number): string {
  */
 export function walkCandidates(graph: IndustryGraph, watched: WatchedRow[], opts: { limit?: number; likedBuckets?: Bucket[] } = {}): { imdbId: string; proximity: number }[] {
   const likedBuckets = new Set(opts.likedBuckets ?? ["liked", "want"]);
-  const seen = new Set(watched.map((w) => w.imdbId));
+  // Only things actually watched are off the table; a Later title ("want") stays a candidate so the list drains.
+  const seen = new Set(watched.filter((w) => w.rating === "liked" || w.rating === "meh").map((w) => w.imdbId));
   const liked = watched.filter((w) => likedBuckets.has(w.rating)).map((w) => graph.idOf(w.imdbId)).filter((id): id is number => id !== undefined);
   const scores = new Map<number, number>();
+  for (const w of watched) {
+    if (w.rating !== "want") continue;
+    const id = graph.idOf(w.imdbId);
+    if (id !== undefined) scores.set(id, 0.5);
+  }
   for (const titleId of liked) {
     for (const person of graph.castOf(titleId)) {
       if (person.node.kind !== "person") continue;
       for (const t of graph.neighbors(person.node.id)) {
         const title = graph.node(t.id);
-        if (title.kind !== "title" || seen.has(title.imdbId)) continue;
+        if (title.kind !== "title" || seen.has(title.imdbId) || t.id === titleId) continue;
         scores.set(t.id, (scores.get(t.id) ?? 0) + (t.tier === 1 ? 1 : 0.5));
       }
     }

@@ -46,6 +46,9 @@ describe("pick engine (pure)", () => {
     const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }];
     const out = walkCandidates(graph, watched);
     expect(out.map((c) => c.imdbId)).not.toContain(APOLLO);
+    // A Later title is a candidate even with no graph link, so the list drains.
+    const withLater = walkCandidates(graph, [{ imdbId: GOOD_SERIES, rating: "liked" }, { imdbId: MINI, rating: "want" }]);
+    expect(withLater.find((c) => c.imdbId === MINI)?.proximity).toBeGreaterThanOrEqual(0.5); // no shared people with Good Series, still a candidate
     expect(out[0].imdbId).toBe(GUMP); // Hanks + Sinise, strong tier
     expect(out.find((c) => c.imdbId === LATE_NIGHT)!.proximity).toBeLessThan(out[0].proximity); // weak tier counts half
   });

@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { BrainDatabase } from "@/lib/brain/postgres";
-import { services, taste, watched } from "@/lib/brain/schema";
+import { services, taste, tonight, watched } from "@/lib/brain/schema";
 import {
   type ProgressInput,
   type ServicesInput,
@@ -180,7 +180,21 @@ export class PostgresTasteStore implements TasteStore {
       });
   }
 
+  async setTonight(userId: string, data: Record<string, unknown>): Promise<void> {
+    const at = this.now();
+    await this.db
+      .insert(tonight)
+      .values({ userId, data, generatedAt: at })
+      .onConflictDoUpdate({ target: tonight.userId, set: { data: sql`excluded.data`, generatedAt: sql`excluded.generated_at` } });
+  }
+
+  async getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null> {
+    const [row] = await this.db.select().from(tonight).where(eq(tonight.userId, userId)).limit(1);
+    return row ? { data: row.data, generatedAt: row.generatedAt.toISOString() } : null;
+  }
+
   async deleteUser(userId: string): Promise<void> {
+    await this.db.delete(tonight).where(eq(tonight.userId, userId));
     await this.db.delete(watched).where(eq(watched.userId, userId));
     await this.db.delete(services).where(eq(services.userId, userId));
     await this.db.delete(taste).where(eq(taste.userId, userId));
