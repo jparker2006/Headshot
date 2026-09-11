@@ -81,4 +81,16 @@ export class MemoryBrain implements Brain {
   async recordQuestion(input: { sessionId?: string; text: string }): Promise<void> {
     this.questions.push({ at: this.now().toISOString(), ...input });
   }
+
+  /** No-op: embeddings need pgvector, which only the Postgres brain has. */
+  async upsertEmbeddings(rows: { imdbId: string; embedding: number[] }[]): Promise<void> {
+    void rows;
+  }
+
+  /** No-op: without pgvector there is nothing to search, so resolution falls back. */
+  async semanticSearch(embedding: number[], limit: number): Promise<{ imdbId: string; distance: number }[]> {
+    void embedding;
+    void limit;
+    return [];
+  }
 }

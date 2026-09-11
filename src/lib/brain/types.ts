@@ -65,4 +65,11 @@ export interface Brain {
   /** Questions asked today (UTC), for the daily cap. */
   countQuestionsToday(): Promise<number>;
   recordQuestion(input: { sessionId?: string; text: string }): Promise<void>;
+  /**
+   * Store or replace embeddings for the top tier of entities. Optional: only the
+   * Postgres brain has pgvector, and the in-memory brain no-ops.
+   */
+  upsertEmbeddings?(rows: { imdbId: string; embedding: number[] }[]): Promise<void>;
+  /** Nearest entities by cosine distance, closest first. Optional; see above. */
+  semanticSearch?(embedding: number[], limit: number): Promise<{ imdbId: string; distance: number }[]>;
 }
