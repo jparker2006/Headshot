@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTasteHandlers } from "@/lib/taste/routes";
 import { MemoryTasteStore } from "@/lib/taste/memory";
+import { MemoryTitlesStore } from "@/lib/titles/memory";
 import { PROVIDERS } from "@/lib/taste/providers";
 import { fixtureGraph } from "../agent/helpers";
 
@@ -10,18 +11,27 @@ const DIR = path.join(__dirname, "..", "fixtures", "letterboxd");
 const read = (name: string) => fs.readFileSync(path.join(DIR, name), "utf8");
 
 let store: MemoryTasteStore;
+let titles: MemoryTitlesStore;
 /** Flipped per test to stand in for the session. */
 let signedInAs: string | null;
+/** Background warms the route scheduled; tests await them explicitly. */
+let scheduled: Promise<void>[];
 
 const handlers = createTasteHandlers({
   userId: async () => signedInAs,
   store: async () => store,
   graph: fixtureGraph,
+  titles: async () => titles,
+  // No TMDB in tests: a warm is a no-op beyond the graph half.
+  tmdb: () => null,
+  schedule: (work) => scheduled.push(work()),
 });
 
 beforeEach(() => {
   store = new MemoryTasteStore();
+  titles = new MemoryTitlesStore();
   signedInAs = "user-1";
+  scheduled = [];
 });
 
 const json = (body: unknown, method = "POST") =>
@@ -42,6 +52,8 @@ describe("taste routes: sign-in", () => {
       handlers.putServices(json({ providerIds: [8] }, "PUT")),
       handlers.importLetterboxd(json({ ratings: read("ratings.csv") })),
       handlers.confirmImport(json({ fixes: [] })),
+      handlers.log(json({ query: "Apollo" })),
+      handlers.log(json({ imdbId: "tt0000001", rating: "liked" })),
     ];
     for (const res of await Promise.all(calls)) {
       expect(res.status).toBe(401);
@@ -170,5 +182,86 @@ describe("taste routes: watched", () => {
 
     const body = await (await handlers.listWatched(get())).json();
     expect(body.watched).toMatchObject([{ titleImdbId: "tt0000001", rating: "liked", source: "swipe" }]);
+  });
+});
+
+describe("taste routes: log", () => {
+  it("resolves what the user is typing to candidates, films and shows alike", async () => {
+    const res = await handlers.log(json({ query: "Apollo" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).candidates).toEqual([
+      { imdbId: "tt0000001", name: "Apollo 13", year: 1995, kind: "movie", seasons: null },
+    ]);
+
+    const show = await (await handlers.log(json({ query: "Late Night Show" }))).json();
+    expect(show.candidates[0]).toMatchObject({ imdbId: "tt0000003", kind: "series", seasons: null });
+
+    // At most six, and nothing at all until there is something to match on.
+    const many = await (await handlers.log(json({ query: "e" }))).json();
+    expect(many.candidates).toEqual([]);
+    const some = await (await handlers.log(json({ query: "se" }))).json();
+    expect(some.candidates.length).toBeLessThanOrEqual(6);
+  });
+
+  it("a candidate carries its seasons once the titles cache has them", async () => {
+    await titles.upsertMany([
+      {
+        imdbId: "tt0000003",
+        tmdbId: 3,
+        kind: "series",
+        name: "Late Night Show",
+        year: 2001,
+        runtime: 60,
+        seasons: [{ season: 1, episodes: 10 }, { season: 2, episodes: 12 }],
+        genres: ["Comedy"],
+        posterPath: null,
+        providers: null,
+        fetchedAt: "2026-09-11T10:00:00.000Z",
+      },
+    ]);
+    const body = await (await handlers.log(json({ query: "Late Night Show" }))).json();
+    expect(body.candidates[0].seasons).toEqual([{ season: 1, episodes: 10 }, { season: 2, episodes: 12 }]);
+  });
+
+  it("writes the watched row and one episode with the line verbatim", async () => {
+    const res = await handlers.log(json({ imdbId: "tt0000001", rating: "liked", text: 'the "reentry" bit still gets me' }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.row).toMatchObject({ titleImdbId: "tt0000001", rating: "liked", source: "log" });
+    expect(typeof body.row.watchedAt).toBe("string");
+
+    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "liked", source: "log" }]);
+    const episodes = await store.listEpisodes("user-1");
+    expect(episodes).toHaveLength(1);
+    expect(episodes[0]).toMatchObject({ kind: "log", titleImdbId: "tt0000001" });
+    // The user's own words, unparaphrased.
+    expect(episodes[0].text).toBe('liked Apollo 13 (1995): "the \"reentry\" bit still gets me"');
+
+    // The titles cache is warmed in the background, never on the way out.
+    await Promise.all(scheduled);
+    expect((await titles.getMany(["tt0000001"])).get("tt0000001")).toMatchObject({ name: "Apollo 13", year: 1995 });
+  });
+
+  it("logs a season of a show, and the neutral `seen` bucket", async () => {
+    await handlers.log(json({ imdbId: "tt0000003", rating: "seen", season: 2 }));
+    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000003", rating: "seen", season: 2, source: "log" }]);
+    expect((await store.listEpisodes("user-1"))[0].text).toBe("seen Late Night Show (2001)");
+  });
+
+  it("refuses a bucket the log does not offer and a body that says nothing", async () => {
+    expect((await handlers.log(json({ imdbId: "tt0000001", rating: "unseen" }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "nm0000001", rating: "liked" }))).status).toBe(400);
+    expect((await handlers.log(json({}))).status).toBe(400);
+    expect(await store.listWatched("user-1")).toEqual([]);
+    expect(await store.listEpisodes("user-1")).toEqual([]);
+  });
+
+  it("an import warms the titles cache for everything it matched", async () => {
+    await handlers.importLetterboxd(json({ ratings: read("ratings.csv") }));
+    await Promise.all(scheduled);
+    const cached = await titles.getMany(["tt0000001", "tt0000002"]);
+    expect(cached.get("tt0000001")).toMatchObject({ name: "Apollo 13" });
+    expect(cached.get("tt0000002")).toMatchObject({ name: "Forrest Gump" });
   });
 });

@@ -1,6 +1,9 @@
+import { waitUntil } from "@vercel/functions";
 import { getIndustryGraph } from "@/lib/graph";
 import { getBrain } from "@/lib/brain";
 import { currentUserId } from "@/lib/auth/server";
+import { getTitlesStore } from "@/lib/titles";
+import { tmdbFromEnv } from "@/lib/tmdb/client";
 import { createTasteHandlers } from "./routes";
 import { getTasteStore } from "./index";
 
@@ -17,4 +20,9 @@ export const tasteHandlers = createTasteHandlers({
     graph.setOverlay(await brain.getOverlay());
     return graph;
   },
+  titles: getTitlesStore,
+  tmdb: tmdbFromEnv,
+  // Warming the titles cache outlives the response: the user never waits on
+  // TMDB to see their own log line.
+  schedule: (work) => waitUntil(work().catch((err) => console.warn("[titles] warm failed:", err))),
 });

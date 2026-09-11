@@ -1,8 +1,13 @@
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, sql } from "drizzle-orm";
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { BrainDatabase } from "@/lib/brain/postgres";
-import { services, taste, tonight, watched } from "@/lib/brain/schema";
+import { episodes, memory, services, taste, tonight, watched } from "@/lib/brain/schema";
 import {
+  type EpisodeInput,
+  type EpisodeRow,
+  type ImportSource,
+  type MemoryInput,
+  type MemoryRow,
   type ProgressInput,
   type ServicesInput,
   type ServicesRow,
@@ -14,6 +19,14 @@ import {
 } from "./types";
 
 type WatchedDbRow = typeof watched.$inferSelect;
+
+/** Monotonic within the process; part of the sortable episode id. */
+let episodeSeq = 0;
+
+/** ILIKE treats % and _ as wildcards; a user's search text is literal. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 
 function toWatchedRow(row: WatchedDbRow): WatchedRow {
   return {
@@ -42,6 +55,15 @@ export class PostgresTasteStore implements TasteStore {
   constructor(source: string | BrainDatabase, opts: { now?: () => Date } = {}) {
     this.db = typeof source === "string" ? neonDrizzle(source) : source;
     this.now = opts.now ?? (() => new Date());
+  }
+
+  /**
+   * Sortable episode id: the clock in base 36 plus a per-process counter, so
+   * `(at desc, id desc)` reproduces insertion order for rows written in the
+   * same millisecond. The memory store pads its counter for the same reason.
+   */
+  private episodeId(): string {
+    return `${Date.now().toString(36).padStart(9, "0")}-${String(++episodeSeq).padStart(9, "0")}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   async upsertWatched(userId: string, rows: WatchedInput[]): Promise<void> {
@@ -95,14 +117,72 @@ export class PostgresTasteStore implements TasteStore {
       .where(and(eq(watched.userId, userId), eq(watched.titleImdbId, titleImdbId)));
   }
 
-  async replaceImport(userId: string, rows: WatchedInput[]): Promise<void> {
-    await this.db
-      .delete(watched)
-      .where(and(eq(watched.userId, userId), eq(watched.source, "letterboxd")));
+  async replaceImport(userId: string, source: ImportSource, rows: WatchedInput[]): Promise<void> {
+    await this.db.delete(watched).where(and(eq(watched.userId, userId), eq(watched.source, source)));
     await this.upsertWatched(
       userId,
-      rows.map((r) => ({ ...r, source: "letterboxd" as const })),
+      rows.map((r) => ({ ...r, source })),
     );
+  }
+
+  async getMemory(userId: string): Promise<MemoryRow | null> {
+    const [row] = await this.db.select().from(memory).where(eq(memory.userId, userId)).limit(1);
+    if (!row) return null;
+    return { markdown: row.markdown, pinned: row.pinned, updatedAt: row.updatedAt.toISOString() };
+  }
+
+  async setMemory(userId: string, input: MemoryInput): Promise<void> {
+    const at = this.now();
+    await this.db
+      .insert(memory)
+      .values({ userId, markdown: input.markdown ?? "", pinned: input.pinned ?? "", updatedAt: at })
+      .onConflictDoUpdate({
+        target: memory.userId,
+        set: {
+          // A partial update keeps the field the caller said nothing about:
+          // the rewrite job never touches `pinned`, and an Edit never drops
+          // the prose it was not shown.
+          ...(input.markdown === undefined ? {} : { markdown: sql`excluded.markdown` }),
+          ...(input.pinned === undefined ? {} : { pinned: sql`excluded.pinned` }),
+          updatedAt: sql`excluded.updated_at`,
+        },
+      });
+  }
+
+  async addEpisodes(userId: string, rows: EpisodeInput[]): Promise<void> {
+    if (rows.length === 0) return;
+    const at = this.now();
+    await this.db.insert(episodes).values(
+      rows.map((row) => ({
+        id: this.episodeId(),
+        userId,
+        at: row.at ? new Date(row.at) : at,
+        kind: row.kind,
+        titleImdbId: row.titleImdbId ?? null,
+        text: row.text,
+      })),
+    );
+  }
+
+  async listEpisodes(userId: string, opts: { limit?: number; since?: string; query?: string } = {}): Promise<EpisodeRow[]> {
+    const where = [eq(episodes.userId, userId)];
+    if (opts.since) where.push(gte(episodes.at, new Date(opts.since)));
+    if (opts.query) where.push(ilike(episodes.text, `%${escapeLike(opts.query)}%`));
+    let q = this.db
+      .select()
+      .from(episodes)
+      .where(and(...where))
+      .orderBy(desc(episodes.at), desc(episodes.id))
+      .$dynamic();
+    if (opts.limit !== undefined) q = q.limit(opts.limit);
+    const rows = await q;
+    return rows.map((r) => ({
+      id: r.id,
+      at: r.at.toISOString(),
+      kind: r.kind,
+      titleImdbId: r.titleImdbId,
+      text: r.text,
+    }));
   }
 
   async setServices(userId: string, input: ServicesInput): Promise<ServicesRow> {
@@ -206,5 +286,7 @@ export class PostgresTasteStore implements TasteStore {
     await this.db.delete(watched).where(eq(watched.userId, userId));
     await this.db.delete(services).where(eq(services.userId, userId));
     await this.db.delete(taste).where(eq(taste.userId, userId));
+    await this.db.delete(memory).where(eq(memory.userId, userId));
+    await this.db.delete(episodes).where(eq(episodes.userId, userId));
   }
 }

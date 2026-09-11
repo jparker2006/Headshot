@@ -8,7 +8,12 @@
  */
 import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
 
-export type Bucket = "liked" | "meh" | "unseen" | "want";
+/**
+ * v4 adds `seen` (watched, no opinion) — the Netflix import and a neutral log
+ * both land there. The scorer treats it like any other rating it has no
+ * preference signal from.
+ */
+export type Bucket = "liked" | "meh" | "unseen" | "want" | "seen";
 
 export interface WatchedRow {
   imdbId: string;

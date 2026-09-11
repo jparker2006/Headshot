@@ -8,6 +8,7 @@ import type { LanguageModel } from "ai";
 import type { IndustryGraph } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import type { TasteStore } from "@/lib/taste/types";
+import { getTitles, type TitlesStore } from "@/lib/titles";
 import { buildCandidates } from "./candidates";
 import { pickTonight, tasteFacts, type Filters, type WatchedRow } from "./engine";
 import { narrateReasons } from "./narrate";
@@ -19,6 +20,13 @@ export interface TonightDeps {
   store: TasteStore;
   /** Cheap model for reason lines; absent = the engine's own lines. */
   model?: LanguageModel | null;
+  /** The titles cache; a pick's ids are warmed into it. Absent = no warming. */
+  titles?: TitlesStore | null;
+  /**
+   * Run the warm in the background (`waitUntil` in a route). The nightly job
+   * leaves this unset, so the cache is filled before the run reports done.
+   */
+  schedule?: (work: () => Promise<void>) => void;
   log?: (m: string) => void;
 }
 
@@ -68,6 +76,18 @@ export async function computeTonight(deps: TonightDeps, userId: string, filters:
     laterCount: rows.filter((r) => r.rating === "want").length,
   };
   await store.setTonight(userId, data as unknown as Record<string, unknown>);
+
+  // Every pick and deck card is something Numbers, the posters and the log
+  // table will want facts for, so a pick is where the cache warms cheapest.
+  if (deps.titles) {
+    const ids = [...data.picks, ...data.deck].map((p) => p.imdbId);
+    const warm = async () => {
+      await getTitles(ids, { store: deps.titles!, tmdb: deps.tmdb, graph, region, refreshStale: true, log });
+    };
+    if (deps.schedule) deps.schedule(warm);
+    else await warm().catch((err) => log(`[tonight] titles warm failed: ${err instanceof Error ? err.message : err}`));
+  }
+
   log(`[tonight] ${userId}: ${data.picks.length} picks, ${data.deck.length} in the deck, ${result.rejected.length} rejected`);
   return data;
 }

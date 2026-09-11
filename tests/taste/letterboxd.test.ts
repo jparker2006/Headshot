@@ -152,14 +152,14 @@ describe("re-upload", () => {
     const { matched } = matchToGraph(graph, parseLetterboxd(files()));
 
     await store.upsertWatched("u1", [{ titleImdbId: "tt0000005", rating: "liked", source: "swipe" }]);
-    await store.replaceImport("u1", toWatchedInputs(matched));
+    await store.replaceImport("u1", "letterboxd", toWatchedInputs(matched));
     expect(await store.listWatched("u1")).toHaveLength(8);
 
     // A second, smaller export: the old letterboxd rows go, the swipe stays.
     const smaller = matchToGraph(graph, parseLetterboxd({ ratings: read("ratings.csv") })).matched.filter(
       (m) => m.row.name === "Apollo 13",
     );
-    await store.replaceImport("u1", toWatchedInputs(smaller));
+    await store.replaceImport("u1", "letterboxd", toWatchedInputs(smaller));
 
     const after = await store.listWatched("u1");
     expect(after.map((r) => r.titleImdbId)).toEqual(["tt0000001", "tt0000005"]);

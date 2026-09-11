@@ -9,6 +9,9 @@ import { EMBEDDING_DIMS } from "@/lib/brain/schema";
 import { MemoryTasteStore } from "@/lib/taste/memory";
 import { PostgresTasteStore } from "@/lib/taste/postgres";
 import { EMPTY_TASTE_FACTS, type TasteFacts, type TasteStore } from "@/lib/taste/types";
+import { MemoryTitlesStore } from "@/lib/titles/memory";
+import { PostgresTitlesStore } from "@/lib/titles/postgres";
+import type { TitleRow, TitlesStore } from "@/lib/titles/types";
 
 const MIGRATIONS = path.join(__dirname, "..", "..", "drizzle");
 
@@ -31,7 +34,7 @@ afterAll(async () => {
 
 async function truncate() {
   await db.execute(
-    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "tonight"`,
+    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "tonight", "titles", "memory", "episodes"`,
   );
 }
 
@@ -95,27 +98,115 @@ function describeStore(name: string, factory: StoreFactory) {
       expect((await store.listWatched("u2")).map((r) => r.titleImdbId)).toEqual(["tt1"]);
     });
 
-    it("replaceImport drops only the previous letterboxd rows", async () => {
+    it("replaceImport drops only the previous rows of that source", async () => {
       const store = await factory();
       await store.upsertWatched("u1", [
         { titleImdbId: "tt-swipe", rating: "liked", source: "swipe" },
         { titleImdbId: "tt-chat", rating: "want", source: "chat" },
       ]);
-      await store.replaceImport("u1", [
+      await store.replaceImport("u1", "letterboxd", [
         { titleImdbId: "tt-a", rating: "liked", source: "letterboxd" },
         { titleImdbId: "tt-b", rating: "meh", source: "letterboxd" },
       ]);
-      await store.replaceImport("u1", [{ titleImdbId: "tt-a", rating: "meh", source: "letterboxd" }]);
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "meh", source: "letterboxd" }]);
 
       const rows = await store.listWatched("u1");
       expect(rows.map((r) => r.titleImdbId)).toEqual(["tt-a", "tt-chat", "tt-swipe"]);
       expect(rows.find((r) => r.titleImdbId === "tt-a")).toMatchObject({ rating: "meh", source: "letterboxd" });
     });
 
+    it("one import source never disturbs another", async () => {
+      const store = await factory();
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-lb", rating: "liked", source: "letterboxd" }]);
+      await store.replaceImport("u1", "netflix", [
+        { titleImdbId: "tt-nf1", rating: "seen", source: "netflix" },
+        { titleImdbId: "tt-nf2", rating: "seen", source: "netflix" },
+      ]);
+      await store.replaceImport("u1", "imdb", [{ titleImdbId: "tt-imdb", rating: "meh", source: "imdb" }]);
+
+      // A Netflix re-upload replaces only the Netflix rows.
+      await store.replaceImport("u1", "netflix", [{ titleImdbId: "tt-nf2", rating: "seen", source: "netflix" }]);
+      const rows = await store.listWatched("u1");
+      expect(rows.map((r) => r.titleImdbId)).toEqual(["tt-imdb", "tt-lb", "tt-nf2"]);
+      expect(rows.map((r) => r.source)).toEqual(["imdb", "letterboxd", "netflix"]);
+    });
+
     it("replaceImport stamps the source even when the caller forgot", async () => {
       const store = await factory();
-      await store.replaceImport("u1", [{ titleImdbId: "tt-a", rating: "liked", source: "swipe" }]);
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "liked", source: "swipe" }]);
       expect(await store.listWatched("u1")).toMatchObject([{ source: "letterboxd" }]);
+    });
+
+    it("the neutral `seen` bucket round-trips", async () => {
+      const store = await factory();
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-seen", rating: "seen", source: "log", watchedAt: "2026-09-11T00:00:00.000Z" }]);
+      expect(await store.listWatched("u1")).toMatchObject([
+        { titleImdbId: "tt-seen", rating: "seen", source: "log", watchedAt: "2026-09-11T00:00:00.000Z" },
+      ]);
+    });
+
+    it("memory starts empty, round-trips, and updates one field at a time", async () => {
+      const store = await factory();
+      expect(await store.getMemory("u1")).toBeNull();
+
+      await store.setMemory("u1", { markdown: "- likes long films\n- hates jump scares" });
+      expect(await store.getMemory("u1")).toMatchObject({ markdown: "- likes long films\n- hates jump scares", pinned: "" });
+
+      // The user pins a line; the prose the rewrite job owns is untouched.
+      await store.setMemory("u1", { pinned: "- I will never watch a musical" });
+      const both = await store.getMemory("u1");
+      expect(both?.markdown).toBe("- likes long films\n- hates jump scares");
+      expect(both?.pinned).toBe("- I will never watch a musical");
+      expect(typeof both?.updatedAt).toBe("string");
+
+      // The rewrite job replaces the prose and must not lose the pinned block.
+      await store.setMemory("u1", { markdown: "- rewritten" });
+      expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten", pinned: "- I will never watch a musical" });
+      expect(await store.getMemory("u2")).toBeNull();
+    });
+
+    it("episodes come back newest first, filtered by limit, query and since", async () => {
+      const store = await factory();
+      await store.addEpisodes("u1", [
+        { kind: "log", titleImdbId: "tt1", text: "liked Heat (1995)", at: "2026-09-01T00:00:00.000Z" },
+        { kind: "chat", text: "said they cannot stand musicals", at: "2026-09-05T00:00:00.000Z" },
+        { kind: "swipe", titleImdbId: "tt2", text: "never seen Cats (2019)", at: "2026-09-09T00:00:00.000Z" },
+      ]);
+      await store.addEpisodes("u2", [{ kind: "log", text: "liked something else", at: "2026-09-09T00:00:00.000Z" }]);
+
+      const all = await store.listEpisodes("u1");
+      expect(all.map((e) => e.text)).toEqual([
+        "never seen Cats (2019)",
+        "said they cannot stand musicals",
+        "liked Heat (1995)",
+      ]);
+      expect(all[0]).toMatchObject({ kind: "swipe", titleImdbId: "tt2", at: "2026-09-09T00:00:00.000Z" });
+      // A chat episode is not about one title.
+      expect(all[1].titleImdbId).toBeNull();
+      expect(all.every((e) => typeof e.id === "string" && e.id.length > 0)).toBe(true);
+
+      expect((await store.listEpisodes("u1", { limit: 2 })).map((e) => e.text)).toEqual([
+        "never seen Cats (2019)",
+        "said they cannot stand musicals",
+      ]);
+      // Case-insensitive substring over the text only.
+      expect((await store.listEpisodes("u1", { query: "MUSICALS" })).map((e) => e.text)).toEqual(["said they cannot stand musicals"]);
+      expect(await store.listEpisodes("u1", { query: "nothing here" })).toEqual([]);
+      expect((await store.listEpisodes("u1", { since: "2026-09-05T00:00:00.000Z" })).map((e) => e.text)).toEqual([
+        "never seen Cats (2019)",
+        "said they cannot stand musicals",
+      ]);
+      expect((await store.listEpisodes("u2")).map((e) => e.text)).toEqual(["liked something else"]);
+      expect(await store.listEpisodes("nobody")).toEqual([]);
+    });
+
+    it("addEpisodes defaults `at` to the clock and stores the text verbatim", async () => {
+      const store = await factory({ now: () => new Date("2026-09-11T10:00:00.000Z") });
+      await store.addEpisodes("u1", [{ kind: "log", titleImdbId: "tt1", text: 'liked Heat (1995): "the diner scene, again"' }]);
+      await store.addEpisodes("u1", []);
+      expect(await store.listEpisodes("u1")).toMatchObject([
+        { at: "2026-09-11T10:00:00.000Z", text: 'liked Heat (1995): "the diner scene, again"' },
+      ]);
     });
 
     it("setProgress creates a series row and then bumps only what it is given", async () => {
@@ -177,22 +268,28 @@ function describeStore(name: string, factory: StoreFactory) {
       expect(after?.facts).toEqual(EMPTY_TASTE_FACTS);
     });
 
-    it("deleteUser empties all three tables for that user only", async () => {
+    it("deleteUser empties every per-user table for that user only", async () => {
       const store = await factory();
       for (const u of ["u1", "u2"]) {
         await store.upsertWatched(u, [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);
         await store.setServices(u, { providerIds: [8] });
         await store.setTaste(u, { vector: vec(1), facts: FACTS });
+        await store.setMemory(u, { markdown: "- something", pinned: "- pinned" });
+        await store.addEpisodes(u, [{ kind: "log", text: "liked Heat (1995)" }]);
       }
 
       await store.deleteUser("u1");
       expect(await store.listWatched("u1")).toEqual([]);
       expect(await store.getServices("u1")).toBeNull();
       expect(await store.getTaste("u1")).toBeNull();
+      expect(await store.getMemory("u1")).toBeNull();
+      expect(await store.listEpisodes("u1")).toEqual([]);
 
       expect(await store.listWatched("u2")).toHaveLength(1);
       expect(await store.getServices("u2")).not.toBeNull();
       expect(await store.getTaste("u2")).not.toBeNull();
+      expect(await store.getMemory("u2")).not.toBeNull();
+      expect(await store.listEpisodes("u2")).toHaveLength(1);
     });
 
     it("tonight round-trips a stored result, replaces on write, and is gone after deleteUser", async () => {
@@ -238,4 +335,79 @@ describeStore("MemoryTasteStore", async (opts = {}) => new MemoryTasteStore(opts
 describeStore("PostgresTasteStore", async (opts = {}) => {
   await truncate();
   return new PostgresTasteStore(db, opts);
+});
+
+// ---- the titles cache -----------------------------------------------------
+
+const HEAT: TitleRow = {
+  imdbId: "tt0113277",
+  tmdbId: 949,
+  kind: "movie",
+  name: "Heat",
+  year: 1995,
+  runtime: 170,
+  seasons: null,
+  genres: ["Action", "Crime"],
+  posterPath: "/heat.jpg",
+  providers: { link: "https://www.themoviedb.org/movie/949/watch", flatrate: [{ id: 8, name: "Netflix" }] },
+  fetchedAt: "2026-09-11T10:00:00.000Z",
+};
+
+const SHOW: TitleRow = {
+  imdbId: "tt0141842",
+  tmdbId: 1398,
+  kind: "series",
+  name: "The Sopranos",
+  year: 1999,
+  runtime: 55,
+  seasons: [
+    { season: 1, episodes: 13 },
+    { season: 2, episodes: 13 },
+  ],
+  genres: ["Drama"],
+  posterPath: null,
+  providers: null,
+  fetchedAt: null,
+};
+
+function describeTitles(name: string, factory: () => Promise<TitlesStore>) {
+  describe(name, () => {
+    it("upserts, reads back whole rows, and reports misses by absence", async () => {
+      const store = await factory();
+      expect(await store.getMany(["tt0113277"])).toEqual(new Map());
+      expect(await store.getMany([])).toEqual(new Map());
+
+      await store.upsertMany([HEAT, SHOW]);
+      const got = await store.getMany(["tt0113277", "tt0141842", "tt-missing"]);
+      expect(got.size).toBe(2);
+      expect(got.get("tt0113277")).toEqual(HEAT);
+      // Seasons and a null fetchedAt (the TMDB-failure case) survive the trip.
+      expect(got.get("tt0141842")).toEqual(SHOW);
+    });
+
+    it("an upsert replaces the row it hits", async () => {
+      const store = await factory();
+      await store.upsertMany([HEAT]);
+      await store.upsertMany([{ ...HEAT, runtime: 171, providers: null, fetchedAt: "2026-09-12T00:00:00.000Z" }]);
+      expect((await store.getMany(["tt0113277"])).get("tt0113277")).toMatchObject({
+        runtime: 171,
+        providers: null,
+        fetchedAt: "2026-09-12T00:00:00.000Z",
+      });
+      await store.upsertMany([]);
+    });
+
+    it("the last row wins when one call mentions an id twice", async () => {
+      const store = await factory();
+      await store.upsertMany([HEAT, { ...HEAT, name: "Heat (1995)" }]);
+      expect((await store.getMany(["tt0113277"])).get("tt0113277")?.name).toBe("Heat (1995)");
+    });
+  });
+}
+
+describeTitles("MemoryTitlesStore", async () => new MemoryTitlesStore());
+
+describeTitles("PostgresTitlesStore", async () => {
+  await truncate();
+  return new PostgresTitlesStore(db);
 });

@@ -150,11 +150,11 @@ export const watched = pgTable(
   {
     userId: text("user_id").notNull(),
     titleImdbId: text("title_imdb_id").notNull(),
-    /** liked | meh | unseen | want */
-    rating: text("rating").$type<"liked" | "meh" | "unseen" | "want">().notNull(),
+    /** liked | meh | unseen | want | seen (v4: watched, no opinion) */
+    rating: text("rating").$type<"liked" | "meh" | "unseen" | "want" | "seen">().notNull(),
     watchedAt: timestamp("watched_at", { withTimezone: true, mode: "date" }),
-    /** letterboxd | swipe | chat */
-    source: text("source").$type<"letterboxd" | "swipe" | "chat">().notNull(),
+    /** letterboxd | swipe | chat | log | netflix | imdb */
+    source: text("source").$type<"letterboxd" | "swipe" | "chat" | "log" | "netflix" | "imdb">().notNull(),
     /** Series only: the season the user has marked. */
     season: integer("season"),
     /** Series only: the counter behind "one more episode of X". */
@@ -195,3 +195,60 @@ export const taste = pgTable("taste", {
   facts: jsonb("facts").$type<TasteFactsJson>().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
+
+// ---- v4: titles cache, memory, episodes ----------------------------------
+// Three tables behind "You". `titles` is shared across users (a cache of TMDB
+// facts keyed by IMDb id, not per-user data); `memory` and `episodes` are
+// private and are cleared by `TasteStore.deleteUser` with the rest.
+
+/** One season of a series, with the episode count Numbers counts hours from. */
+export interface TitleSeason {
+  season: number;
+  episodes: number;
+}
+
+/**
+ * Lazily filled cache of the TMDB facts the graph does not carry: runtime,
+ * seasons, genres, poster and the watch-providers snapshot. Warmed on log,
+ * import and pick; read by Numbers, the log table, `/api/names` and posters.
+ */
+export const titles = pgTable("titles", {
+  imdbId: text("imdb_id").primaryKey(),
+  tmdbId: integer("tmdb_id"),
+  /** movie | series */
+  kind: text("kind").$type<"movie" | "series">().notNull(),
+  name: text("name").notNull(),
+  year: integer("year"),
+  /** Minutes. For a series, the average episode runtime. */
+  runtime: integer("runtime"),
+  seasons: jsonb("seasons").$type<TitleSeason[] | null>(),
+  genres: jsonb("genres").$type<string[]>().notNull().default([]),
+  posterPath: text("poster_path"),
+  /** The TMDB watch-providers payload for the default region, as fetched. */
+  providers: jsonb("providers").$type<Record<string, unknown> | null>(),
+  /** Null while only the graph half is known, so the row is retried next time. */
+  fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: "date" }),
+});
+
+/** The beliefs layer: prose the rewrite job owns plus lines the user pinned. */
+export const memory = pgTable("memory", {
+  userId: text("user_id").primaryKey(),
+  markdown: text("markdown").notNull().default(""),
+  pinned: text("pinned").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+/** The evidence layer: one line per thing the user did or said. Append-only. */
+export const episodes = pgTable(
+  "episodes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    at: timestamp("at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    /** log | swipe | chat | play */
+    kind: text("kind").$type<"log" | "swipe" | "chat" | "play">().notNull(),
+    titleImdbId: text("title_imdb_id"),
+    text: text("text").notNull(),
+  },
+  (t) => [index("episodes_user_id_at_idx").on(t.userId, t.at)],
+);

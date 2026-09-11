@@ -17,14 +17,40 @@ import {
   type TitleSearch,
 } from "./letterboxd";
 import { normalizeProviderIds, PROVIDERS } from "./providers";
-import type { TasteStore, WatchedRating } from "./types";
+import type { TasteStore, WatchedRating, WatchedRow } from "./types";
+import type { NodeInfo } from "@/lib/graph/engine";
+import type { TmdbClient } from "@/lib/tmdb/client";
+import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
+
+/** The graph slice these routes need: name lookup plus single-id resolution. */
+export interface GraphLookup extends TitleSearch {
+  nodeByImdbId(imdbId: string): NodeInfo | undefined;
+}
 
 export interface TasteDeps {
   /** Resolve the signed-in user for this request, or null. */
   userId: (req: Request) => Promise<string | null>;
   store: () => Promise<TasteStore>;
   /** The industry graph, for matching imported titles. */
-  graph: () => Promise<TitleSearch>;
+  graph: () => Promise<GraphLookup>;
+  /** The titles cache. Absent in tests that do not care about warming. */
+  titles?: () => Promise<TitlesStore>;
+  tmdb?: () => TmdbClient | null;
+  /**
+   * Run background work that outlives the response (`waitUntil` on Vercel).
+   * The default awaits nothing and swallows failures: warming the titles cache
+   * must never fail a log or an import.
+   */
+  schedule?: (work: () => Promise<void>) => void;
+}
+
+/** The four buckets a log field offers. `unseen` is a swipe verb, not a log one. */
+const LOG_RATINGS = ["liked", "meh", "want", "seen"] as const;
+type LogRating = (typeof LOG_RATINGS)[number];
+
+/** movie | series from the graph's title type. */
+function kindOf(node: NodeInfo | undefined): "movie" | "series" {
+  return node && (node.titleType === "tvSeries" || node.titleType === "tvMiniSeries") ? "series" : "movie";
 }
 
 /** One correction from the worst-matches review screen. */
@@ -83,6 +109,21 @@ function reviewItem(m: MatchedRow) {
 }
 
 export function createTasteHandlers(deps: TasteDeps) {
+  const schedule =
+    deps.schedule ??
+    ((work: () => Promise<void>) => {
+      void work().catch(() => {});
+    });
+
+  /** Fill the titles cache for these ids after the response has gone out. */
+  function warmTitles(ids: string[], graph: GraphLookup): void {
+    if (!deps.titles || ids.length === 0) return;
+    schedule(async () => {
+      const store = await deps.titles!();
+      await getTitles(ids, { store, tmdb: deps.tmdb?.() ?? null, graph, refreshStale: true });
+    });
+  }
+
   /** Resolve the user or hand back the 401 the caller should return. */
   async function withUser(req: Request): Promise<{ userId: string } | { response: Response }> {
     const userId = await deps.userId(req);
@@ -146,7 +187,8 @@ export function createTasteHandlers(deps: TasteDeps) {
       const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
       const rows = parseLetterboxd(files);
       const { matched, unmatched } = matchToGraph(graph, rows);
-      await store.replaceImport(who.userId, toWatchedInputs(matched));
+      await store.replaceImport(who.userId, "letterboxd", toWatchedInputs(matched));
+      warmTitles(matched.map((m) => m.imdbId), graph);
 
       return Response.json({
         parsed: rows.length,
@@ -154,6 +196,80 @@ export function createTasteHandlers(deps: TasteDeps) {
         unmatched: unmatched.map((r: LetterboxdRow) => ({ name: r.name, year: r.year, rating: r.rating, list: r.list })),
         review: worstMatches(matched).map(reviewItem),
       });
+    },
+
+    /**
+     * POST /api/taste/log — the one field at the top of You, in two shapes.
+     *
+     * `{ query }` resolves what the user is typing to candidates (the same
+     * name lookup the search route and `find_entities` use), with a series'
+     * seasons attached when the titles cache already holds them — never a
+     * TMDB round trip, because this runs on every keystroke.
+     *
+     * `{ imdbId, rating, season?, text? }` writes the row (source "log") and
+     * one episode. The optional line is stored verbatim inside the episode
+     * text; nothing is paraphrased on the way in.
+     */
+    async log(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      let body: { query?: unknown; imdbId?: unknown; rating?: unknown; season?: unknown; text?: unknown };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return badRequest("Invalid JSON");
+      }
+
+      if (typeof body.query === "string") {
+        const query = body.query.trim();
+        if (query.length < 2) return Response.json({ candidates: [] });
+        const graph = await deps.graph();
+        const hits = graph.searchByName(query, 6, "title");
+        const cached = deps.titles ? await (await deps.titles()).getMany(hits.map((h) => h.imdbId)) : new Map<string, TitleRow>();
+        return Response.json({
+          candidates: hits.map((h) => {
+            const row = cached.get(h.imdbId);
+            const kind = row?.kind ?? kindOf(h);
+            return {
+              imdbId: h.imdbId,
+              name: h.name,
+              year: h.year || null,
+              kind,
+              seasons: kind === "series" ? (row?.seasons ?? null) : null,
+            };
+          }),
+        });
+      }
+
+      const imdbId = typeof body.imdbId === "string" ? body.imdbId : "";
+      if (!/^tt\d+$/.test(imdbId)) return badRequest("query or imdbId required");
+      const rating = String(body.rating) as LogRating;
+      if (!LOG_RATINGS.includes(rating)) return badRequest("rating must be liked, meh, want or seen");
+      const season = typeof body.season === "number" && body.season > 0 ? Math.trunc(body.season) : null;
+      const line = typeof body.text === "string" ? body.text.trim() : "";
+
+      const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
+      const cached = deps.titles ? await (await deps.titles()).getMany([imdbId]) : new Map<string, TitleRow>();
+      const node = graph.nodeByImdbId(imdbId);
+      const name = cached.get(imdbId)?.name ?? node?.name ?? imdbId;
+      const year = cached.get(imdbId)?.year ?? (node?.year || null);
+
+      const at = new Date().toISOString();
+      await store.upsertWatched(who.userId, [
+        { titleImdbId: imdbId, rating, source: "log", watchedAt: at, season },
+      ]);
+      await store.addEpisodes(who.userId, [
+        {
+          kind: "log",
+          titleImdbId: imdbId,
+          text: `${rating} ${name}${year ? ` (${year})` : ""}${line ? `: "${line}"` : ""}`,
+          at,
+        },
+      ]);
+      warmTitles([imdbId], graph);
+
+      const row = (await store.listWatched(who.userId)).find((r) => r.titleImdbId === imdbId) as WatchedRow;
+      return Response.json({ ok: true, row });
     },
 
     /**

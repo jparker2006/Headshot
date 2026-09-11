@@ -1,5 +1,10 @@
 import {
   EMPTY_TASTE_FACTS,
+  type EpisodeInput,
+  type EpisodeRow,
+  type ImportSource,
+  type MemoryInput,
+  type MemoryRow,
   type ProgressInput,
   type ServicesInput,
   type ServicesRow,
@@ -20,6 +25,9 @@ export class MemoryTasteStore implements TasteStore {
   private servicesByUser = new Map<string, ServicesRow>();
   private tasteByUser = new Map<string, TasteRow>();
   private tonightByUser = new Map<string, { data: Record<string, unknown>; generatedAt: string }>();
+  private memoryByUser = new Map<string, MemoryRow>();
+  private episodesByUser = new Map<string, EpisodeRow[]>();
+  private episodeSeq = 0;
   private now: () => Date;
 
   constructor(opts: { now?: () => Date } = {}) {
@@ -65,10 +73,52 @@ export class MemoryTasteStore implements TasteStore {
     this.rows(userId).delete(titleImdbId);
   }
 
-  async replaceImport(userId: string, rows: WatchedInput[]): Promise<void> {
+  async replaceImport(userId: string, source: ImportSource, rows: WatchedInput[]): Promise<void> {
     const target = this.rows(userId);
-    for (const [id, row] of target) if (row.source === "letterboxd") target.delete(id);
-    await this.upsertWatched(userId, rows.map((r) => ({ ...r, source: "letterboxd" as const })));
+    for (const [id, row] of target) if (row.source === source) target.delete(id);
+    await this.upsertWatched(userId, rows.map((r) => ({ ...r, source })));
+  }
+
+  async getMemory(userId: string): Promise<MemoryRow | null> {
+    const row = this.memoryByUser.get(userId);
+    return row ? { ...row } : null;
+  }
+
+  async setMemory(userId: string, input: MemoryInput): Promise<void> {
+    const prev = this.memoryByUser.get(userId);
+    this.memoryByUser.set(userId, {
+      markdown: input.markdown ?? prev?.markdown ?? "",
+      pinned: input.pinned ?? prev?.pinned ?? "",
+      updatedAt: this.stamp(),
+    });
+  }
+
+  async addEpisodes(userId: string, rows: EpisodeInput[]): Promise<void> {
+    if (rows.length === 0) return;
+    let list = this.episodesByUser.get(userId);
+    if (!list) this.episodesByUser.set(userId, (list = []));
+    for (const row of rows) {
+      list.push({
+        // Zero-padded so (at desc, id desc) reproduces insertion order for
+        // rows written in the same millisecond — the Postgres store sorts the
+        // same way, so both implementations agree.
+        id: `ep-${String(++this.episodeSeq).padStart(9, "0")}`,
+        at: row.at ?? this.stamp(),
+        kind: row.kind,
+        titleImdbId: row.titleImdbId ?? null,
+        text: row.text,
+      });
+    }
+  }
+
+  async listEpisodes(userId: string, opts: { limit?: number; since?: string; query?: string } = {}): Promise<EpisodeRow[]> {
+    const q = opts.query?.toLowerCase();
+    let rows = [...(this.episodesByUser.get(userId) ?? [])];
+    if (opts.since) rows = rows.filter((r) => r.at >= opts.since!);
+    if (q) rows = rows.filter((r) => r.text.toLowerCase().includes(q));
+    // Newest first; ties break on the id, which grows with insertion.
+    rows.sort((a, b) => (a.at === b.at ? (a.id < b.id ? 1 : -1) : a.at < b.at ? 1 : -1));
+    return rows.slice(0, opts.limit ?? rows.length).map((r) => ({ ...r }));
   }
 
   async setServices(userId: string, input: ServicesInput): Promise<ServicesRow> {
@@ -138,6 +188,8 @@ export class MemoryTasteStore implements TasteStore {
     this.watchedByUser.delete(userId);
     this.servicesByUser.delete(userId);
     this.tasteByUser.delete(userId);
+    this.memoryByUser.delete(userId);
+    this.episodesByUser.delete(userId);
   }
 }
 

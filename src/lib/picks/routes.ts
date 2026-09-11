@@ -6,6 +6,7 @@ import type { LanguageModel } from "ai";
 import type { IndustryGraph } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import type { TasteStore } from "@/lib/taste/types";
+import type { TitlesStore } from "@/lib/titles";
 import type { Filters } from "./engine";
 import { computeTonight, loadTonight } from "./service";
 import { onboardingDeck } from "./onboarding";
@@ -18,6 +19,9 @@ export interface TonightRouteDeps {
   store: () => Promise<TasteStore>;
   graph: () => Promise<IndustryGraph>;
   tmdb: () => TmdbClient | null;
+  titles?: () => Promise<TitlesStore>;
+  /** Background work that outlives the response (`waitUntil` on Vercel). */
+  schedule?: (work: () => Promise<void>) => void;
   model?: () => LanguageModel | null;
   log?: (m: string) => void;
 }
@@ -32,7 +36,15 @@ function parseFilters(body: Record<string, unknown>): Filters {
 }
 
 export function createTonightHandlers(deps: TonightRouteDeps) {
-  const build = async () => ({ graph: await deps.graph(), tmdb: deps.tmdb(), store: await deps.store(), model: deps.model?.() ?? null, log: deps.log });
+  const build = async () => ({
+    graph: await deps.graph(),
+    tmdb: deps.tmdb(),
+    store: await deps.store(),
+    titles: deps.titles ? await deps.titles() : null,
+    schedule: deps.schedule,
+    model: deps.model?.() ?? null,
+    log: deps.log,
+  });
   return {
     /** GET /api/tonight — stored picks, computed once when there are none. 404 until the user has rated something. */
     async get(req: Request): Promise<Response> {

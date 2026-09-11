@@ -85,6 +85,22 @@ export interface TitleFacts {
   genres: string[];
 }
 
+/**
+ * What the v4 titles cache needs from one details call: the runtime (for a
+ * series, the average episode runtime), the seasons with their episode counts,
+ * genres, and the raw poster path (the cache stores paths, not URLs).
+ */
+export interface TitleCacheFacts {
+  tmdbId: number;
+  mediaType: "movie" | "tv";
+  name: string;
+  year?: number;
+  runtime?: number;
+  seasons?: { season: number; episodes: number }[];
+  genres: string[];
+  posterPath?: string;
+}
+
 export interface PersonFacts {
   tmdbId: number;
   biography: string;
@@ -300,6 +316,38 @@ export class TmdbClient {
       backdropUrl: imageUrl(String(d.backdrop_path ?? ""), "w780"),
       year: date ? Number(date.slice(0, 4)) : undefined,
       genres: Array.isArray(d.genres) ? (d.genres as { name: string }[]).map((g) => g.name) : [],
+    };
+  }
+
+  /**
+   * One details call for the titles cache. TV carries its seasons (with
+   * episode counts) in the same payload, so no per-season call is needed;
+   * specials (season 0) are dropped.
+   */
+  async titleForCache(mediaType: "movie" | "tv", tmdbId: number): Promise<TitleCacheFacts | null> {
+    const d = await this.get<Record<string, unknown>>(`/${mediaType}/${tmdbId}`);
+    if (!d) return null;
+    const date = String(d.release_date ?? d.first_air_date ?? "");
+    const runtimes = Array.isArray(d.episode_run_time) ? (d.episode_run_time as number[]).filter((n) => n > 0) : [];
+    const seasons = Array.isArray(d.seasons)
+      ? (d.seasons as Record<string, unknown>[])
+          .map((s) => ({ season: Number(s.season_number), episodes: Number(s.episode_count ?? 0) }))
+          .filter((s) => Number.isFinite(s.season) && s.season > 0)
+          .sort((a, b) => a.season - b.season)
+      : undefined;
+    return {
+      tmdbId,
+      mediaType,
+      name: String(d.title ?? d.name ?? ""),
+      year: date ? Number(date.slice(0, 4)) : undefined,
+      runtime: d.runtime
+        ? Number(d.runtime)
+        : runtimes.length
+          ? Math.round(runtimes.reduce((a, b) => a + b, 0) / runtimes.length)
+          : undefined,
+      seasons: mediaType === "tv" ? (seasons ?? []) : undefined,
+      genres: Array.isArray(d.genres) ? (d.genres as { name: string }[]).map((g) => g.name) : [],
+      posterPath: d.poster_path ? String(d.poster_path) : undefined,
     };
   }
 
