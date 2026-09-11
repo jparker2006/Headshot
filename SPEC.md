@@ -298,3 +298,90 @@ D. Ego view by default and the phone layout.
 
 ## Out of scope (v2)
 Accounts, episode-level credits, awards and box office data, recommendations, any editing of pages by humans, a mobile app.
+
+# v3 — Tonight (the taste agent)
+
+Decided in a third grilling on 2026-09-11 (three rounds; the full question-and-answer record is in `grilling/2026-09-11-taste-agent.md`). v1 and v2 remain in force except where this section says otherwise. One rule changes: **accounts exist now**, for the private taste graph only. The shared brain stays public and anonymous.
+
+## The problem and the solution
+
+Someone with three subscriptions and a free evening cannot decide what to watch. The existing answers are a wall (streaming rows tuned to keep you on that service) or a blank box (a chat model that knows neither what you have seen nor what you pay for). Tonight is an agent that holds a private taste graph of you, sits on Headshot's industry graph and shared brain, knows which services you have, decides with you, and opens the thing.
+
+Why it beats Google or a chat prompt: the credit graph is computed, never recalled; it acts (Play opens the service you already pay for); and it remembers you. Every pick is explained by a real fact in the graph, not vibes.
+
+## Who it's for
+
+Jake first, then a few friends, then the market. TV and movies are equal; Jake watches more TV. Laptop and phone both complete.
+
+## User stories (v3)
+
+50. As a viewer, I want to open the app at 9pm and see three picks for tonight with a Play button, so that deciding takes under a minute.
+51. As a viewer, I want each pick to say why in one line that is actually true ("the editor of two things you five-starred"), so that I trust it more than a row on Netflix.
+52. As a viewer, I want to tell it which services I pay for once, so that it never recommends something I would have to buy unless nothing else fits.
+53. As a viewer, I want to upload my Letterboxd export and have it know what I have seen and rated, so that I do not start from zero.
+54. As a viewer, I want a fast swipe deck of posters (seen and liked, seen and meh, never seen, want to see) at onboarding and a few each day, so that teaching it feels like a game and not a form.
+55. As a viewer, I want it to keep working while I am asleep and have a fresh deck and picks ready in the morning, so that it feels like an agent rather than a search box.
+56. As a viewer, I want to say "one more episode of X" and have that count as tonight's answer, so that TV is first-class.
+57. As a viewer, I want to see my taste as a map, me in the middle, the people and titles I rated around me, so that I can see who I actually keep watching.
+58. As a viewer, I want the chat to already know all of this when I talk to it, so that "would I like Heat" gets a real answer.
+59. As a viewer, I want everything it learns to be explicit and reversible (undo a swipe, delete my import), so that it never feels like surveillance.
+60. As the owner, I want the design to be something people want to look at, Cursor-grade restraint, so that the product is used for its own sake.
+
+## Implementation decisions (v3)
+
+### Accounts
+- Neon Auth, magic-link email, no passwords, no third-party identity vendor. Sign-in appears only at the first swipe or the first "I watched it", never on the landing page. Headshot's shared brain, threads, and permalinks keep working signed out.
+
+### Taste store (Postgres, per user id)
+- `watched`: user, title imdb id, rating in four buckets (liked / meh / never seen / want to see; Letterboxd stars map onto liked and meh), when, source (letterboxd / swipe / chat), plus for series: season marked and an episode counter from "one more episode" taps.
+- `services`: user, TMDB provider ids, region.
+- `taste`: user, one 512-dim vector recomputed nightly from rated titles (weighted by rating), plus a derived-facts JSON: favorite people by count with their roles, eras, average runtime finished, genres avoided.
+- Nothing else is stored about a user. Delete account deletes all three.
+
+### Letterboxd import
+- CSV export upload (ratings, watched, watchlist). Matched to the graph by title plus year; a review screen shows the ten worst matches for confirmation. Re-upload replaces. No account link, no scraping.
+
+### Services
+- A one-time checklist of providers (TMDB watch-provider ids for the user's region). No scraping of streaming accounts; their algorithms are not observable and their terms forbid it. YouTube history via Google Takeout is v4.
+
+### The pick engine (deterministic first, model last)
+- Candidates: unseen titles available on the user's services (TMDB discover by provider, recent and trending), plus graph neighbors of the user's liked titles (same director or writer, three or more shared cast).
+- Score: cosine to the taste vector, plus graph proximity, minus a penalty for titles swiped away, filtered by tonight's runtime and energy when given.
+- The model never chooses from the catalog. It writes the one reason line for each of the top three and swaps a pick on request through chat.
+- **Reason rule:** every pick carries exactly one reason and it must be a real graph fact (shared person, same writer, your third title by X). No graph reason, no deck slot.
+- TV: "one more episode of X" is a legitimate pick when a series is marked watching.
+
+### The overnight run
+- Vercel cron around 4am for every user active in the last 30 days: refresh availability on their services, rescore, write a deck of eight for the swipe surface and three picks for tonight, one cheap model call for the reason lines. Picks are stored, so opening the app is instant.
+
+### Home screen
+- Chat composer on top. The agent's opening message is already there: tonight's three picks as cards with Play, the deck below. The screen "starts on chat" and is the 9pm moment at once. Headshot's paths, identification, and the shared brain remain reachable from the same chat; the taste agent calls them as tools.
+
+### Play
+- JustWatch deep links from TMDB watch providers (web URLs; phones hand off to the installed app). If a title is on none of the user's services, show the rent or buy price rather than hiding it. Controlling a TV is out of scope.
+
+### Swipe deck
+- Onboarding: fifty titles chosen for coverage (eras, genres, TV and film), skippable after twenty. Daily: eight. Four actions, undo always. Explicit signals only: nothing the user did not tap changes taste.
+
+### Taste map
+- The user's private ego graph on the existing sigma canvas: the user at the center, rated people and titles as rings colored by rating, the industry graph faint behind. Second tab.
+
+### Onboarding order
+- Services (six taps) → Letterboxd upload or skip → swipe deck → first three picks. Under three minutes.
+
+### Design
+- A design system doc (`DESIGN.md`) is written before any v3 code: palette, type, spacing, motion rules, and the three core layouts (home, title, taste map). Reference set: Cursor's product design (restraint, near-monochrome, one accent, generous space, sharp type, motion only with meaning) and Ryu's work. Built through the gstack design skills against that doc. Anti-references: streaming-service poster walls, SaaS card grids, gamified streaks.
+
+## Testing decisions (v3)
+- Taste seam: pick engine is a pure function over (taste vector, watched set, candidate set, filters); fixture-driven tests for scoring, penalties, runtime and energy filters, and the reason rule (a pick without a graph reason is rejected).
+- Import seam: Letterboxd CSV fixtures → matched rows, worst-match ordering, re-upload replaces.
+- Store seam: the three taste tables join the brain conformance suite (memory and PGlite).
+- Cron seam: the overnight job over a fixture user produces a stored deck and picks with no model call except reasons (mocked).
+- Route seam: unauthenticated requests to taste routes are refused; Headshot routes stay open.
+- Client: swipe reducer with undo is a pure function, unit-tested.
+
+## Build order
+Design doc first, then: A) auth, taste store, Letterboxd import, services checklist. B) pick engine, home screen with Play. C) swipe deck, nightly cron. D) taste map, design pass over every screen.
+
+## Out of scope (v3)
+Scraping streaming accounts, YouTube history (v4), TV control, social or multiplayer picks (later), episode-level tracking beyond the counter, any implicit taste signals.
