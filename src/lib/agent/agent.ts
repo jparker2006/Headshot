@@ -60,6 +60,7 @@ export function runAgent(opts: RunAgentOptions) {
   // The engine sees the brain's current overlay for this request.
   return createUIMessageStream<HeadshotUIMessage>({
     execute: async ({ writer }) => {
+      const started = Date.now();
       opts.graph.setOverlay(await opts.brain.getOverlay());
       const ctx: AgentContext = {
         graph: opts.graph,
@@ -76,6 +77,10 @@ export function runAgent(opts: RunAgentOptions) {
         messages: await convertToModelMessages(opts.messages),
         tools,
         stopWhen: isStepCount(opts.maxSteps ?? 12),
+        onStepFinish: (step) => {
+          const tools = step.toolCalls.map((c) => c.toolName).join(",") || "text";
+          console.log(`[agent] step ${tools} · ${Date.now() - started}ms · in ${step.usage.inputTokens ?? "?"} out ${step.usage.outputTokens ?? "?"}`);
+        },
       });
       writer.merge(
         toUIMessageStream({

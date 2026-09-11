@@ -54,6 +54,8 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
       const type = part.type.replace(/^data-/, "") as keyof HeadshotDataParts;
       store.apply(type, part.data as never);
     },
+    onFinish: () => store.setStatus(null),
+    onError: () => store.setStatus(null),
   });
 
   // Persist, and name the thread after its first question.
