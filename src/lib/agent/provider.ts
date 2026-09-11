@@ -16,6 +16,11 @@ export function chatModelFromEnv(): LanguageModel {
   return openrouterFromEnv().chat(id);
 }
 
+/** True when HEADSHOT_MOCK_AGENT=1: dev runs a scripted model instead of OpenRouter. */
+export function mockAgentEnabled(): boolean {
+  return process.env.HEADSHOT_MOCK_AGENT === "1" && process.env.NODE_ENV !== "production";
+}
+
 export function embeddingModelFromEnv(): EmbeddingModel {
   const id = process.env.HEADSHOT_EMBEDDING_MODEL ?? "openai/text-embedding-3-small";
   return openrouterFromEnv().textEmbeddingModel(id);

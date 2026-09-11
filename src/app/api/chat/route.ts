@@ -3,14 +3,15 @@ import { cookies } from "next/headers";
 import { getIndustryGraph, type IndustryGraph } from "@/lib/graph";
 import { getBrain, type Brain } from "@/lib/brain";
 import { tmdbFromEnv, type TmdbClient } from "@/lib/tmdb/client";
-import { chatModelFromEnv } from "@/lib/agent/provider";
+import { chatModelFromEnv, mockAgentEnabled } from "@/lib/agent/provider";
 import { runAgent, lastUserText, type HeadshotUIMessage } from "@/lib/agent";
+import { mockModel } from "@/lib/agent/mockModel";
 import { checkLimits, SESSION_COOKIE, newSessionId } from "@/lib/limits";
 
 export const maxDuration = 120;
 
 export interface ChatDeps {
-  model: () => LanguageModel;
+  model: (graph: IndustryGraph) => LanguageModel;
   graph: () => Promise<IndustryGraph>;
   brain: () => Promise<Brain>;
   tmdb: () => TmdbClient | null;
@@ -39,7 +40,7 @@ export function createChatHandler(deps: ChatDeps) {
     if (!limit.ok) return Response.json({ error: limit.reason, resting: true }, { status: 429 });
     await brain.recordQuestion({ sessionId: session.id, text: lastUserText(messages) });
 
-    const stream = runAgent({ model: deps.model(), graph, brain, tmdb: deps.tmdb(), messages, sessionId: session.id });
+    const stream = runAgent({ model: deps.model(graph), graph, brain, tmdb: deps.tmdb(), messages, sessionId: session.id });
     const res = createUIMessageStreamResponse({ stream });
     if (session.setCookie) {
       res.headers.append("Set-Cookie", `${SESSION_COOKIE}=${session.id}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`);
@@ -53,7 +54,7 @@ function clientIp(req: Request): string {
 }
 
 export const POST = createChatHandler({
-  model: chatModelFromEnv,
+  model: (graph) => (mockAgentEnabled() ? mockModel(graph) : chatModelFromEnv()),
   graph: getIndustryGraph,
   brain: getBrain,
   tmdb: tmdbFromEnv,

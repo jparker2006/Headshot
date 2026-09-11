@@ -21,4 +21,6 @@ The shared brain of who was in what with whom. Read `SPEC.md` first; it is the s
 - No auth, no per-user brains, no server-side conversations. Threads live in localStorage.
 - Fresh UI. Do not copy Cinema Daddy styling. Tailwind v4 with a hand-written token layer.
 - Node.js runtime (Fluid Compute). Never `runtime = 'edge'`.
-- Run `pnpm typecheck && pnpm test` before claiming anything works.
+- Run `pnpm typecheck && pnpm lint && pnpm test` before claiming anything works.
+- Keyless dev: `HEADSHOT_GRAPH_PATH=data/fixture.bin` + `HEADSHOT_MOCK_AGENT=1` in `.env.local` runs the fixture graph with the scripted model in `src/lib/agent/mockModel.ts`. `window.__headshot` exposes sigma and the store in dev for QA.
+- Brain tests run against embedded Postgres (PGlite + pgvector) and the memory brain through one shared conformance suite in `tests/brain`.

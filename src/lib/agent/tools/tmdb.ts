@@ -56,51 +56,62 @@ export function tmdbTools(ctx: AgentContext) {
       inputSchema: z.object({ imdbId: z.string().regex(/^(nm|tt)\d+$/), limit: z.number().int().min(1).max(25).default(12) }),
       execute: async ({ imdbId, limit }) => {
         if (!tmdb) return UNAVAILABLE;
-        ctx.emit("status", { text: `Expanding ${imdbId} from TMDB` }, { transient: true });
-        const found = await tmdb.findByImdbId(imdbId);
-        if (!found) return { error: "not_found" };
-
-        const nodes: CanvasNode[] = [];
-        const edges: OverlayEdge[] = [];
-
-        if (found.mediaType === "person") {
-          const p = await tmdb.person(found.tmdbId);
-          if (!p) return { error: "not_found" };
-          nodes.push(node(imdbId, p.name, "person", { posterUrl: p.profileUrl }));
-          const top = p.credits.slice(0, limit);
-          const ids = await Promise.all(top.map((c) => tmdb.titleImdbId(c.mediaType, c.tmdbId)));
-          top.forEach((c, i) => {
-            const tid = ids[i];
-            if (!tid) return;
-            nodes.push(node(tid, c.name, "title", { titleType: mediaTypeToTitleType(c.mediaType), year: c.year ?? 0, votes: c.voteCount }));
-            edges.push({ personImdbId: imdbId, titleImdbId: tid, tier: TIER_STRONG });
-          });
-        } else {
-          const t = await tmdb.title(found.mediaType, found.tmdbId);
-          if (!t) return { error: "not_found" };
-          nodes.push(node(imdbId, t.name, "title", { titleType: mediaTypeToTitleType(t.mediaType), year: t.year ?? 0, votes: t.voteCount, genres: t.genres.join(","), posterUrl: t.posterUrl }));
-          const people = [...t.cast.slice(0, limit).map((c) => ({ tmdbId: c.tmdbId, name: c.name })), ...t.crew.map((c) => ({ tmdbId: c.tmdbId, name: c.name }))];
-          const ids = await Promise.all(people.map((c) => tmdb.personImdbId(c.tmdbId)));
-          people.forEach((c, i) => {
-            const pid = ids[i];
-            if (!pid) return;
-            nodes.push(node(pid, c.name, "person", {}));
-            edges.push({ personImdbId: pid, titleImdbId: imdbId, tier: TIER_STRONG });
-          });
-        }
-
-        // Nodes already in the industry graph keep their packed identity.
-        for (const n of nodes) n.inIndustryGraph = ctx.graph.nodeByImdbId(n.imdbId)?.overlay === false;
-        await touch(ctx, nodes);
-        await ctx.brain.addEdges(edges);
-        for (const e of edges) ctx.emit("edge", e);
-        // Refresh the engine's overlay so shortest_path can use the new edges immediately.
-        ctx.graph.setOverlay(await ctx.brain.getOverlay());
-        ctx.emit("focus", { imdbIds: [imdbId] });
-        return { added: nodes.length, edges: edges.length, imdbIds: nodes.map((n) => `${n.name} [${n.imdbId}]`) };
+        return expandFromTmdb(ctx, imdbId, limit);
       },
     }),
   };
+}
+
+/**
+ * Crawl one entity from TMDB into the brain: its top credits (person) or its
+ * top-billed cast and directors/writers (title), as nodes plus overlay edges.
+ * Shared by the expand_node tool and the double-click expand route.
+ */
+export async function expandFromTmdb(ctx: AgentContext, imdbId: string, limit = 12) {
+  const { tmdb } = ctx;
+  if (!tmdb) return UNAVAILABLE;
+  ctx.emit("status", { text: `Expanding ${imdbId} from TMDB` }, { transient: true });
+  const found = await tmdb.findByImdbId(imdbId);
+  if (!found) return { error: "not_found" as const };
+
+  const nodes: CanvasNode[] = [];
+  const edges: OverlayEdge[] = [];
+
+  if (found.mediaType === "person") {
+    const p = await tmdb.person(found.tmdbId);
+    if (!p) return { error: "not_found" as const };
+    nodes.push(node(imdbId, p.name, "person", { posterUrl: p.profileUrl }));
+    const top = p.credits.slice(0, limit);
+    const ids = await Promise.all(top.map((c) => tmdb.titleImdbId(c.mediaType, c.tmdbId)));
+    top.forEach((c, i) => {
+      const tid = ids[i];
+      if (!tid) return;
+      nodes.push(node(tid, c.name, "title", { titleType: mediaTypeToTitleType(c.mediaType), year: c.year ?? 0, votes: c.voteCount }));
+      edges.push({ personImdbId: imdbId, titleImdbId: tid, tier: TIER_STRONG });
+    });
+  } else {
+    const t = await tmdb.title(found.mediaType, found.tmdbId);
+    if (!t) return { error: "not_found" as const };
+    nodes.push(node(imdbId, t.name, "title", { titleType: mediaTypeToTitleType(t.mediaType), year: t.year ?? 0, votes: t.voteCount, genres: t.genres.join(","), posterUrl: t.posterUrl }));
+    const people = [...t.cast.slice(0, limit).map((c) => ({ tmdbId: c.tmdbId, name: c.name })), ...t.crew.map((c) => ({ tmdbId: c.tmdbId, name: c.name }))];
+    const ids = await Promise.all(people.map((c) => tmdb.personImdbId(c.tmdbId)));
+    people.forEach((c, i) => {
+      const pid = ids[i];
+      if (!pid) return;
+      nodes.push(node(pid, c.name, "person", {}));
+      edges.push({ personImdbId: pid, titleImdbId: imdbId, tier: TIER_STRONG });
+    });
+  }
+
+  // Nodes already in the industry graph keep their packed identity.
+  for (const n of nodes) n.inIndustryGraph = ctx.graph.nodeByImdbId(n.imdbId)?.overlay === false;
+  await touch(ctx, nodes);
+  await ctx.brain.addEdges(edges);
+  for (const e of edges) ctx.emit("edge", e);
+  // Refresh the engine's overlay so shortest_path can use the new edges immediately.
+  ctx.graph.setOverlay(await ctx.brain.getOverlay());
+  ctx.emit("focus", { imdbIds: [imdbId] });
+  return { added: nodes.length, edges: edges.length, imdbIds: nodes.map((n) => `${n.name} [${n.imdbId}]`) };
 }
 
 function node(imdbId: string, name: string, kind: NodeKind, extra: Partial<CanvasNode>): CanvasNode {

@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
+/* Headshot design tokens. Dark field, glowing dots, warm accent. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #07080c;
+  --bg-elev: rgba(14, 16, 23, 0.86);
+  --bg-elev-solid: #0e1017;
+  --ink: #e9e6dc;
+  --ink-dim: #8b909e;
+  --ink-faint: #4d515c;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --accent: #f4b63f;
+  --accent-soft: rgba(244, 182, 63, 0.18);
+  --person: #ded9c9;
+  --title: #7d8cc4;
+  --session: #62e6b4;
+  --danger: #f2705f;
+  --radius: 14px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-elev: var(--bg-elev-solid);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-person: var(--person);
+  --color-title: var(--title);
+  --color-session: var(--session);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --radius-panel: var(--radius);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  color-scheme: dark;
+  overflow: hidden;
 }
+
+/* Vignette behind the canvas so the field feels deep, not flat. */
+.field {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 40%, rgba(125, 140, 196, 0.10), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 80% 90%, rgba(244, 182, 63, 0.06), transparent 70%),
+    var(--bg);
+}
+
+.panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+.thinking-dot { animation: pulse-dot 1.2s ease-in-out infinite; }
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 0.25s ease-out both; }
+
+.prose-headshot p + p { margin-top: 0.6em; }
+.prose-headshot strong { color: var(--ink); font-weight: 600; }
+.prose-headshot em { color: var(--accent); font-style: normal; }

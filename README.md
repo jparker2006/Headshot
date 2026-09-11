@@ -9,13 +9,36 @@ See [SPEC.md](./SPEC.md) for the full design. Successor to [Cinema Daddy](https:
 ## Stack
 Next.js 16 (App Router, Node runtime) · Vercel AI SDK on OpenRouter (DeepSeek V4.1 Flash, text-embedding-3-small) · sigma.js + graphology · Neon Postgres + pgvector via Drizzle · Vercel Blob for the packed IMDb graph.
 
-## Setup
+## Run it in two minutes, no keys
 ```bash
 pnpm install
-cp .env.example .env.local   # fill in keys
-pnpm build:graph             # downloads IMDb datasets, packs the graph, uploads to Blob
+pnpm build:graph --input tests/fixtures/imdb --out data/fixture.bin   # tiny synthetic graph
+printf 'HEADSHOT_GRAPH_PATH=data/fixture.bin\nHEADSHOT_MOCK_AGENT=1\n' > .env.local
 pnpm dev
 ```
+Then ask "Connect Jane Doe to Kevin Bacon". The scripted mock agent walks the real tool loop (resolve → shortest_path → highlight_path → write_page → narrate) and the canvas animates it. In-memory brain, no database.
+
+## Run it for real
+```bash
+cp .env.example .env.local   # OPENROUTER_API_KEY, TMDB_BEARER_TOKEN, DATABASE_URL (Neon, pgvector), BLOB_READ_WRITE_TOKEN
+pnpm build:graph --upload    # downloads the IMDb datasets (~1 GB), packs the graph, uploads a versioned build to Blob
+pnpm db:migrate              # creates the brain tables (and the vector extension)
+pnpm dev
+```
+Set `HEADSHOT_GRAPH_URL` to the Blob URL the pipeline prints. Remove `HEADSHOT_MOCK_AGENT` to use the real model.
+
+## How it works
+- **Industry graph** (`src/lib/graph`): the IMDb datasets filtered (vote floor, title types, talk shows and 200+-episode series demoted to a weak tier) and packed into CSR adjacency arrays. Loaded once per process. Tiered BFS: strong tier first, full graph for the true Bacon number, up to 20 tied paths.
+- **Brain** (`src/lib/brain`): Postgres via Drizzle. Every node anyone touched, live-discovered overlay edges (which the engine merges into path finding), agent-written wiki pages with a revision log keyed by the triggering question, and session attribution for the glow.
+- **Agent** (`src/lib/agent`): AI SDK tool loop on OpenRouter. Tools: `find_entities`, `shortest_path`, `highlight_path`, `common_neighbors`, `shared_credits`, `neighborhood`, `tmdb_search`, `tmdb_person`, `tmdb_title`, `expand_node`, `read_page`, `write_page`. Canvas events stream as typed data parts.
+- **Canvas** (`src/components/canvas`): sigma.js + graphology + ForceAtlas2. Renders the brain, lights the chosen path hop by hop, dims the rest, glows your session's nodes.
+
+## API
+- `POST /api/chat` — the agent (UI message stream)
+- `GET /api/brain` — snapshot for the canvas
+- `GET /api/page/:imdbId` — a node's page and neighborhood
+- `GET /api/search?q=` — name search
+- `POST /api/expand` — double-click expand
 
 ## Scripts
 - `pnpm dev` / `pnpm build` / `pnpm start`
