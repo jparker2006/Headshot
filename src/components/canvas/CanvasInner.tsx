@@ -122,7 +122,14 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
     });
     layoutRef.current = layout;
 
+    const ro = new ResizeObserver(() => {
+      sigma.resize();
+      sigma.refresh({ skipIndexation: true });
+    });
+    ro.observe(container);
+
     return () => {
+      ro.disconnect();
       layout.kill();
       sigma.kill();
       sigmaRef.current = null;

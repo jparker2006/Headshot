@@ -231,6 +231,9 @@ export class BrainStore {
         this.bump({ status: (data as HeadshotDataParts["status"]).text });
         return;
       }
+      case "chosen": {
+        return; // the chat renders this; the canvas already animates the hops
+      }
       case "page": {
         this.bump({ status: "Wrote a page" });
         return;

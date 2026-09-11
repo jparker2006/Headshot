@@ -51,6 +51,8 @@ export type HeadshotDataParts = {
   paths: PathsFound;
   /** One hop of the path the agent chose, in order. */
   "path-hop": { from: string; to: string; via: string | null; index: number; total: number; tier: "strong" | "full" };
+  /** Which of the tied paths the agent chose to narrate. */
+  chosen: { from: string; to: string; tier: "strong" | "full"; index: number; reason: string; path: NamedPath };
   /** A wiki page was written or revised. */
   page: { imdbId: string; question: string; revision: number };
   /** The canvas should center on these nodes. */

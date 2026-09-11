@@ -95,6 +95,14 @@ export function graphTools(ctx: AgentContext) {
             tier,
           });
         }
+        ctx.emit("chosen", {
+          from,
+          to,
+          tier,
+          index,
+          reason,
+          path: { imdbIds: path.map((id) => graph.node(id).imdbId), names: path.map((id) => graph.node(id).name) },
+        });
         ctx.emit("focus", { imdbIds: path.map((id) => graph.node(id).imdbId) });
         return { highlighted: path.map((id) => describe(graph.node(id))), reason };
       },

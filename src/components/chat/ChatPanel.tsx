@@ -42,7 +42,6 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   const [input, setInput] = useState("");
   const [dismissedError, setDismissedError] = useState<Error | null>(null);
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
@@ -73,7 +72,6 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   if (prefill && prefill.nonce !== seenNonce) {
     setSeenNonce(prefill.nonce);
     setInput(prefill.text);
-    setCollapsed(false);
   }
 
   useEffect(() => {
@@ -94,85 +92,80 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   const chips = useMemo(() => followUps(messages), [messages]);
 
   return (
-    <section
-      className={`panel pointer-events-auto flex w-[min(560px,calc(100vw-32px))] flex-col overflow-hidden transition-[max-height] duration-300 ${
-        collapsed ? "max-h-[58px]" : "max-h-[min(46vh,640px)] sm:max-h-[min(64vh,640px)]"
-      }`}
-      aria-label="Chat"
-    >
-      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <div className="flex items-center gap-2 text-[13px] text-ink-dim">
-          <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
-          {busy ? <Thinking /> : <span>Ask the brain</span>}
-        </div>
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="rounded-md px-2 py-1 text-[12px] text-ink-dim hover:bg-white/5 hover:text-ink"
-          aria-label={collapsed ? "Expand chat" : "Collapse chat"}
-        >
-          {collapsed ? "Open" : "Hide"}
-        </button>
-      </header>
-
-      <div ref={listRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
-          <div className="rise space-y-3">
-            <p className="text-[15px] leading-snug text-ink">
-              That guy. From that thing. With that other guy.
-            </p>
-            <p className="text-[13px] text-ink-dim">
-              Ask about connections between anyone in film and TV. Every answer grows the shared brain behind you.
-            </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {EXAMPLES.map((e) => (
-                <Chip key={e} onClick={() => ask(e)}>{e}</Chip>
-              ))}
+    <section className="flex h-full min-w-0 flex-col" aria-label="Chat">
+      <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[720px] px-5 py-6">
+          {messages.length === 0 && (
+            <div className="rise flex min-h-[50vh] flex-col justify-end space-y-4 pb-6">
+              <p className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
+                That guy. From that thing.
+                <br />
+                With that other guy.
+              </p>
+              <p className="max-w-[46ch] text-[14px] text-ink-dim">
+                Ask about connections between anyone in film and TV. Every answer grows the shared brain on the right.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {EXAMPLES.map((e) => (
+                  <Chip key={e} onClick={() => ask(e)}>{e}</Chip>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        {messages.map((m) => (
-          <Message key={m.id} m={m} onSelectNode={onSelectNode} />
-        ))}
-        {resting && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-ink">{resting}</p>}
-        {!busy && chips.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {chips.map((c) => (
-              <Chip key={c} onClick={() => ask(c)}>{c}</Chip>
+          )}
+          <div className="space-y-6">
+            {messages.map((m) => (
+              <Message key={m.id} m={m} onSelectNode={onSelectNode} />
             ))}
+            {busy && (
+              <div className="flex items-center gap-2 text-[13px] text-ink-dim">
+                <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
+                <Thinking />
+              </div>
+            )}
+            {resting && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-ink">{resting}</p>}
+            {!busy && chips.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {chips.map((c) => (
+                  <Chip key={c} onClick={() => ask(c)}>{c}</Chip>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      <form
-        className="flex items-end gap-2 border-t border-line px-3 py-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          ask(input);
-        }}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.key === "Enter" || e.key === "Return") && !e.shiftKey) {
-              e.preventDefault();
-              ask(input);
-            }
+      <div className="border-t border-line bg-bg/80 backdrop-blur">
+        <form
+          className="mx-auto flex w-full max-w-[720px] items-end gap-2 px-5 py-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            ask(input);
           }}
-          rows={1}
-          placeholder="Who was in that one thing with…"
-          className="max-h-32 min-h-[40px] flex-1 resize-none rounded-lg bg-white/[0.04] px-3 py-2.5 text-[14px] text-ink outline-none ring-1 ring-line placeholder:text-ink-faint focus:ring-accent/60"
-        />
-        {busy ? (
-          <button type="button" onClick={stop} className="h-10 rounded-lg px-3 text-[13px] text-ink-dim ring-1 ring-line hover:text-ink">
-            Stop
-          </button>
-        ) : (
-          <button type="submit" disabled={!input.trim()} className="h-10 rounded-lg bg-accent px-3.5 text-[13px] font-semibold text-black disabled:opacity-40">
-            Ask
-          </button>
-        )}
-      </form>
+        >
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === "Return") && !e.shiftKey) {
+                e.preventDefault();
+                ask(input);
+              }
+            }}
+            rows={1}
+            placeholder="Who was in that one thing with…"
+            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-4 py-3 text-[14.5px] text-ink outline-none ring-1 ring-line placeholder:text-ink-faint focus:ring-accent/60"
+          />
+          {busy ? (
+            <button type="button" onClick={stop} className="h-11 rounded-xl px-4 text-[13px] text-ink-dim ring-1 ring-line hover:text-ink">
+              Stop
+            </button>
+          ) : (
+            <button type="submit" disabled={!input.trim()} className="h-11 rounded-xl bg-accent px-4 text-[13px] font-semibold text-black disabled:opacity-40">
+              Ask
+            </button>
+          )}
+        </form>
+      </div>
     </section>
   );
 }
@@ -215,11 +208,13 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
       </div>
     );
   }
+  const chosen = m.parts.find((p) => p.type === "data-chosen");
   return (
     <div className="rise space-y-2">
       {m.parts.map((part, i) => {
         if (part.type === "text") return <Markdown key={i} text={part.text} />;
-        if (part.type === "data-paths") return <PathCard key={i} paths={part.data} onSelectNode={onSelectNode} />;
+        if (part.type === "data-paths")
+          return <PathCard key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
         if (part.type.startsWith("tool-")) {
           const name = part.type.slice(5);
           const state = "state" in part ? String(part.state) : "";
@@ -237,23 +232,38 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
   );
 }
 
-function PathCard({ paths, onSelectNode }: { paths: PathsFound; onSelectNode: (id: string) => void }) {
-  const chosen = paths.full?.paths[0];
-  if (!chosen) return <p className="text-[13px] text-ink-dim">No connection found in the graph.</p>;
-  const strong = paths.differ ? paths.strong?.paths[0] : null;
+function PathCard({
+  paths,
+  chosen,
+  onSelectNode,
+}: {
+  paths: PathsFound;
+  chosen: HeadshotDataParts["chosen"] | null;
+  onSelectNode: (id: string) => void;
+}) {
+  const shortest = paths.full?.paths[0];
+  if (!shortest) return <p className="text-[13px] text-ink-dim">No connection found in the graph.</p>;
+  // Show what the agent lit up; fall back to the first tied path while it decides.
+  const lit = chosen?.path ?? shortest;
+  const litIsShortest = lit.imdbIds.length === shortest.imdbIds.length;
+  const tied = paths.full?.paths.length ?? 0;
   return (
     <div className="rounded-xl border border-line bg-white/[0.03] p-3">
       <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider text-ink-dim">
         <span>Bacon number {paths.baconNumber}</span>
-        <span>{paths.full?.paths.length} tied {paths.full?.paths.length === 1 ? "path" : "paths"}</span>
+        <span>
+          {tied} tied {tied === 1 ? "path" : "paths"}
+          {chosen ? ` · lit #${chosen.index + 1}` : ""}
+        </span>
       </div>
-      <Chain path={chosen} onSelectNode={onSelectNode} />
-      {strong && (
+      <Chain path={lit} onSelectNode={onSelectNode} />
+      {!litIsShortest && (
         <div className="mt-3 border-t border-line pt-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-ink-dim">Interesting route · {paths.strong?.baconNumber} hops</div>
-          <Chain path={strong} onSelectNode={onSelectNode} />
+          <div className="mb-1 text-[11px] uppercase tracking-wider text-ink-dim">True shortest · {paths.baconNumber} hops</div>
+          <Chain path={shortest} onSelectNode={onSelectNode} />
         </div>
       )}
+      {chosen?.reason && <p className="mt-2 text-[12px] text-ink-dim">{chosen.reason}</p>}
     </div>
   );
 }

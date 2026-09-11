@@ -1,10 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BrainCanvas } from "./canvas/BrainCanvas";
 import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
-import { PagePanel } from "./page/PagePanel";
-import { SearchBox } from "./SearchBox";
+import { BrainPanel } from "./BrainPanel";
+import { Sidebar } from "./Sidebar";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 import type { RenderedBrain } from "@/lib/brain/render";
 
@@ -16,7 +15,9 @@ export function HeadshotApp() {
   const threads = useThreads();
   const [chosenThread, setChosenThread] = useState<string | null>(null);
   const threadId = chosenThread && threads.some((t) => t.id === chosenThread) ? chosenThread : (threads[0]?.id ?? null);
-  const [threadsOpen, setThreadsOpen] = useState(false);
+  const [brainFull, setBrainFull] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileView, setMobileView] = useState<"chat" | "brain">("chat");
 
   const refreshBrain = useCallback(async () => {
     const r = await fetch("/api/brain", { cache: "no-store" });
@@ -37,6 +38,7 @@ export function HeadshotApp() {
     (id: string) => {
       setSelected(id);
       store.setFocus([id]);
+      setMobileView("brain");
     },
     [store],
   );
@@ -55,80 +57,67 @@ export function HeadshotApp() {
   const newThread = () => {
     const t = createThread();
     setChosenThread(t.id);
-    setThreadsOpen(false);
+    setMobileView("chat");
     store.clearHighlight();
   };
 
-  return (
-    <div className="field relative h-full w-full overflow-hidden">
-      <BrainCanvas
-        store={store}
-        selected={selected}
-        onClickNode={select}
-        onDoubleClickNode={expand}
-        onClickEdge={(person, title) => setPrefill({ text: `What did ${store.graph.getNodeAttribute(person, "label")} do on ${store.graph.getNodeAttribute(title, "label")}?`, nonce: Date.now() })}
-        onClickStage={() => setSelected(null)}
-      />
+  const stats = { nodes: state.nodeCount, edges: state.edgeCount, mine: state.sessionIds.size };
+  const brain = (
+    <BrainPanel
+      store={store}
+      state={state}
+      selected={selected}
+      onSelect={select}
+      onDeselect={() => setSelected(null)}
+      onExpand={expand}
+      onAsk={(text) => {
+        setPrefill({ text, nonce: Date.now() });
+        setMobileView("chat");
+        setBrainFull(false);
+      }}
+      onPick={(id) => (store.graph.hasNode(id) ? select(id) : expand(id))}
+      full={brainFull}
+      onToggleFull={() => setBrainFull((f) => !f)}
+      onBackToChat={mobileView === "brain" ? () => setMobileView("chat") : undefined}
+    />
+  );
 
-      {/* Top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4">
-        <div className="pointer-events-auto min-w-0">
-          <h1 className="text-[18px] font-semibold tracking-tight text-ink">Headshot</h1>
-          <p className="text-[12px] text-ink-dim">The shared brain of who was in what with whom.</p>
-          <div className="mt-2 space-y-0.5 font-mono text-[11px] text-ink-faint">
-            <div>
-              {state.nodeCount} nodes · {state.edgeCount} edges
-              {state.sessionIds.size > 0 && <span className="text-session"> · {state.sessionIds.size} yours</span>}
-            </div>
-            {state.status && <div className="text-accent">{state.status}</div>}
-            {!state.loaded && <div>loading the brain…</div>}
-            {state.loaded && state.nodeCount === 0 && <div>the brain is empty. ask it something.</div>}
-          </div>
-        </div>
-        <div className="pointer-events-auto flex items-center gap-3">
-          <SearchBox onPick={(id) => (store.graph.hasNode(id) ? select(id) : expand(id))} />
-          <div className="relative">
-            <button onClick={() => setThreadsOpen((o) => !o)} className="rounded-lg px-3 py-2 text-[13px] text-ink-dim ring-1 ring-line hover:text-ink">
-              Threads
-            </button>
-            {threadsOpen && (
-              <div className="panel absolute right-0 top-full z-20 mt-1 w-72 py-1">
-                <button onClick={newThread} className="w-full px-3 py-2 text-left text-[13px] text-accent hover:bg-white/5">+ New thread</button>
-                {threads.map((t) => (
-                  <div key={t.id} className={`flex items-center gap-2 px-3 py-1.5 text-[13px] hover:bg-white/5 ${t.id === threadId ? "text-ink" : "text-ink-dim"}`}>
-                    <button onClick={() => { setChosenThread(t.id); setThreadsOpen(false); }} className="min-w-0 flex-1 truncate text-left">{t.title}</button>
-                    <button
-                      onClick={() => deleteThread(t.id)}
-                      className="text-[11px] text-ink-faint hover:text-danger"
-                      aria-label="Delete thread"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+  return (
+    <div className="flex h-full w-full overflow-hidden bg-bg">
+      <div className={`hidden h-full md:block ${brainFull ? "md:hidden" : ""}`}>
+        <Sidebar
+          threads={threads}
+          activeId={threadId}
+          onSelect={(id) => setChosenThread(id)}
+          onNew={newThread}
+          onDelete={(id) => deleteThread(id)}
+          stats={stats}
+          onShowBrain={() => setBrainFull(true)}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((c) => !c)}
+        />
       </div>
 
-      {/* Page panel */}
-      {selected && (
-        <div className="pointer-events-none absolute bottom-4 right-4 top-16">
-          <PagePanel
-            key={selected}
-            imdbId={selected}
-            onClose={() => setSelected(null)}
-            onSelectNode={select}
-            onAsk={(text) => setPrefill({ text, nonce: Date.now() })}
-            onExpand={expand}
-          />
+      {/* Chat column */}
+      <main className={`relative h-full min-w-0 flex-1 ${brainFull ? "hidden" : ""} ${mobileView === "brain" ? "hidden md:block" : ""}`}>
+        {/* Mobile header */}
+        <div className="flex items-center justify-between border-b border-line px-3 py-2 md:hidden">
+          <button onClick={newThread} className="text-[13px] text-ink-dim">+ New</button>
+          <span className="text-[14px] font-semibold text-ink">Headshot</span>
+          <button onClick={() => setMobileView("brain")} className="text-[13px] text-accent">
+            Brain →
+          </button>
         </div>
-      )}
-
-      {/* Chat: docked bottom-left so the path stays visible in the middle of the field */}
-      <div className="pointer-events-none absolute bottom-4 left-4">
         {threadId && <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} />}
+      </main>
+
+      {/* Brain column */}
+      <div
+        className={`h-full ${brainFull ? "w-full" : "w-full md:w-[46%] md:min-w-[440px] md:max-w-[880px] md:border-l md:border-line"} ${
+          mobileView === "chat" && !brainFull ? "hidden md:block" : "block"
+        }`}
+      >
+        {brain}
       </div>
     </div>
   );
