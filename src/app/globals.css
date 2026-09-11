@@ -2,26 +2,28 @@
 
 /* Headshot design tokens. Dark field, glowing dots, warm accent. */
 :root {
-  --bg: #07080c;
-  --bg-elev: rgba(14, 16, 23, 0.86);
-  --bg-elev-solid: #0e1017;
-  --ink: #e9e6dc;
-  --ink-dim: #8b909e;
-  --ink-faint: #4d515c;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --bg: #08090a;
+  --bg-elev: rgba(15, 16, 17, 0.92);
+  --bg-elev-solid: #0f1011;
+  --bg-raised: #191a1b;
+  --ink: #f2f1ec;
+  --ink-dim: #8a8f98;
+  --ink-faint: #62666d;
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.12);
   --accent: #f4b63f;
   --accent-soft: rgba(244, 182, 63, 0.18);
   --person: #ded9c9;
   --title: #7d8cc4;
   --session: #62e6b4;
   --danger: #f2705f;
-  --radius: 14px;
+  --radius: 12px;
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-elev: var(--bg-elev-solid);
+  --color-raised: var(--bg-raised);
   --color-ink: var(--ink);
   --color-ink-dim: var(--ink-dim);
   --color-ink-faint: var(--ink-faint);
@@ -61,8 +63,26 @@ body {
   border-radius: var(--radius);
   backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
+
+/* The summoned panel slides in from the right; on a phone it is a full-screen sheet. */
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+.sheet { background: var(--bg); }
+.sheet > * { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .sheet > *, .rise, .thinking-dot { animation: none !important; }
+  * { transition-duration: 0ms !important; }
+}
+/* Staggered entrance for lists that arrive at once (picks, faces). */
+.stagger > * { animation: rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(n + 5) { animation-delay: 220ms; }
 
 .scrollbar-thin {
   scrollbar-width: thin;

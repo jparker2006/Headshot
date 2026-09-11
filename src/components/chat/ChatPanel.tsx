@@ -118,7 +118,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Chat">
       <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[720px] px-5 py-6">
+        <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
           {messages.length === 0 && (
             <div className="rise flex min-h-[50vh] flex-col justify-end space-y-6 pb-6">
               <TonightPanel
@@ -162,9 +162,9 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
         </div>
       </div>
 
-      <div className="border-t border-line bg-bg/80 backdrop-blur">
+      <div className="bg-gradient-to-t from-bg via-bg to-transparent">
         <form
-          className="mx-auto flex w-full max-w-[720px] items-end gap-2 px-5 py-4"
+          className="mx-auto flex w-full max-w-[760px] items-end gap-2 px-6 pb-5 pt-3 md:px-8"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
@@ -181,14 +181,14 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
             }}
             rows={1}
             placeholder="Who was in that one thing with…"
-            className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl bg-white/[0.04] px-4 py-3 text-[14.5px] text-ink outline-none ring-1 ring-line placeholder:text-ink-faint focus:ring-accent/60"
+            className="max-h-40 min-h-[46px] flex-1 resize-none rounded-xl bg-raised px-4 py-3 text-[14.5px] text-ink outline-none ring-1 ring-line shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition-shadow duration-[120ms] placeholder:text-ink-faint focus:ring-line-strong"
           />
           {busy ? (
             <button type="button" onClick={stop} className="h-11 rounded-xl px-4 text-[13px] text-ink-dim ring-1 ring-line hover:text-ink">
               Stop
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim()} className="h-11 rounded-xl bg-accent px-4 text-[13px] font-semibold text-black disabled:opacity-40">
+            <button type="submit" disabled={!input.trim()} className="h-[46px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-black transition-[filter] duration-[120ms] hover:brightness-110 disabled:opacity-40">
               Ask
             </button>
           )}
@@ -246,7 +246,7 @@ function Message({
     const text = m.parts.filter((p) => p.type === "text").map((p) => ("text" in p ? p.text : "")).join("");
     return (
       <div className="rise flex justify-end">
-        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-white/[0.07] px-3.5 py-2 text-[14px] text-ink">{text}</p>
+        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[14.5px] leading-[1.5] text-ink ring-1 ring-line">{text}</p>
       </div>
     );
   }
@@ -264,10 +264,13 @@ function Message({
           const name = part.type.slice(5);
           const state = "state" in part ? String(part.state) : "";
           const done = state.startsWith("output");
+          // Finished tool steps stay out of the way; only the live one and failures show.
+          if (done && state !== "output-error") return null;
           return (
-            <p key={i} className="font-mono text-[11.5px] text-ink-faint">
-              <span className={done ? "text-ink-faint" : "text-accent"}>→</span> {TOOL_LABELS[name] ?? name}
-              {state === "output-error" && <span className="text-danger"> · failed</span>}
+            <p key={i} className="flex items-center gap-2 font-mono text-[11px] text-ink-faint">
+              <span className={`inline-block size-1.5 rounded-full ${state === "output-error" ? "bg-danger" : "bg-accent"}`} />
+              {TOOL_LABELS[name] ?? name}
+              {state === "output-error" && <span className="text-danger">· failed</span>}
             </p>
           );
         }

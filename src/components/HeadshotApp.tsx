@@ -1,12 +1,21 @@
 "use client";
+/**
+ * The shell (v3 UI): a 56px rail, one reading column, and a panel on the
+ * right that only appears when summoned. The panel hosts the brain canvas
+ * (whole brain, an ego view, or your taste map) with the title drawer inside
+ * it. Nothing about the graph is on screen until you ask for it; on a phone
+ * the panel is a full-screen sheet.
+ */
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { BrainPanel } from "./BrainPanel";
-import { Sidebar } from "./Sidebar";
+import { Rail, type Surface } from "./Rail";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 import type { RenderedBrain } from "@/lib/brain/render";
 import type { EgoNetwork } from "@/lib/graph/ego";
+
+type TasteMeta = { facts: { people: { name: string; count: number }[]; avgRuntimeFinished: number | null; tvShare: number | null; eras: Record<string, number> }; rated: number; later: number };
 
 export function HeadshotApp() {
   const store = useMemo(() => new BrainStore(), []);
@@ -16,12 +25,10 @@ export function HeadshotApp() {
   const threads = useThreads();
   const [chosenThread, setChosenThread] = useState<string | null>(null);
   const threadId = chosenThread && threads.some((t) => t.id === chosenThread) ? chosenThread : (threads[0]?.id ?? null);
-  const [brainFull, setBrainFull] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileView, setMobileView] = useState<"chat" | "brain">("chat");
+  const [panel, setPanel] = useState(false);
   const [ego, setEgo] = useState<EgoNetwork | null>(null);
   const [egoImages, setEgoImages] = useState<Record<string, string | null>>({});
-  const [taste, setTaste] = useState<{ facts: { people: { name: string; count: number }[]; avgRuntimeFinished: number | null; tvShare: number | null; eras: Record<string, number> }; rated: number; later: number } | null>(null);
+  const [taste, setTaste] = useState<TasteMeta | null>(null);
 
   const refreshBrain = useCallback(async () => {
     const r = await fetch("/api/brain", { cache: "no-store" });
@@ -32,8 +39,7 @@ export function HeadshotApp() {
     void refreshBrain();
   }, [refreshBrain]);
 
-  // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer (permalink pages
-  // link here). The URL is an external system, so the effect only hands the request to the store.
+  // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q");
@@ -44,20 +50,25 @@ export function HeadshotApp() {
     if (open && /^(nm|tt)\d+$/.test(open)) store.requestEgo(open);
   }, [store]);
 
-  // Guarantee one thread exists. Reads localStorage directly (client-only in effects)
-  // rather than the rendered list, which is still the server snapshot during hydration.
   useEffect(() => {
     if (listThreads().length === 0) createThread();
   }, [threads]);
 
+  const loadFaces = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    fetch(`/api/enrich?ids=${ids.slice(0, 40).join(",")}`)
+      .then((r) => r.json())
+      .then((d: { images: Record<string, { url: string | null }> }) => setEgoImages((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(d.images).map(([k, v]) => [k, v.url])) })))
+      .catch(() => {});
+  }, []);
+
+  /** Open a person or title: its ego view in the panel with the drawer on it. `reveal` shows the panel. */
   const select = useCallback(
     (id: string, reveal = true) => {
       if (id === "me") return;
       setSelected(id);
       setTaste(null);
-      // Phone: only an explicit tap or "show me" brings the brain forward; the ego-by-default
-      // after an answer stays behind the header button so the answer comes first.
-      if (reveal) setMobileView("brain");
+      if (reveal) setPanel(true);
       fetch(`/api/ego/${id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((e: EgoNetwork | null) => {
@@ -66,24 +77,15 @@ export function HeadshotApp() {
             return;
           }
           setEgo(e);
-          // Faces for the center and first ring; the second ring stays as dots.
-          const ids = e.nodes.filter((n) => n.ring <= 1).map((n) => n.imdbId).slice(0, 40);
-          fetch(`/api/enrich?ids=${ids.join(",")}`)
-            .then((r) => r.json())
-            .then((d: { images: Record<string, { url: string | null }> }) =>
-              setEgoImages((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(d.images).map(([k, v]) => [k, v.url])) })),
-            )
-            .catch(() => {});
+          loadFaces(e.nodes.filter((n) => n.ring <= 1).map((n) => n.imdbId));
         })
         .catch(() => store.setFocus([id]));
     },
-    [store],
+    [store, loadFaces],
   );
 
-  // The taste map: the user's own ego graph on the right panel, faces for ring 1.
   const showTasteMap = useCallback(async () => {
-    setMobileView("brain");
-    setBrainFull(false);
+    setPanel(true);
     setSelected(null);
     const r = await fetch("/api/taste/map", { cache: "no-store" });
     if (r.status === 401) {
@@ -94,21 +96,24 @@ export function HeadshotApp() {
       store.setStatus("Could not load your taste map");
       return;
     }
-    const d = (await r.json()) as { network: EgoNetwork; facts: NonNullable<typeof taste>["facts"]; rated: number; later: number };
+    const d = (await r.json()) as { network: EgoNetwork; facts: TasteMeta["facts"]; rated: number; later: number };
     if (d.network.nodes.length <= 1) {
       store.setStatus("Rate a few things first and your map appears here");
       return;
     }
     setEgo(d.network);
     setTaste({ facts: d.facts, rated: d.rated, later: d.later });
-    const ids = d.network.nodes.filter((n) => n.ring === 1 && n.imdbId !== "me").map((n) => n.imdbId).slice(0, 40);
-    fetch(`/api/enrich?ids=${ids.join(",")}`)
-      .then((r) => r.json())
-      .then((x: { images: Record<string, { url: string | null }> }) => setEgoImages((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(x.images).map(([k, v]) => [k, v.url])) })))
-      .catch(() => {});
-  }, [store]);
+    loadFaces(d.network.nodes.filter((n) => n.ring === 1 && n.imdbId !== "me").map((n) => n.imdbId));
+  }, [store, loadFaces]);
 
-  // "Show me X on the brain": the agent asked for an ego view (derived-state pattern, no effect).
+  const showBrain = useCallback(() => {
+    setEgo(null);
+    setTaste(null);
+    setSelected(null);
+    setPanel(true);
+  }, []);
+
+  // "Show me X on the brain" and the ego-by-default after an answer (derived state, no effects).
   const egoReq = state.egoRequest;
   const [seenEgoReq, setSeenEgoReq] = useState<number | null>(null);
   if (egoReq && egoReq.nonce !== seenEgoReq) {
@@ -123,7 +128,7 @@ export function HeadshotApp() {
     setPrefill({ text: prefillReq.text, nonce: prefillReq.nonce });
   }
 
-  // A new answer lighting a path takes over the panel: leave ego mode so the brain shows it.
+  // A newly lit path belongs to the whole brain, not an ego view.
   const litCount = state.highlight.altNodes.size;
   const [seenLit, setSeenLit] = useState(litCount);
   if (litCount !== seenLit) {
@@ -148,78 +153,79 @@ export function HeadshotApp() {
   const newThread = () => {
     const t = createThread();
     setChosenThread(t.id);
-    setMobileView("chat");
+    setPanel(false);
     store.clearHighlight();
   };
 
-  const stats = { nodes: state.nodeCount, edges: state.edgeCount, mine: state.sessionIds.size };
-  const brain = (
-    <BrainPanel
-      store={store}
-      state={state}
-      selected={selected}
-      onSelect={select}
-      onDeselect={() => setSelected(null)}
-      onExpand={expand}
-      onAsk={(text) => {
-        setPrefill({ text, nonce: Date.now() });
-        setMobileView("chat");
-        setBrainFull(false);
-      }}
-      onPick={(id) => (store.graph.hasNode(id) ? select(id) : expand(id))}
-      full={brainFull}
-      onToggleFull={() => setBrainFull((f) => !f)}
-      ego={ego}
-      egoImages={egoImages}
-      taste={taste}
-      onExitEgo={() => {
-        setEgo(null);
-        setTaste(null);
-        setSelected(null);
-      }}
-      onBackToChat={mobileView === "brain" ? () => setMobileView("chat") : undefined}
-    />
-  );
+  const closePanel = () => {
+    setPanel(false);
+    setSelected(null);
+  };
+
+  const surface: Surface = panel ? (taste ? "map" : "brain") : "tonight";
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-bg">
-      <div className={`hidden h-full md:block ${brainFull ? "md:hidden" : ""}`}>
-        <Sidebar
+      <div className="hidden h-full md:block">
+        <Rail
+          surface={surface}
           threads={threads}
           activeId={threadId}
-          onSelect={(id) => setChosenThread(id)}
-          onNew={newThread}
-          onDelete={(id) => deleteThread(id)}
-          stats={stats}
-          onShowBrain={() => setBrainFull(true)}
           onHome={newThread}
-          onShowTaste={() => void showTasteMap()}
-          surface={taste ? "taste" : brainFull ? "brain" : "tonight"}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((c) => !c)}
+          onNew={newThread}
+          onSelectThread={(id) => {
+            setChosenThread(id);
+            setPanel(false);
+          }}
+          onDeleteThread={(id) => deleteThread(id)}
+          onMap={() => void showTasteMap()}
+          onBrain={showBrain}
         />
       </div>
 
-      {/* Chat column */}
-      <main className={`relative h-full min-w-0 flex-1 ${brainFull ? "hidden" : ""} ${mobileView === "brain" ? "hidden md:block" : ""}`}>
-        {/* Mobile header */}
+      {/* The reading column */}
+      <main className="relative h-full min-w-0 flex-1">
         <div className="flex items-center justify-between border-b border-line px-3 py-2 md:hidden">
-          <button onClick={newThread} className="text-[13px] text-ink-dim">+ New</button>
+          <button onClick={newThread} className="text-[13px] text-ink-dim">
+            + New
+          </button>
           <span className="text-[14px] font-semibold text-ink">Headshot</span>
-          <button onClick={() => setMobileView("brain")} className="text-[13px] text-accent">
-            Brain →
+          <button onClick={showBrain} className="text-[13px] text-ink-dim">
+            Brain
           </button>
         </div>
         {threadId && <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} />}
       </main>
 
-      {/* Brain column */}
+      {/* The panel: summoned, never resident */}
       <div
-        className={`h-full ${brainFull ? "w-full" : "w-full md:w-[46%] md:min-w-[440px] md:max-w-[880px] md:border-l md:border-line"} ${
-          mobileView === "chat" && !brainFull ? "hidden md:block" : "block"
-        }`}
+        className={`sheet fixed inset-0 z-40 md:static md:inset-auto md:z-auto md:h-full md:shrink-0 md:border-l md:border-line ${panel ? "md:w-[440px] lg:w-[480px]" : "hidden md:block md:w-0 md:border-l-0"}`}
+        aria-hidden={!panel}
       >
-        {brain}
+        {panel && (
+          <BrainPanel
+            store={store}
+            state={state}
+            selected={selected}
+            onSelect={select}
+            onDeselect={() => setSelected(null)}
+            onExpand={expand}
+            onAsk={(text) => {
+              setPrefill({ text, nonce: Date.now() });
+              setPanel(false);
+            }}
+            onPick={(id) => (store.graph.hasNode(id) ? select(id) : expand(id))}
+            ego={ego}
+            egoImages={egoImages}
+            taste={taste}
+            onExitEgo={() => {
+              setEgo(null);
+              setTaste(null);
+              setSelected(null);
+            }}
+            onClose={closePanel}
+          />
+        )}
       </div>
     </div>
   );

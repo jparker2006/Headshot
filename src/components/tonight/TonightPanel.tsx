@@ -96,7 +96,7 @@ export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
         <p className="text-[15px] leading-snug text-ink">ok, three for tonight.</p>
       </div>
 
-      <div>
+      <div className="stagger">
         {picks.map((p, i) => (
           <PickRow key={p.imdbId} pick={p} last={i === picks.length - 1} onSelectNode={onSelectNode} onLater={() => dismiss(p.imdbId)} />
         ))}

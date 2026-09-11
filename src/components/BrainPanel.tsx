@@ -14,18 +14,16 @@ interface Props {
   onExpand: (id: string) => void;
   onAsk: (text: string) => void;
   onPick: (id: string) => void;
-  full: boolean;
-  onToggleFull: () => void;
   ego: EgoNetwork | null;
   egoImages: Record<string, string | null>;
   onExitEgo: () => void;
-  /** Narrow-screen mode: show a back-to-chat button. */
-  onBackToChat?: () => void;
+  /** Dismiss the panel. */
+  onClose: () => void;
   /** Set while the ego view is the user's own taste map. */
   taste?: { facts: { people: { name: string; count: number }[]; avgRuntimeFinished: number | null; tvShare: number | null; eras: Record<string, number> }; rated: number; later: number } | null;
 }
 
-export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, full, onToggleFull, ego, egoImages, onExitEgo, onBackToChat, taste }: Props) {
+export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, ego, egoImages, onExitEgo, onClose, taste }: Props) {
   const centerName = taste ? "your taste" : ego ? ego.nodes.find((n) => n.ring === 0)?.name : null;
   const topDecade = taste ? Object.entries(taste.facts.eras).sort((a, b) => b[1] - a[1])[0]?.[0] : null;
   return (
@@ -46,11 +44,6 @@ export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExp
       {/* Toolbar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
         <div className="pointer-events-auto flex items-center gap-2">
-          {onBackToChat && (
-            <button onClick={onBackToChat} className="panel px-3 py-1.5 text-[12.5px] text-ink hover:bg-white/5 md:hidden">
-              ← Chat
-            </button>
-          )}
           <SearchBox onPick={onPick} />
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
@@ -60,8 +53,8 @@ export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExp
               <span className="text-ink-faint">· whole brain</span>
             </button>
           )}
-          <button onClick={onToggleFull} className="panel px-3 py-1.5 text-[12.5px] text-ink-dim hover:text-ink" title={full ? "Back to split view" : "Full screen"}>
-            {full ? "Split" : "Focus"}
+          <button onClick={onClose} className="panel flex size-8 items-center justify-center text-ink-dim hover:text-ink" title="Close" aria-label="Close panel">
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M5 5l10 10M15 5 5 15" /></svg>
           </button>
         </div>
       </div>
