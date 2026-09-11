@@ -6,6 +6,7 @@
  * design/boards/Main.dc.html. Data comes from /api/tonight; this component
  * never computes a pick.
  */
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TonightData, PickView } from "@/lib/picks/view";
 
@@ -51,18 +52,18 @@ export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
     return (
       <div className="space-y-2">
         <p className="text-[15px] leading-snug text-ink">want three picks for tonight, on the services you already pay for?</p>
-        <a href="/auth/sign-in?next=/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
+        <Link href="/auth/sign-in?next=/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
           Sign in with a magic link
-        </a>
+        </Link>
       </div>
     );
   if (state.status === "empty")
     return (
       <div className="space-y-2">
         <p className="text-[15px] leading-snug text-ink">nothing for tonight yet. tell me what you pay for and what you&apos;ve seen, and I&apos;ll have three ready.</p>
-        <a href="/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
+        <Link href="/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
           Set up Tonight
-        </a>
+        </Link>
       </div>
     );
   if (state.status === "error")
