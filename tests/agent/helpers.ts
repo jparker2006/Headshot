@@ -3,6 +3,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { simulateReadableStream, type InferUIMessageChunk } from "ai";
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { buildGraph } from "../../scripts/build-graph/build";
+import { loadCachedCredits } from "../../scripts/build-graph/tmdb";
 import { IndustryGraph, type PackedGraph } from "@/lib/graph";
 import type { HeadshotUIMessage } from "@/lib/agent";
 
@@ -10,7 +11,12 @@ export const FIXTURE = path.join(__dirname, "..", "fixtures", "imdb");
 
 let packedPromise: Promise<PackedGraph> | undefined;
 export function fixturePacked(): Promise<PackedGraph> {
-  return (packedPromise ??= buildGraph({ inputDir: FIXTURE, voteFloor: 1000, buildId: "test" }));
+  return (packedPromise ??= buildGraph({
+    inputDir: FIXTURE,
+    voteFloor: 1000,
+    buildId: "test",
+    tmdb: loadCachedCredits(path.join(__dirname, "..", "fixtures", "tmdb")),
+  }));
 }
 export async function fixtureGraph(): Promise<IndustryGraph> {
   return new IndustryGraph(await fixturePacked());
