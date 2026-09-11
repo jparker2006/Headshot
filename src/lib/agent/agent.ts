@@ -29,6 +29,8 @@ import { classify, runFastPath, type FastResult } from "./fastpath";
 import { CACHEABLE, answerSlug, cacheKey, isPublicSafe, isReplayable, replayAnswer, shortId } from "./answers";
 import { toBrainInput } from "./context";
 import type { EmbedFn } from "./embeddings";
+import type { TasteStore } from "@/lib/taste/types";
+import { formatTasteContext, tasteSummary } from "./tasteContext";
 import type { CanvasNode } from "./events";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
@@ -56,6 +58,9 @@ export interface RunAgentOptions {
   cache?: "use" | "bypass";
   /** Query embedder for semantic fallback (find_entities, find_by_constraints). */
   embed?: EmbedFn;
+  /** Signed-in user and taste store: unlocks the taste tools and the "about this user" block. */
+  userId?: string | null;
+  taste?: TasteStore | null;
 }
 
 /** Adapts the UI stream writer to the tools' emitter interface, recording replayable events. */
@@ -116,6 +121,8 @@ export function runAgent(opts: RunAgentOptions) {
         question,
         touched: [] as CanvasNode[],
         embed: opts.embed,
+        userId: opts.userId ?? null,
+        taste: opts.taste ?? null,
       };
 
       // ---- v2: classify, then either replay a stored answer or precompute ----
@@ -156,7 +163,16 @@ export function runAgent(opts: RunAgentOptions) {
 
       const tools = headshotTools(ctx);
       const hints = formatHints(prehint(opts.graph, question));
-      const system = [SYSTEM_PROMPT, hints, fast ? `Precomputed for this question (the user already sees it on the canvas):\n${fast.context}` : ""].filter(Boolean).join("\n\n");
+      let about = "";
+      if (opts.userId && opts.taste) {
+        try {
+          const t = await tasteSummary(opts.graph, opts.taste, opts.userId);
+          about = t ? formatTasteContext(t) : "This user is signed in but has not rated anything yet. If they ask about their taste, say so and point them to the deck or a Letterboxd import (they can also just tell you what they like and you call rate).";
+        } catch (err) {
+          console.warn("[agent] taste context failed:", err instanceof Error ? err.message : err);
+        }
+      }
+      const system = [SYSTEM_PROMPT, about, hints, fast ? `Precomputed for this question (the user already sees it on the canvas):\n${fast.context}` : ""].filter(Boolean).join("\n\n");
       const result = streamText({
         model: opts.model,
         system,

@@ -1,0 +1,83 @@
+/**
+ * What the agent knows about the signed-in user before the first tool call:
+ * a compact block for the system prompt built from the taste store. Cheap
+ * (two reads), explicit-only (nothing inferred), and absent when signed out.
+ */
+import type { IndustryGraph } from "@/lib/graph/engine";
+import type { TasteStore, WatchedRow } from "@/lib/taste/types";
+import { providerName } from "@/lib/taste/providers";
+import { tasteFacts } from "@/lib/picks/engine";
+import { toEngineRows } from "@/lib/picks/service";
+
+export interface TasteSummary {
+  counts: { liked: number; meh: number; want: number; unseen: number };
+  services: string[];
+  people: { name: string; count: number }[];
+  eras: Record<string, number>;
+  tvShare: number | null;
+  avgRuntimeFinished: number | null;
+  genresAvoided: string[];
+  /** Most recently rated titles, newest first, with the bucket. */
+  recent: { name: string; year: number; rating: WatchedRow["rating"] }[];
+  /** Titles marked "want" (Later), newest first. */
+  later: { name: string; year: number }[];
+  /** Series the user is in the middle of. */
+  watching: { name: string; season: number; episodesWatched: number }[];
+}
+
+export async function tasteSummary(graph: IndustryGraph, store: TasteStore, userId: string): Promise<TasteSummary | null> {
+  const rows = await store.listWatched(userId);
+  const services = (await store.getServices(userId))?.providerIds ?? [];
+  if (rows.length === 0 && services.length === 0) return null;
+  const stored = await store.getTaste(userId);
+  const facts = stored?.facts ?? tasteFacts(graph, toEngineRows(rows));
+  const name = (id: string) => graph.nodeByImdbId(id)?.name ?? id;
+  const year = (id: string) => graph.nodeByImdbId(id)?.year ?? 0;
+  const byRecent = [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return {
+    counts: {
+      liked: rows.filter((r) => r.rating === "liked").length,
+      meh: rows.filter((r) => r.rating === "meh").length,
+      want: rows.filter((r) => r.rating === "want").length,
+      unseen: rows.filter((r) => r.rating === "unseen").length,
+    },
+    services: services.map((id) => providerName(id) ?? String(id)),
+    people: facts.people.slice(0, 8),
+    eras: facts.eras,
+    tvShare: facts.tvShare,
+    avgRuntimeFinished: facts.avgRuntimeFinished,
+    genresAvoided: facts.genresAvoided,
+    recent: byRecent
+      .filter((r) => r.rating === "liked" || r.rating === "meh")
+      .slice(0, 20)
+      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId), rating: r.rating })),
+    later: byRecent
+      .filter((r) => r.rating === "want")
+      .slice(0, 12)
+      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId) })),
+    watching: rows.filter((r) => r.season != null).map((r) => ({ name: name(r.titleImdbId), season: r.season!, episodesWatched: r.episodesWatched })),
+  };
+}
+
+/** The prompt block. Short, factual, in the order the model needs it. */
+export function formatTasteContext(t: TasteSummary): string {
+  const decades = Object.entries(t.eras)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([d, n]) => `${d} (${n})`)
+    .join(", ");
+  const lines = [
+    `This user is signed in and has told you their taste (explicit ratings only; never infer beyond them):`,
+    `- Rated: ${t.counts.liked} liked, ${t.counts.meh} meh, ${t.counts.unseen} never seen, ${t.counts.want} in Later.`,
+    t.services.length ? `- Pays for: ${t.services.join(", ")}.` : `- Streaming services: unknown.`,
+    t.people.length ? `- Keeps watching (people across their liked titles): ${t.people.map((p) => `${p.name} (${p.count})`).join(", ")}.` : "",
+    decades ? `- Decades they like: ${decades}.` : "",
+    t.tvShare !== null ? `- TV share of what they liked: ${Math.round(t.tvShare * 100)}%.` : "",
+    t.genresAvoided.length ? `- Genres only in their meh pile: ${t.genresAvoided.join(", ")}.` : "",
+    t.recent.length ? `- Recently rated: ${t.recent.map((r) => `${r.name}${r.year ? ` (${r.year})` : ""} → ${r.rating}`).join("; ")}.` : "",
+    t.later.length ? `- Later list: ${t.later.map((r) => r.name).join(", ")}.` : "",
+    t.watching.length ? `- Mid-series: ${t.watching.map((w) => `${w.name} (season ${w.season}, ${w.episodesWatched} episodes in)`).join("; ")}.` : "",
+    `Use this when they ask what they like, whether they would like something, or what to watch. For "what should I watch tonight" call tonight_picks. When they tell you they watched or liked something, call rate. Talk about their taste in specifics (names, titles, patterns), never in generic genre labels alone.`,
+  ];
+  return lines.filter(Boolean).join("\n");
+}

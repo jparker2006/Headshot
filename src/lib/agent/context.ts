@@ -3,6 +3,7 @@ import type { Brain, BrainNodeInput } from "@/lib/brain/types";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import type { EmitFn, CanvasNode } from "./events";
 import type { EmbedFn } from "./embeddings";
+import type { TasteStore } from "@/lib/taste/types";
 
 /** Everything a tool needs. Built once per request. */
 export interface AgentContext {
@@ -17,6 +18,9 @@ export interface AgentContext {
   touched: CanvasNode[];
   /** Query embedder for semantic fallback; absent in keyless dev and tests. */
   embed?: EmbedFn;
+  /** The signed-in user and their private taste store; absent when signed out. */
+  userId?: string | null;
+  taste?: TasteStore | null;
 }
 
 /** Nearest graph entities to a description, via the brain's pgvector table. Empty when unavailable. */

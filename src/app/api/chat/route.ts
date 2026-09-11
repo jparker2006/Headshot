@@ -9,6 +9,7 @@ import { embedderFor, type EmbedFn } from "@/lib/agent/embeddings";
 import { runAgent, lastUserText, type HeadshotUIMessage } from "@/lib/agent";
 import { mockModel } from "@/lib/agent/mockModel";
 import { checkLimits, SESSION_COOKIE, newSessionId } from "@/lib/limits";
+import type { TasteStore } from "@/lib/taste/types";
 
 export const maxDuration = 120;
 
@@ -22,6 +23,9 @@ export interface ChatDeps {
   followups?: boolean;
   schedule?: (work: () => Promise<void>) => void;
   embed?: () => EmbedFn | undefined;
+  /** The signed-in user for this request, and the taste store. */
+  userId?: (req: Request) => Promise<string | null>;
+  taste?: () => Promise<TasteStore>;
 }
 
 /** Route handler factory so tests can inject a mock model, a fixture graph, and a memory brain. */
@@ -54,6 +58,8 @@ export function createChatHandler(deps: ChatDeps) {
       sessionId: session.id,
       followups: deps.followups ?? true,
       embed: deps.embed?.(),
+      userId: deps.userId ? await deps.userId(req) : null,
+      taste: deps.taste ? await deps.taste() : null,
       // Page writing outlives the response. waitUntil keeps the function alive on Vercel
       // and simply runs the promise locally.
       schedule: deps.schedule ?? ((work) => waitUntil(work().catch((err) => console.warn("[pages] background failed:", err)))),
@@ -76,6 +82,9 @@ export const POST = createChatHandler({
   brain: getBrain,
   tmdb: tmdbFromEnv,
   embed: () => (process.env.OPENROUTER_API_KEY && !mockAgentEnabled() ? embedderFor(embeddingModelFromEnv()) : undefined),
+  // Lazy: the auth SDK pulls in next/headers, which the route seam tests cannot load.
+  userId: () => import("@/lib/auth/server").then((m) => m.currentUserId()),
+  taste: () => import("@/lib/taste").then((m) => m.getTasteStore()),
   session: async () => {
     const jar = await cookies();
     const existing = jar.get(SESSION_COOKIE)?.value;
