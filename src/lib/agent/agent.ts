@@ -102,6 +102,9 @@ export function runAgent(opts: RunAgentOptions) {
   return createUIMessageStream<HeadshotUIMessage>({
     execute: async ({ writer }) => {
       const started = Date.now();
+      // One assistant message per turn. Our own data parts precede the model's stream, so we
+      // open the message here and tell toUIMessageStream not to send a second `start`.
+      writer.write({ type: "start" });
       opts.graph.setOverlay(await opts.brain.getOverlay());
       const recorded: RecordedEvent[] = [];
       const ctx: AgentContext = {
@@ -169,6 +172,7 @@ export function runAgent(opts: RunAgentOptions) {
         toUIMessageStream({
           stream: result.stream,
           tools,
+          sendStart: false,
           sendFinish: false,
           // Tool errors are our own messages ("X is not in the graph"); the client may see them.
           onError: (err) => (err instanceof Error ? err.message : String(err)),
