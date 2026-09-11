@@ -33,7 +33,9 @@ Set `HEADSHOT_GRAPH_URL` to the Blob URL the pipeline prints. Remove `HEADSHOT_M
 - **Industry graph** (`src/lib/graph`): the IMDb datasets filtered (vote floor, title types, talk shows and 200+-episode series demoted to a weak tier) and packed into CSR adjacency arrays. Loaded once per process. Tiered BFS: strong tier first, full graph for the true Bacon number, up to 20 tied paths.
 - **Brain** (`src/lib/brain`): Postgres via Drizzle. Every node anyone touched, live-discovered overlay edges (which the engine merges into path finding), agent-written wiki pages with a revision log keyed by the triggering question, and session attribution for the glow.
 - **Agent** (`src/lib/agent`): AI SDK tool loop on OpenRouter. Tools: `find_entities`, `shortest_path`, `highlight_path`, `common_neighbors`, `shared_credits`, `neighborhood`, `tmdb_search`, `tmdb_person`, `tmdb_title`, `expand_node`, `read_page`, `write_page`. Canvas events stream as typed data parts.
-- **Canvas** (`src/components/canvas`): sigma.js + graphology + ForceAtlas2. Renders the brain, lights the chosen path hop by hop, dims the rest, glows your session's nodes.
+- **After the answer**: a cheap second model call writes or revises wiki pages for the entities the answer was about (`src/lib/agent/pages.ts`, run via `waitUntil`), and another suggests three follow-up questions streamed as a `data-followups` part.
+- **Pages** (`/api/page/:id`): brain page plus TMDB extras: rating, runtime, tagline, overview, trailer embed, where to watch (region from `STREAMING_REGION`, default US), bio and birthplace for people.
+- **Canvas** (`src/components/canvas`): sigma.js + graphology + ForceAtlas2. The whole-brain view lights the chosen path; clicking a node switches to a radial ego view with headshots on the first ring (`@sigma/node-image`).
 
 ## API
 - `POST /api/chat` — the agent (UI message stream)

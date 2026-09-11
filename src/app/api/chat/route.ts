@@ -1,6 +1,6 @@
 import { createUIMessageStreamResponse, type LanguageModel } from "ai";
 import { cookies } from "next/headers";
-import { after } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { getIndustryGraph, type IndustryGraph } from "@/lib/graph";
 import { getBrain, type Brain } from "@/lib/brain";
 import { tmdbFromEnv, type TmdbClient } from "@/lib/tmdb/client";
@@ -51,7 +51,9 @@ export function createChatHandler(deps: ChatDeps) {
       messages,
       sessionId: session.id,
       followups: deps.followups ?? true,
-      schedule: deps.schedule ?? ((work) => after(work)),
+      // Page writing outlives the response. waitUntil keeps the function alive on Vercel
+      // and simply runs the promise locally.
+      schedule: deps.schedule ?? ((work) => waitUntil(work().catch((err) => console.warn("[pages] background failed:", err)))),
     });
     const res = createUIMessageStreamResponse({ stream });
     if (session.setCookie) {

@@ -21,6 +21,7 @@
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@sigma/node-image": "^3.0.0",
     "@vercel/blob": "^2.8.0",
+    "@vercel/functions": "^3.9.7",
     "ai": "^7.0.97",
     "drizzle-orm": "^0.45.2",
     "graphology": "^0.26.0",

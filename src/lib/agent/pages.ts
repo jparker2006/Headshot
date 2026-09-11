@@ -34,11 +34,15 @@ export function pickPageSubjects(touched: CanvasNode[], answer: string, max = 3)
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
-  return scored.slice(0, max).map((x) => x.n);
+  if (scored.length > 0) return scored.slice(0, max).map((x) => x.n);
+  // Nothing named in the text (short answers): fall back to the first people touched.
+  const uniq = [...new Map(touched.map((n) => [n.imdbId, n])).values()];
+  return [...uniq.filter((n) => n.kind === "person"), ...uniq.filter((n) => n.kind === "title")].slice(0, Math.min(max, 2));
 }
 
 export async function writePagesForTurn(input: PageWriteInput): Promise<string[]> {
   const subjects = pickPageSubjects(input.touched, input.answer, input.maxPages ?? 3);
+  input.log?.(`[pages] deferred work running: ${subjects.map((s) => s.name).join(", ") || "no subjects"}`);
   const written: string[] = [];
   for (const subject of subjects) {
     try {
