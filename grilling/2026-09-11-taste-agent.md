@@ -207,3 +207,7 @@ Two things to settle from your answers. A9 vs my Q9: I said no charts, you said 
 12. Design: research first (a written note of ~10 references and what to take from each, using the design skills), then three boards each showing You, a thread and the log field; posters are the color, type carries the personality, chat reads like messages. Nothing ships before Jake picks a board.
 13. Build order: A) titles cache, log field, memory layers, You with Numbers; B) Play via provider link, Netflix + IMDb imports, nav cuts; C) design research + boards, then the redesign of every screen; D) swipe-as-lore with the memory diff, as the onboarding.
 14. No hosted agent harness (OpenAI or otherwise); the loop stays on the AI SDK + OpenRouter.
+
+## Design pick (2026-09-11, chunk C)
+
+Three boards shown (A Marquee, B Lobby, C Terminal for cinephiles; research in design/research.md, boards in design/boards-v4/). Jake picked **C · Terminal for cinephiles**: dense, sassy, the log and numbers as the hero, mono for figures, posters as small row markers, chat as terse bubbles with receipts; Geist + JetBrains Mono. DESIGN.md is rewritten from it.
