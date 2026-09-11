@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #ece7dd; } a:hover { color: #ece7dd; text-decoration-color: #ece7dd; }
+    .ser { font-family: "Instrument Serif", Georgia, serif; }
+    .sans { font-family: "Instrument Sans", system-ui, sans-serif; }
+    b { font-weight: 400; color: #ece7dd; border-bottom: 1px solid rgba(236,231,221,0.28); }
+  </style>
+</helmet>
+
+<div class="sans" style="width: 1440px; min-height: 1000px; background: #0c0b0a; color: #8a827a; font-size: 14px; box-sizing: border-box; display: flex; flex-direction: column;">
+
+  <div style="display: flex; align-items: baseline; gap: 28px; padding: 40px 88px 0 88px;">
+    <span class="ser" style="font-size: 19px; color: #ece7dd;">Headshot</span>
+    <div style="display: flex; gap: 20px; font-size: 13px; margin-left: auto;">
+      <span style="color: #5a544e;">You</span>
+      <span style="color: #ece7dd; border-bottom: 1px solid #ece7dd; padding-bottom: 2px;">History</span>
+      <span style="color: #5a544e;">jake</span>
+    </div>
+  </div>
+
+  <div style="padding: 30px 88px 0 88px;">
+    <span style="font-size: 13px; color: #5a544e;">3 hours ago · this thread</span>
+  </div>
+
+  <!-- the exchange: no bubbles, the answer is the page -->
+  <div style="padding: 56px 88px 0 88px; display: flex; flex-direction: column; gap: 54px; max-width: 1020px;">
+
+    <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: baseline;">
+      <span style="font-size: 13px; color: #5a544e;">you asked</span>
+      <p class="ser" style="margin: 0; font-size: 40px; line-height: 1.14; color: #ece7dd; letter-spacing: -0.01em;">what do I like?</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: baseline;">
+      <span style="font-size: 13px; color: #5a544e;">it said</span>
+      <div style="display: flex; flex-direction: column; gap: 26px; max-width: 66ch;">
+
+        <p class="ser" style="margin: 0; font-size: 25px; line-height: 1.52; color: #8a827a; text-wrap: pretty;">you're a movies guy, full stop — TV is like 12% of what you like, and the TV you do like is <b style="font-size: 25px;">South Park</b>, <b style="font-size: 25px;">The Simpsons</b>, early SNL-adjacent stuff.</p>
+
+        <p class="ser" style="margin: 0; font-size: 25px; line-height: 1.52; color: #8a827a; text-wrap: pretty;">the through-line: <b style="font-size: 25px;">Star Wars</b>, all of it. <b style="font-size: 25px;">Christopher Nolan</b> and <b style="font-size: 25px;">Matt Damon</b> on repeat (6 each), plus the whole Lucasfilm crew. comedy that goes big and dumb in a good way (<b style="font-size: 25px;">Knocked Up</b>, <b style="font-size: 25px;">The Hangover Part II</b>, <b style="font-size: 25px;">The Lego Movie</b>), animation that actually lands a punch (<b style="font-size: 25px;">Inside Out</b>, <b style="font-size: 25px;">Despicable Me 3</b> and <b style="font-size: 25px;">4</b>), and the 90s canon.</p>
+
+        <p class="ser" style="margin: 0; font-size: 25px; line-height: 1.52; color: #8a827a; text-wrap: pretty;">the one crime drama you lit up for is <b style="font-size: 25px;">Heat</b>, and your own note on it is “the diner scene, two pros sizing each other up” — that's the tell. you want two heavyweights in a room, not a slow burn about a family. which is exactly why <b style="font-size: 25px;">The Godfather</b> came back a meh.</p>
+
+        <!-- the one entity that got opened, inline -->
+        <div style="display: flex; gap: 22px; align-items: flex-start; padding-top: 8px;">
+          <img src="umSVjVdbVwtx5ryCA2QXL44Durm.jpg" alt="Heat" style="width: 62px; height: 93px; object-fit: cover; display: block; flex-shrink: 0;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+              <span class="ser" style="font-size: 28px; color: #ece7dd;">Heat</span>
+              <span class="ser" style="font-size: 15px; color: #5a544e;">1995 · 170 min</span>
+            </div>
+            <span style="font-size: 13px; color: #5a544e;">you liked it 3 hours ago · your note on it is the reason it came up</span>
+            <div style="display: flex; gap: 14px; align-items: center; margin-top: 4px;">
+              <span style="display: inline-flex; align-items: center; height: 44px; padding: 0 24px; border-radius: 999px; background: #f0b429; color: #16120b; font-size: 14px; font-weight: 600;">Play</span>
+              <span style="font-size: 13px; color: #8a827a; border-bottom: 1px solid rgba(138,130,122,0.4);">where to watch</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 26px; align-items: baseline; padding-top: 6px;">
+          <span class="ser" style="font-size: 21px; font-style: italic; color: #5a544e;">so what should I watch tonight?</span>
+          <span class="ser" style="font-size: 21px; font-style: italic; color: #5a544e;">what else is like Heat?</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top: auto; padding: 0 88px 44px 88px;">
+    <div style="border-top: 1px solid rgba(236,231,221,0.09); padding-top: 26px; display: flex; align-items: center; gap: 16px;">
+      <span class="ser" style="font-size: 25px; color: #5a544e;">Log something, or just ask.</span>
+      <span style="margin-left: auto; font-size: 13px; color: #5a544e;">⏎</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "memory": "## What you love\n- Movies over TV, by a lot. TV is only about 11% of what they like.\n- **Star Wars**, all of it. Every episode rated so far is a like.\n- Comedy that goes big and dumb in a good way: **Knocked Up**, **The Hangover Part II**, **The Lego Movie**.\n- Animation that lands emotionally: **Inside Out**, **Despicable Me 3**, **Despicable Me 4**.\n- **Christopher Nolan**.\n- **Matt Damon**.\n- **George Lucas** and the **Star Wars** crew (**Anthony Daniels**, **Frank Oz**, **Carrie Fisher**).\n- **Kristen Wiig**, **Jonah Hill** — that comedy lane.\n- Sci-fi action that holds up: **The Terminator**, **Terminator 2: Judgment Day**.\n- 2010s and 2000s especially, plus some 2020s.\n- The 90s canon: **The Matrix**, **The Shawshank Redemption**, **Forrest Gump**, **South Park**.\n- **Back to the Future**, **One Flew Over the Cuckoo's Nest**, **The Simpsons**.\n- Crime dramas with two pros facing off: **Heat**.\n\n## What you avoid\n- Prestige drama everyone swears is a masterpiece. **The Godfather** was a meh.\n- **Friends** — meh.\n- **Saturday Night Live** — meh.\n- **The Fifth Element** — meh.\n- Long-running TV in general, mostly.\n\n## Right now\n- Later list: **Raiders of the Lost Ark**, **Pulp Fiction**, **The Dark Knight Rises**, **Sherlock**.\n- Mid-series, slow going: **Breaking Bad** (season 1), **Stranger Things** (season 2), **Fleabag** (season 2).\n- Pays for basically everything: Netflix, Prime, Max, Disney+, Hulu, Apple TV+, Paramount+, Peacock.\n\n## Notes\n- \"I like movies.\"\n- \"the diner scene, two pros sizing each other up\"",
+  "recentlyLogged": [
+    {"name": "Zodiac", "year": 2007, "rating": "seen", "when": "just now"},
+    {"name": "Michael Clayton", "year": 2007, "rating": "seen", "when": "just now"},
+    {"name": "Breaking Bad", "year": 2008, "rating": "seen", "season": 1, "when": "just now"},
+    {"name": "Fleabag", "year": 2016, "rating": "seen", "season": 2, "when": "just now"},
+    {"name": "The Terminator", "year": 1984, "rating": "liked", "when": "1 hour ago"},
+    {"name": "Terminator 2: Judgment Day", "year": 1991, "rating": "liked", "when": "1 hour ago"},
+    {"name": "Heat", "year": 1995, "rating": "liked", "note": "the diner scene, two pros sizing each other up", "when": "3 hours ago"},
+    {"name": "Star Wars: Episode III - Revenge of the Sith", "year": 2005, "rating": "liked", "when": "4 hours ago"}
+  ],
+  "tonight": [
+    {"name": "The Dark Knight Rises", "year": 2012, "reason": "**The Dark Knight Rises** makes it 8 for **Christopher Nolan** after **The Dark Knight** and **Interstellar**", "label": "Play on HBO Max", "poster": "https://image.tmdb.org/t/p/w342/hr0L2aueqlP2BYUblTTjmtn0hw4.jpg"},
+    {"name": "Star Wars: Episode VII - The Force Awakens", "year": 2015, "reason": "**The Force Awakens** is your 8th **George Lucas** after **A New Hope** and **The Empire Strikes Back**", "label": "Play on Disney Plus", "poster": "https://image.tmdb.org/t/p/w342/wqnLdwVXoBjKibFRR5U3y0aDUhs.jpg"},
+    {"name": "Star Wars: Episode II - Attack of the Clones", "year": 2002, "reason": "**Attack of the Clones** is your 8th **George Lucas** after **A New Hope** and **The Empire Strikes Back**", "label": "Play on Disney Plus", "poster": "https://image.tmdb.org/t/p/w342/oZNPzxqM2s5DyVWab09NTQScDQt.jpg"}
+  ],
+  "numbers": {"titles": 115, "films": 99, "shows": 16, "hours": 202, "liked": 70, "tvShare": 0.11, "runtimeFinished": 152, "topDecades": [["2010s", 22], ["2000s", 18], ["1990s", 12], ["1980s", 7]], "people": [["Christopher Nolan", 8, "director"], ["Matt Damon", 6, "actor"], ["George Lucas", 8, "director"], ["Anthony Daniels", 7, "actor"], ["Carrie Fisher", 6, "actor"], ["Frank Oz", 6, "actor"], ["Kristen Wiig", 4, "actor"], ["Jonah Hill", 4, "actor"]]},
+  "thread": [
+    {"role": "user", "text": "what do I like?"},
+    {"role": "assistant", "text": "you're a movies guy, full stop — TV is like 12% of what you like, and the TV you do like is **South Park**, **The Simpsons**, early SNL-adjacent stuff.\n\nthe through-line: **Star Wars**, all of it. **Christopher Nolan** and **Matt Damon** on repeat (6 each), plus the whole Lucasfilm crew. comedy that goes big and dumb in a good way (**Knocked Up**, **The Hangover Part II**, **The Lego Movie**), animation that actually lands a punch (**Inside Out**, **Despicable Me 3** and **4**), and the 90s canon.\n\nthe one crime drama you lit up for is **Heat**, and your own note on it is \"the diner scene, two pros sizing each other up\" — that's the tell. you want two heavyweights in a room, not a slow burn about a family. which is exactly why **The Godfather** came back a meh."}
+  ]
+}

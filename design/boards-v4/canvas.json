@@ -1,0 +1,117 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "Three directions"
+    },
+    {
+      "file": "A-You.dc.html",
+      "x": 0,
+      "y": 1000,
+      "w": 1440,
+      "h": 2660,
+      "title": "A · Marquee — You"
+    },
+    {
+      "file": "A-Thread.dc.html",
+      "x": 1560,
+      "y": 1000,
+      "w": 1440,
+      "h": 1110,
+      "title": "A · Marquee — Thread"
+    },
+    {
+      "file": "A-Log.dc.html",
+      "x": 3120,
+      "y": 1000,
+      "w": 1440,
+      "h": 1060,
+      "title": "A · Marquee — Log field"
+    },
+    {
+      "file": "B-You.dc.html",
+      "x": 0,
+      "y": 3900,
+      "w": 1440,
+      "h": 2160,
+      "title": "B · Lobby — You"
+    },
+    {
+      "file": "B-Thread.dc.html",
+      "x": 1560,
+      "y": 3900,
+      "w": 1440,
+      "h": 1060,
+      "title": "B · Lobby — Thread"
+    },
+    {
+      "file": "B-Log.dc.html",
+      "x": 3120,
+      "y": 3900,
+      "w": 1440,
+      "h": 1060,
+      "title": "B · Lobby — Log field"
+    },
+    {
+      "file": "C-You.dc.html",
+      "x": 0,
+      "y": 6300,
+      "w": 1440,
+      "h": 1710,
+      "title": "C · Terminal — You"
+    },
+    {
+      "file": "C-Thread.dc.html",
+      "x": 1560,
+      "y": 6300,
+      "w": 1440,
+      "h": 1060,
+      "title": "C · Terminal — Thread"
+    },
+    {
+      "file": "C-Log.dc.html",
+      "x": 3120,
+      "y": 6300,
+      "w": 1440,
+      "h": 1060,
+      "title": "C · Terminal — Log field"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "constraints",
+      "x": -440,
+      "y": 0,
+      "w": 340,
+      "text": "Constraints on all three (SPEC v4 → Design):\n\n· posters are the only color\n· type carries the personality\n· the chat reads like messages\n· no bordered cards\n· no stat tiles\n· no mono uppercase labels\n· one accent, one job: Play\n\nEvery board uses real content — Jake's memory text, his logged rows, the tonight picks with real TMDB posters, and his own note on Heat."
+    },
+    {
+      "id": "row-a",
+      "x": -440,
+      "y": 1000,
+      "w": 340,
+      "text": "A — Marquee\n\nThe memory is the headline. Instrument Serif + Instrument Sans, warm near-black, amber only on Play.\n\nReference: Cursor's changelog restraint, A24's title stack, Mubi.\n\nTradeoff: the tallest You page of the three — set this large, the profile alone fills a screen."
+    },
+    {
+      "id": "row-b",
+      "x": -440,
+      "y": 3900,
+      "w": 340,
+      "text": "B — Lobby\n\nThe shelf does the work. Archivo + Source Serif 4, warm brown-black, gold only on Play.\n\nReference: Criterion's crop discipline, Arc's warmth, Letterboxd done better.\n\nTradeoff: posters are loud, so the writing has to fight for attention in the left column."
+    },
+    {
+      "id": "row-c",
+      "x": -440,
+      "y": 6300,
+      "w": 340,
+      "text": "C — Terminal for cinephiles\n\nThe log is an instrument. Geist + JetBrains Mono, dense rows, amber only on Play.\n\nReference: Raycast's density, Geist, Linear's date gutter.\n\nTradeoff: density reads as competence to a film buff and as a spreadsheet to everyone else."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #ece7dd; } a:hover { color: #ece7dd; text-decoration-color: #ece7dd; }
+    .ser { font-family: "Instrument Serif", Georgia, serif; }
+    .sans { font-family: "Instrument Sans", system-ui, sans-serif; }
+  </style>
+</helmet>
+
+<div class="sans" style="width: 1200px; min-height: 620px; background: #0c0b0a; color: #8a827a; font-size: 14px; box-sizing: border-box; padding: 56px 64px;">
+
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <h1 class="ser" style="margin: 0; font-size: 46px; line-height: 1.06; color: #ece7dd; font-weight: 400; letter-spacing: -0.012em;">Headshot v4 — three directions</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #8a827a; max-width: 80ch;">Each direction is a row of three frames: the You page, a thread, and the log field open. Every board uses Jake's real memory text, his real logged rows and tonight picks, and real TMDB posters. Same constraint on all three — posters are the only color, type carries the personality, the chat reads like messages, no bordered cards, no stat tiles, no mono uppercase labels, one accent doing one job (Play).</p>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 30px; margin-top: 50px;">
+
+    <div style="display: grid; grid-template-columns: 190px minmax(0, 1fr) 250px; gap: 34px; align-items: baseline;">
+      <span class="ser" style="font-size: 32px; color: #ece7dd;">A · Marquee</span>
+      <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #8a827a;">The memory is the headline: your profile set as editorial display type, films listed as titles with superscript years, posters small and precise, almost no chrome — the writing is the product.</p>
+      <span style="font-size: 13.5px; color: #5a544e;">Instrument Serif + Instrument Sans<br>warm near-black, amber on Play only</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 190px minmax(0, 1fr) 250px; gap: 34px; align-items: baseline;">
+      <span class="ser" style="font-size: 32px; color: #ece7dd;">B · Lobby</span>
+      <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #8a827a;">The shelf does the work: a warm dark room where tonight and recently logged are strict uniform poster rows, the memory a quieter serif column beside them, and the artwork supplies all the variety.</p>
+      <span style="font-size: 13.5px; color: #5a544e;">Archivo + Source Serif 4<br>warm brown-black, gold on Play only</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 190px minmax(0, 1fr) 250px; gap: 34px; align-items: baseline;">
+      <span class="ser" style="font-size: 32px; color: #ece7dd;">C · Terminal</span>
+      <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #8a827a;">The log is an instrument: tight rows, figures in mono, the log table and the numbers ledger as the hero, thumbnail posters as row markers, chat as terse bubbles that show their receipts.</p>
+      <span style="font-size: 13.5px; color: #5a544e;">Geist + JetBrains Mono<br>near-black, amber on Play only</span>
+    </div>
+
+  </div>
+
+  <p style="margin: 46px 0 0 0; font-size: 13.5px; color: #5a544e;">Research behind these: <span style="color: #8a827a;">design/research.md</span> — twelve sites looked at, including Cursor, Linear, Arc, Raycast, Geist, ryo.lu, Mubi, Criterion, A24 and Letterboxd.</p>
+
+</div>
+</x-dc>
+</body>
+</html>
