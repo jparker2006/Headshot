@@ -385,3 +385,63 @@ Design doc first, then: A) auth, taste store, Letterboxd import, services checkl
 
 ## Out of scope (v3)
 Scraping streaming accounts, YouTube history (v4), TV control, social or multiplayer picks (later), episode-level tracking beyond the counter, any implicit taste signals.
+
+# v4 — You (the log with a brain)
+
+Grilled 2026-09-11, session 4; record in `grilling/2026-09-11-taste-agent.md`. Supersedes v3's home surface and nav; v3's engine, store, auth and cron stay.
+
+## The problem and the solution
+
+Letterboxd has no TV and no idea what you like; it is a diary with a social layer. Headshot v3 built a nightly pick, and nobody (including the owner) opens an app for a 9pm pick. What the owner actually wants is the log Letterboxd should be (film and TV, one place) with a brain that has read it: a prose profile of your taste that grows as you log, real numbers about what you watch, and a friend in the chat who already knows all of it. The pick for tonight is one thing that friend can answer, not the product.
+
+## Who it's for
+
+Film buffs who watch a lot and keep a log, starting with the owner and friends. Someone with hundreds of titles of history, not five. Not marketed.
+
+## User stories (v4)
+
+61. As a viewer, I want to log what I just watched in one field (title, four-bucket rating, one optional line), film or show with the season, so that keeping the log takes ten seconds.
+62. As a viewer, I want a page that says in prose what it knows about my taste, written by the agent and editable by me, so that I can read my own profile and correct it.
+63. As a viewer, I want that profile to change after I log or swipe, and to see what changed, so that the brain visibly grows with me.
+64. As a viewer, I want real numbers about what I watch (per month, film vs TV, hours, people, decades, genres by bucket) and the log as a table, so that I get the analytics Letterboxd never gave me.
+65. As a viewer, I want to swipe through posters of things I have probably seen to fill in my back-catalog, as the first thing a new account does, so that the profile is useful on day one.
+66. As a viewer, I want to import Netflix viewing history and IMDb ratings as well as Letterboxd, so that I do not retype years of watching.
+67. As a viewer, I want the chat to have everything (log, rate, my profile, tonight, trivia) and to remember what I say about my taste even if I clear my browser, so that one conversation is enough.
+68. As a viewer, I want Play to land on the title in the service, so that it works every time.
+69. As a viewer, I want one home and one composer, no "New chat" versus "Tonight", so that the app is not confusing.
+70. As the owner, I want the design researched before it is redrawn, three boards to pick from, and every screen rebuilt from the winner, so that it stops looking like a generic dark SaaS shell.
+
+## Implementation decisions (v4)
+
+- **Surfaces.** Sidebar: You, History, account. Home is You. There is no chat surface; the composer is pinned at the bottom of every page and typing opens (or continues) a thread listed under History. New chat, the Tonight nav item, `TonightPanel` as home, the taste map link and any link to `/brain` are removed. `/onboarding` becomes the swipe-first empty state of You for a new account (the route may stay as its entry).
+- **You page.** Sections in order: what I know about you (the prose memory, verbatim, with an Edit control), recently logged, tonight (one row from the existing pick engine, expandable to the three picks with Play), Numbers (link or inline), Services, Imports, Later, the swipe button.
+- **Log field.** One input that resolves a typed title against the graph (`find_entities`-style name lookup, films and shows; a show asks for the season once), four buckets (liked / meh / want / unseen stays for removal), optional one line of text. Writes a `watched` row (source "log") and an episode; the text line is stored verbatim in the episode.
+- **Titles cache.** New table `titles` (imdb id, tmdb id, kind, name, year, runtime, seasons with episode counts, genres, poster path, providers snapshot, fetched at), filled lazily from TMDB on log/import/pick and used by Numbers, the log table, names and posters. Replaces the client-side `/api/names` + image lookups over time.
+- **Memory layers.** (1) Facts: the existing `watched`, `services`, `taste` tables plus `titles`. (2) Beliefs: table `memory` (user id, markdown ≤40 lines, updated at, plus a `pinned` block of user-written lines the rewrite must preserve verbatim). (3) Evidence: table `episodes` (user id, at, kind: log | swipe | chat | play, title id nullable, text). The rewrite is a queued job (`waitUntil`) after any turn or session that added episodes: DeepSeek Flash via OpenRouter with reasoning off, input = old memory + facts summary + new episodes, output = new markdown; pinned lines are re-inserted unchanged. The chat system prompt gets facts summary + memory every turn; episodes are fetched by a `recall` tool (keyword search over text, most recent first).
+- **Chat.** Full tool set: log/rate, mark_progress, my_taste (now returns the memory), recall, tonight_picks, and all v2 trivia tools. At the end of each assistant turn, taste statements in the user's message are extracted into episodes (same cheap model, one call, skipped when the message has no title or taste content). Threads remain in localStorage; conversations are not stored server-side (revisit when there are real users).
+- **Swipe as lore.** Deck source: unrated neighbors of the user's liked people plus popular unrated titles from the user's strongest decades; 30 per session; four buckets; undo. Session end: episodes written, memory rewrite awaited, and a diff view (added / removed lines) shown before returning to You.
+- **Imports.** Letterboxd CSV (existing). Netflix viewing-activity CSV: title + date, matched by name (a show row "Title: Season 1: Episode" collapses to the show), written as `seen` (a new neutral rating value; never liked). IMDb ratings CSV: has `Const` imdb ids, direct match, 1–10 mapped to liked (≥7) / meh (<7). Re-upload replaces rows of that source. All three on You → Imports.
+- **Numbers.** Route `/api/taste/numbers` computes from `watched` + `titles` + graph: per-month counts and hours (film vs TV; TV hours = episodes watched × average episode runtime), top 12 people by count with TMDB faces, decades, runtime finished, genres split liked/meh, and the log rows. Hand-drawn SVG charts in the client; no chart library; no model call.
+- **Play.** `playUrl` = TMDB's watch-providers link for the title (the JustWatch page), which forwards to the service; `serviceDeepLink` and the per-service search URLs are removed. "On your services" labels stay.
+- **TV.** One `watched` row per show with status (watching / finished / dropped) and season pointer; episodes are counted, never logged individually.
+- **Signed-out.** Trivia chat, `/a/…` answer pages and their OG images only. Landing: one sentence and Sign in. All taste routes keep answering 401.
+- **Design.** Before any screen is redrawn: a research note (`design/research.md`, ~10 references from Cursor, Riot, Linear, Arc, Ryu and current work on Twitter/Dribbble, one line each on what to take), then three boards on the design canvas, each showing You, a thread and the log field, with real posters and the owner's real memory text. Constraint on all three: posters are the only color, type carries the personality, the chat reads like messages, no bordered cards, no stat tiles, no mono uppercase labels. Tokens change only after a board wins; `DESIGN.md` is rewritten from it.
+- **Not doing.** No crawling of Letterboxd; no streaming logins (recorded as a future option); no hosted agent harness; no cost controls.
+
+## Testing decisions (v4)
+
+1. Memory seam: given old memory with pinned lines, facts, and episodes, the rewrite job (model mocked) produces ≤40 lines and the pinned lines verbatim; the chat system prompt contains the memory; `recall` returns episodes by keyword, newest first.
+2. Log seam: a typed title resolves to the right node (film vs show, season prompt for shows); the row and episode are written; the one-line text is stored verbatim.
+3. Imports seam: Netflix CSV rows collapse show episodes to one show marked `seen`; IMDb CSV maps ids and thresholds; re-upload replaces per source; Letterboxd unchanged.
+4. Numbers seam: fixture watched rows + titles produce the expected per-month counts, hours, people, decades and genre splits.
+5. Swipe seam: deck source excludes rated titles, session end writes episodes and triggers exactly one rewrite; the diff is computed line-wise.
+6. Route seam: signed-out gets 401 on every taste route; Play url is the provider link; no route references `serviceDeepLink`.
+7. Client rules: the composer exists on every page and opens a thread; no New chat or Tonight nav items render.
+
+## Build order
+
+A) titles cache, log field, memory tables + rewrite job + recall, You page with Numbers. B) Play via provider link, Netflix + IMDb imports, sidebar and nav cuts, signed-out landing. C) design research note, three boards, then the redesign of every screen from the winner (DESIGN.md rewritten). D) swipe-as-lore with the memory diff, wired as the new-account onboarding.
+
+## Out of scope (v4)
+
+Crawling, streaming-account logins (future), server-side conversation storage (revisit with real users), social/multiplayer, YouTube history, episode-level logging, a hosted agent harness, pricing.

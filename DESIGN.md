@@ -84,3 +84,7 @@ Plain, quick, a friend on the couch (see `src/lib/agent/system.md`). Buttons say
 1. Mood set: I propose three reference boards (Cursor chrome, Ryu's typographic work, one film-poster study) and Jake reacts before any screen is built.
 2. Each layout is built once as static HTML against this doc (gstack `design-html`), reviewed (`design-review`), then ported to components.
 3. Every PR touching UI runs the design review skill before merge.
+
+## v4 note (2026-09-11, session 4)
+
+This document is superseded for v4 by the process in `SPEC.md` → v4 → Design: research note first (`design/research.md`), three boards showing You, a thread and the log field, then this file is rewritten from the winning board. Standing constraints for the boards: posters are the only color; type carries the personality; the chat reads like messages, not documents; no bordered cards, no stat tiles, no mono uppercase labels. The taste map board is retired.
