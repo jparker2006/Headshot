@@ -12,6 +12,7 @@ The shared brain of who was in what with whom. Read `SPEC.md` first; it is the s
 - `src/lib/tmdb/` — TMDB client (pattern copied from Cinema Daddy, no UI copied).
 - `src/lib/agent/` — AI SDK agent loop on OpenRouter; tools under `tools/`. `shortest_path` results pass through unmodified; the agent never invents a path. v2: `fastpath.ts` classifies a question (path / costar / both / known-for / identify) and computes the deterministic result before the model; `answers.ts` keys stored answers by shape + sorted ids and replays hits with no model call; `identify.ts` solves "who is that guy from that show" over full casts; `show_on_brain` emits `focus-ego`.
 - `src/lib/answers/` — permalinks `/a/<slug>-<shortid>` for public stored answers and their Open Graph images.
+- v3 (Tonight): `src/lib/auth/` — Neon Managed Better Auth, magic link only, opt-in (nothing redirects; protected routes answer 401). `src/lib/taste/` — the private per-user store (watched / services / taste / tonight tables on the same Postgres, Memory + Postgres implementations, one conformance suite), Letterboxd import, providers list, the taste map. `src/lib/picks/` — the pick engine (pure; the graph-reason rule lives in `graphReason`), candidate pool (graph walk + TMDB discover), Tonight service and routes, swipe reducer, onboarding deck, nightly cron (`/api/cron/tonight`, scheduled in `vercel.json`, guarded by `CRON_SECRET`). `src/components/tonight/` — the Tonight panel and swipe deck; `src/app/onboarding` and `src/app/auth/sign-in` are the only signed-in pages.
 - `src/app/api/chat/` — streaming route; emits typed data parts the canvas animates.
 - `src/components/canvas|chat|page/` — sigma.js brain canvas, floating chat panel, wiki page side panel.
 - `tests/` — vitest, fixture-driven. Seams (highest first): graph engine (incl. constraint solving and characters), pipeline (incl. the TMDB stage over `tests/fixtures/tmdb`), agent loop with mocked model (fast path, cache replay, show_on_brain, face grid), route (permalinks, OG image, rate-limit cap), client rules (entity links, face-grid tap, ego default).
@@ -20,7 +21,8 @@ The shared brain of who was in what with whom. Read `SPEC.md` first; it is the s
 - Two graphs, never confused: the precomputed industry graph (read-only, in memory) and the brain (shared, mutable, in Postgres). The canvas renders the brain only.
 - Bacon number is computed, never estimated. Strong tier first, full graph fallback, report both when they differ.
 - One provider: OpenRouter. Model IDs live in env vars, never in code.
-- No auth, no per-user brains, no server-side conversations. Threads live in localStorage.
+- The shared brain has no auth and no per-user state; conversations are never stored server-side (threads live in localStorage). Accounts exist only for the v3 taste graph, and every taste row carries a user id. Signed-out Headshot must keep working in full.
+- Every pick carries exactly one reason and it must be a real graph fact (`graphReason`); no reason, no pick. Taste signals are explicit only (swipe, import, chat); nothing is inferred from clicks.
 - Fresh UI. Do not copy Cinema Daddy styling. Tailwind v4 with a hand-written token layer.
 - Node.js runtime (Fluid Compute). Never `runtime = 'edge'`.
 - Run `pnpm typecheck && pnpm lint && pnpm test` before claiming anything works.

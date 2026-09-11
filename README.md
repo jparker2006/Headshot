@@ -42,12 +42,20 @@ Set `HEADSHOT_GRAPH_URL` to the Blob URL the pipeline prints. Remove `HEADSHOT_M
 - **Pages** (`/api/page/:id`): brain page plus TMDB extras: rating, runtime, tagline, overview, trailer embed, where to watch (region from `STREAMING_REGION`, default US), bio and birthplace for people.
 - **Canvas** (`src/components/canvas`): sigma.js + graphology + ForceAtlas2. The whole-brain view lights the chosen path while an answer streams; afterwards the panel centers on the first person in the question (ego view with headshots on the first ring, drawer open). On a phone the answer comes first and the brain sits behind the header button.
 
+## Tonight (v3)
+Sign in with a magic link (Neon Managed Better Auth; enable the Magic Link plugin and trusted domains in the Neon console), tell it which services you pay for, upload your Letterboxd export or swipe fifty posters, and the home screen opens on three picks for tonight with one real graph reason each and a Play button into the service. A nightly cron (`/api/cron/tonight`, `CRON_SECRET`) refreshes every active user's picks and deck. The taste map (sidebar) is your private ego graph on the same canvas.
+
+Env: `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` (32+ chars), `CRON_SECRET`. Dev: `HEADSHOT_DEV_USER=<id>` signs every request in as that id outside production.
+
 ## API
 - `POST /api/chat` — the agent (UI message stream)
 - `GET /api/brain` — snapshot for the canvas
 - `GET /api/page/:imdbId` — a node's page and neighborhood
 - `GET /api/search?q=` — name search
 - `POST /api/expand` — double-click expand
+- `GET /api/tonight` · `POST /api/tonight/refresh` — the picks (sign-in required)
+- `GET/PUT /api/taste/services` · `POST /api/taste/import` · `GET /api/taste/deck` · `POST /api/taste/swipe` · `POST /api/taste/later` · `GET /api/taste/map`
+- `GET /api/cron/tonight` — the overnight run (bearer `CRON_SECRET`)
 - `GET /a/<slug>-<shortid>` — permalink for a public answer (indexable; `/opengraph-image` beneath it renders the share card)
 
 ## Scripts
