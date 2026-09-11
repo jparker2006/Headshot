@@ -1,0 +1,132 @@
+import { describe, it, expect } from "vitest";
+import { cosine, graphReason, pickTonight, tasteFacts, walkCandidates, type Candidate, type WatchedRow } from "@/lib/picks/engine";
+import { fixtureGraph } from "../agent/helpers";
+
+const APOLLO = "tt0000001";
+const GUMP = "tt0000002";
+const LATE_NIGHT = "tt0000003";
+const LONG_RUNNER = "tt0000004";
+const INDIE = "tt0000005";
+const MINI = "tt0000006";
+const GOOD_SERIES = "tt0000009";
+const HULU = 15;
+const MAX = 1899;
+
+const cand = (imdbId: string, extra: Partial<Candidate> = {}): Candidate => ({ imdbId, availableOn: [HULU], ...extra });
+
+describe("pick engine (pure)", () => {
+  it("cosine is 1 for identical, 0 for orthogonal, 0 for empty", () => {
+    expect(cosine([1, 0], [1, 0])).toBeCloseTo(1);
+    expect(cosine([1, 0], [0, 1])).toBe(0);
+    expect(cosine([], [])).toBe(0);
+  });
+
+  it("the reason rule: a real shared-people fact or nothing", async () => {
+    const graph = await fixtureGraph();
+    const liked = new Set([graph.idOf(APOLLO)!]);
+    const gump = graphReason(graph, graph.idOf(GUMP)!, liked);
+    expect(gump?.kind).toBe("shared-people");
+    expect(gump?.text).toMatch(/^(Tom Hanks and Gary Sinise|Gary Sinise and Tom Hanks), both in Apollo 13 which you liked$/);
+    expect(gump?.viaImdbIds).toEqual(expect.arrayContaining(["nm0000002", "nm0000004", APOLLO]));
+    // Mini Series (Gary Sinise, Ava Writer) shares nobody with Good Series (Jane Doe, Bill Paxton).
+    expect(graphReason(graph, graph.idOf(MINI)!, new Set([graph.idOf(GOOD_SERIES)!]))).toBeNull();
+  });
+
+  it("'your nth' when one person spans two liked titles", async () => {
+    const graph = await fixtureGraph();
+    const liked = new Set([graph.idOf(APOLLO)!, graph.idOf(GUMP)!]);
+    // Mini Series has Gary Sinise, who is in both liked films.
+    const r = graphReason(graph, graph.idOf(MINI)!, liked);
+    expect(r?.kind).toBe("your-nth");
+    expect(r?.text).toMatch(/^your 3rd Gary Sinise, after (Apollo 13 and Forrest Gump|Forrest Gump and Apollo 13)$/);
+  });
+
+  it("walks the graph for unseen candidates ranked by shared people", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }];
+    const out = walkCandidates(graph, watched);
+    expect(out.map((c) => c.imdbId)).not.toContain(APOLLO);
+    expect(out[0].imdbId).toBe(GUMP); // Hanks + Sinise, strong tier
+    expect(out.find((c) => c.imdbId === LATE_NIGHT)!.proximity).toBeLessThan(out[0].proximity); // weak tier counts half
+  });
+
+  it("picks three with reasons, at most one continue, available-first, rent price kept for the rest", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [
+      { imdbId: APOLLO, rating: "liked" },
+      { imdbId: GOOD_SERIES, rating: "liked", season: 2, episodesWatched: 3 },
+    ];
+    const r = pickTonight({
+      graph,
+      watched,
+      services: [HULU],
+      candidates: [cand(GUMP), cand(MINI, { availableOn: [MAX], rentPrice: "3.99" }), cand(LATE_NIGHT), cand(INDIE), cand(GOOD_SERIES), cand(LONG_RUNNER)],
+    });
+    expect(r.picks).toHaveLength(3);
+    expect(r.picks[0].kind).toBe("continue");
+    expect(r.picks[0].imdbId).toBe(GOOD_SERIES);
+    expect(r.picks[0].reason.text).toBe("one more. you're on season 2, 3 episodes in");
+    expect(r.picks[0].progress).toEqual({ season: 2, episodesWatched: 3 });
+    const starts = r.picks.filter((p) => p.kind === "start");
+    expect(starts.map((p) => p.imdbId)).toContain(GUMP);
+    expect(starts.every((p) => p.reason.text.length > 0)).toBe(true);
+    // Tiny Indie shares nobody with Apollo 13 (and may sit under the fixture's vote floor): rejected either way.
+    expect(r.rejected.find((x) => x.imdbId === INDIE)).toBeTruthy();
+    expect([...r.picks, ...r.deck].map((p) => p.imdbId)).not.toContain(INDIE);
+    // Mini Series is on Max, which the user does not have: ranked below Gump and carrying the rent price.
+    const mini = [...r.picks, ...r.deck].find((p) => p.imdbId === MINI)!;
+    expect(mini.onYourServices).toBe(false);
+    expect(mini.rentPrice).toBe("3.99");
+    const gump = [...r.picks, ...r.deck].find((p) => p.imdbId === GUMP)!;
+    expect(gump.score).toBeGreaterThan(mini.score);
+    expect(gump.rentPrice).toBeNull();
+  });
+
+  it("never re-picks dismissed or seen titles and honours runtime and energy filters", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: MINI, rating: "meh" }];
+    const r = pickTonight({
+      graph,
+      watched,
+      services: [HULU],
+      dismissed: [GUMP],
+      candidates: [cand(GUMP), cand(MINI), cand(LATE_NIGHT, { runtimeMin: 60 }), cand(LONG_RUNNER, { runtimeMin: 45 })],
+      filters: { maxRuntimeMin: 50, energy: "light" },
+    });
+    const ids = [...r.picks, ...r.deck].map((p) => p.imdbId);
+    expect(ids).not.toContain(GUMP);
+    expect(ids).not.toContain(MINI);
+    expect(ids).not.toContain(LATE_NIGHT); // too long
+    expect(r.rejected).toContainEqual({ imdbId: GUMP, why: "dismissed" });
+    expect(r.rejected).toContainEqual({ imdbId: LATE_NIGHT, why: "too long" });
+    expect(r.rejected).toContainEqual({ imdbId: LONG_RUNNER, why: "wrong energy" }); // Drama only, light asked
+  });
+
+  it("the taste vector moves the ranking when candidates carry vectors", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: GUMP, rating: "liked" }];
+    const base = { graph, watched, services: [HULU], candidates: [cand(MINI, { vector: [1, 0] }), cand(LATE_NIGHT, { vector: [0, 1] })] };
+    const a = pickTonight({ ...base, taste: { vector: [1, 0] } });
+    const b = pickTonight({ ...base, taste: { vector: [0, 1] } });
+    expect(a.picks[0].imdbId).toBe(MINI);
+    expect(b.picks[0].imdbId).toBe(LATE_NIGHT);
+  });
+
+  it("derives taste facts: people you keep watching, decades, tv share, avoided genres", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [
+      { imdbId: APOLLO, rating: "liked" },
+      { imdbId: GUMP, rating: "liked" },
+      { imdbId: GOOD_SERIES, rating: "liked" },
+      { imdbId: LATE_NIGHT, rating: "meh" },
+      { imdbId: MINI, rating: "meh" },
+    ];
+    const f = tasteFacts(graph, watched, { runtimes: new Map([[APOLLO, 140], [GUMP, 142]]) });
+    expect(f.people.slice(0, 2).map((p) => p.name).sort()).toEqual(["Gary Sinise", "Tom Hanks"]);
+    expect(f.people[0].count).toBe(2);
+    expect(f.eras).toEqual({ "1990s": 2, "2010s": 1 });
+    expect(f.tvShare).toBeCloseTo(1 / 3, 2);
+    expect(f.avgRuntimeFinished).toBe(141);
+    expect(f.genresAvoided).toEqual(expect.arrayContaining(["Talk-Show"]));
+  });
+});
