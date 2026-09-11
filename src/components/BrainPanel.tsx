@@ -37,7 +37,7 @@ export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExp
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
         <div className="pointer-events-auto flex items-center gap-2">
           {onBackToChat && (
-            <button onClick={onBackToChat} className="panel px-3 py-1.5 text-[12.5px] text-ink hover:bg-white/5">
+            <button onClick={onBackToChat} className="panel px-3 py-1.5 text-[12.5px] text-ink hover:bg-white/5 md:hidden">
               ← Chat
             </button>
           )}
