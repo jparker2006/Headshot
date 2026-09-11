@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #07080c; color: #e9e6dc; font-family: Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #f4b63f; } a:hover { color: #ffd070; }
+    .mono { font-family: "Geist Mono", ui-monospace, monospace; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #07080c; overflow: hidden;">
+
+  <!-- Left rail -->
+  <div style="width: 232px; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.08); padding: 20px 16px; gap: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;">
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #f4b63f; box-shadow: 0 0 10px #f4b63f;"></span>
+      Headshot
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 13px; color: #8b909e; padding: 6px 8px;">Tonight</div>
+      <div style="font-size: 13px; color: #e9e6dc; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.05);">Taste map</div>
+      <div style="font-size: 13px; color: #8b909e; padding: 6px 8px;">Brain</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="mono" style="font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #4d515c;">you keep watching</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+        <div style="display: flex; justify-content: space-between;"><span>Michael Mann</span><span class="mono" style="color: #4d515c;">4</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Andrew Scott</span><span class="mono" style="color: #4d515c;">3</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Jeremy Allen White</span><span class="mono" style="color: #4d515c;">3</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Greta Gerwig</span><span class="mono" style="color: #4d515c;">3</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Hoyte van Hoytema</span><span class="mono" style="color: #4d515c;">3</span></div>
+      </div>
+      <div class="mono" style="font-size: 10.5px; color: #4d515c; line-height: 1.6; padding-top: 6px;">avg runtime you finish 1h 52<br>strongest decade 1990s<br>tv vs film 61 / 39</div>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div class="mono" style="font-size: 11px; color: #4d515c; line-height: 1.6;">jake · 412 watched · 23 later</div>
+  </div>
+
+  <!-- The map -->
+  <div style="flex-grow: 1; position: relative; background: radial-gradient(ellipse 60% 55% at 50% 50%, rgba(125,140,196,0.10), transparent 70%), #07080c; min-width: 0;">
+    <svg viewBox="0 0 828 900" width="828" height="900" style="position: absolute; inset: 0;">
+      <!-- faint industry graph behind -->
+      <g fill="rgba(255,255,255,0.08)">
+        <circle cx="80" cy="120" r="2"></circle><circle cx="140" cy="60" r="2"></circle><circle cx="700" cy="90" r="2"></circle><circle cx="760" cy="200" r="2"></circle><circle cx="60" cy="700" r="2"></circle><circle cx="120" cy="820" r="2"></circle><circle cx="720" cy="780" r="2"></circle><circle cx="790" cy="640" r="2"></circle><circle cx="400" cy="40" r="2"></circle><circle cx="420" cy="860" r="2"></circle><circle cx="30" cy="420" r="2"></circle><circle cx="800" cy="440" r="2"></circle>
+      </g>
+      <!-- rings -->
+      <circle cx="414" cy="450" r="150" fill="none" stroke="rgba(255,255,255,0.06)"></circle>
+      <circle cx="414" cy="450" r="290" fill="none" stroke="rgba(255,255,255,0.04)"></circle>
+      <!-- spokes -->
+      <g stroke="rgba(255,255,255,0.10)" stroke-width="1">
+        <line x1="414" y1="450" x2="414" y2="300"></line><line x1="414" y1="450" x2="544" y2="375"></line><line x1="414" y1="450" x2="544" y2="525"></line><line x1="414" y1="450" x2="414" y2="600"></line><line x1="414" y1="450" x2="284" y2="525"></line><line x1="414" y1="450" x2="284" y2="375"></line>
+        <line x1="414" y1="300" x2="414" y2="160"></line><line x1="544" y1="375" x2="665" y2="305"></line><line x1="544" y1="525" x2="665" y2="595"></line><line x1="414" y1="600" x2="414" y2="740"></line><line x1="284" y1="525" x2="163" y2="595"></line><line x1="284" y1="375" x2="163" y2="305"></line>
+        <line x1="544" y1="375" x2="640" y2="200"></line><line x1="284" y1="525" x2="200" y2="700"></line>
+      </g>
+      <!-- ring 1: liked (accent), meh (dim) -->
+      <g>
+        <circle cx="414" cy="300" r="9" fill="#f4b63f"></circle>
+        <circle cx="544" cy="375" r="9" fill="#f4b63f"></circle>
+        <circle cx="544" cy="525" r="8" fill="#f4b63f"></circle>
+        <circle cx="414" cy="600" r="7" fill="#8b909e"></circle>
+        <circle cx="284" cy="525" r="8" fill="#f4b63f"></circle>
+        <circle cx="284" cy="375" r="7" fill="#8b909e"></circle>
+      </g>
+      <!-- ring 2: titles (title blue) and people -->
+      <g>
+        <circle cx="414" cy="160" r="6" fill="#7d8cc4"></circle><circle cx="665" cy="305" r="6" fill="#7d8cc4"></circle><circle cx="665" cy="595" r="6" fill="#7d8cc4"></circle><circle cx="414" cy="740" r="6" fill="#7d8cc4"></circle><circle cx="163" cy="595" r="6" fill="#7d8cc4"></circle><circle cx="163" cy="305" r="6" fill="#7d8cc4"></circle>
+        <circle cx="640" cy="200" r="5" fill="#ded9c9"></circle><circle cx="200" cy="700" r="5" fill="#ded9c9"></circle>
+      </g>
+      <!-- you -->
+      <circle cx="414" cy="450" r="30" fill="#0e1017" stroke="#f4b63f" stroke-width="2"></circle>
+      <text x="414" y="455" text-anchor="middle" font-family="Geist, sans-serif" font-size="12" font-weight="600" fill="#e9e6dc">you</text>
+      <!-- labels -->
+      <g font-family="Geist Mono, monospace" font-size="10.5" fill="#8b909e">
+        <text x="428" y="296">Michael Mann</text><text x="558" y="371">Andrew Scott</text><text x="558" y="529">Jeremy Allen White</text><text x="428" y="604">Christopher Nolan</text><text x="182" y="529" text-anchor="end" fill="#e9e6dc">Greta Gerwig</text><text x="270" y="371" text-anchor="end">Denis Villeneuve</text>
+        <text x="428" y="156">Heat</text><text x="679" y="301">Fleabag</text><text x="679" y="591">The Bear</text><text x="428" y="736">Oppenheimer</text><text x="149" y="591" text-anchor="end">Little Women</text><text x="149" y="301" text-anchor="end">Dune: Part Two</text><text x="654" y="196">Phoebe Waller-Bridge</text><text x="186" y="704" text-anchor="end">Saoirse Ronan</text>
+      </g>
+    </svg>
+    <div class="mono" style="position: absolute; left: 16px; bottom: 16px; font-size: 10.5px; color: #4d515c; line-height: 1.7;"><span style="color: #f4b63f;">●</span> liked &nbsp; <span style="color: #8b909e;">●</span> meh &nbsp; <span style="color: #7d8cc4;">●</span> title &nbsp; <span style="color: #ded9c9;">●</span> person<br>412 titles · 1,208 people · industry graph behind</div>
+    <div style="position: absolute; right: 16px; top: 16px; display: flex; gap: 8px;">
+      <div class="mono" style="font-size: 10.5px; color: #e9e6dc; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px;">people</div>
+      <div class="mono" style="font-size: 10.5px; color: #8b909e; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px;">titles</div>
+      <div class="mono" style="font-size: 10.5px; color: #8b909e; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px;">by decade</div>
+    </div>
+  </div>
+
+  <!-- Drawer: the selected person -->
+  <div style="width: 380px; border-left: 1px solid rgba(255,255,255,0.08); background: rgba(14,16,23,0.86); display: flex; flex-direction: column; padding: 24px; gap: 20px; box-sizing: border-box;">
+    <div style="display: flex; gap: 16px; align-items: flex-start;">
+      <div style="width: 72px; height: 96px; border-radius: 10px; background: #1b1a14; border: 1px solid #f4b63f; flex-shrink: 0;"></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+        <div class="mono" style="font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #4d515c;">person · in your map</div>
+        <div style="font-size: 22px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em;">Greta Gerwig</div>
+        <div class="mono" style="font-size: 11px; color: #8b909e;">3 of yours · all liked</div>
+      </div>
+    </div>
+    <div style="font-size: 16px; line-height: 1.4; letter-spacing: -0.005em;"><span style="color: #8b909e;">you liked all three: </span><span style="font-weight: 500;">Lady Bird</span><span style="color: #8b909e;">, </span><span style="font-weight: 500;">Little Women</span><span style="color: #8b909e;">, </span><span style="font-weight: 500;">Barbie</span><span style="color: #8b909e;">. the one you haven't seen is </span><span style="font-weight: 500;">Frances Ha</span><span style="color: #8b909e;">, on max.</span></div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <div style="height: 36px; padding: 0 16px; border-radius: 999px; background: #f4b63f; color: #000; font-size: 13px; font-weight: 600; display: flex; align-items: center;">Play Frances Ha</div>
+      <div class="mono" style="font-size: 11px; color: #8b909e;">later</div>
+    </div>
+    <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="mono" style="font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #4d515c;">connected to your other people</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+        <div style="display: flex; justify-content: space-between;"><span>Saoirse Ronan</span><span class="mono" style="color: #4d515c;">2 films</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Timothée Chalamet</span><span class="mono" style="color: #4d515c;">2 films</span></div>
+        <div style="display: flex; justify-content: space-between;"><span>Florence Pugh</span><span class="mono" style="color: #4d515c;">1 film</span></div>
+      </div>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div class="mono" style="font-size: 11px; color: #4d515c;">ask about her ↵</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

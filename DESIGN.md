@@ -54,10 +54,11 @@ Tonight is the surface and the name. Later is a chip, not a tab: dismissed picks
 Phone: one column. Picks as a full-width horizontal strip, reason under each, composer pinned at the bottom, brain and map behind header buttons.
 
 ### Title
-Poster left (or top on phone), name and year as the headline, one line of facts in mono (runtime, rating, where it is on your services), Play in accent, then "why this" (the graph reason, with the people and titles as links), then the trailer, then cast as a face row, then the wiki page. Nothing in a card; sections separate by space and one hairline.
+Board: `design/boards/Title.dc.html`. Poster left (168×252, or top on phone), name and year as the headline, one mono facts line (runtime, rating, genres, where it is on your services, rent price if not), the graph reason set large in the reason-line style, then Play in accent with "later" and "seen it" chips and the trailer length. Cast as a face row, with the people already in your taste map ringed in accent. The brain page below with names as links. Right panel: where this title sits in your taste (its people you already like, lit). Nothing in a card; sections separate by space and one hairline.
 
 ### Taste map
-The sigma canvas, the user at the center as a face, rings of rated people and titles colored by rating bucket, the industry graph faint behind. A single mono legend bottom-left. Clicking anything opens the title layout in the drawer.
+Board: `design/boards/TasteMap.dc.html`. The sigma canvas, the user at the center as a face, ring 1 the people you keep watching (accent = liked, ink-dim = meh, size by count), ring 2 their titles in title blue, the industry graph faint behind. Rail shows the derived facts (you keep watching, average runtime finished, strongest decade, TV vs film). Filter chips top-right (people, titles, by decade). A single mono legend bottom-left. Clicking anything opens the drawer: the person, the one thing of theirs you have not seen with Play, and how they connect to your other people.
+Home board: `design/boards/Main.dc.html`; the unchosen directions stay in `design/boards/` for reference.
 
 ## Components
 

@@ -1,0 +1,84 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home \u00b7 A frame, B reason lines"
+    },
+    {
+      "file": "Typographic.dc.html",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Board B \u00b7 Typographic"
+    },
+    {
+      "file": "Poster.dc.html",
+      "x": 3080,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Board C \u00b7 Poster study"
+    },
+    {
+      "file": "Title.dc.html",
+      "x": 0,
+      "y": 1100,
+      "w": 1440,
+      "h": 900,
+      "title": "Title \u00b7 Heat"
+    },
+    {
+      "file": "TasteMap.dc.html",
+      "x": 1540,
+      "y": 1100,
+      "w": 1440,
+      "h": 900,
+      "title": "Taste map \u00b7 you"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "board-a",
+      "x": 0,
+      "y": -150,
+      "w": 460,
+      "text": "Chosen: A's frame with B's reason lines. Tonight stays the surface; Later is a chip (dismissed picks + Letterboxd watchlist), and the pick engine draws from it first."
+    },
+    {
+      "id": "board-b",
+      "x": 1540,
+      "y": -150,
+      "w": 460,
+      "text": "B \u00b7 Typographic. The reason line is the hero; posters are footnotes. Serif headline, editorial rhythm.\nTradeoff: least like a streaming app, weakest at showing the art itself."
+    },
+    {
+      "id": "board-c",
+      "x": 3080,
+      "y": -150,
+      "w": 460,
+      "text": "C \u00b7 Poster study. The pick is a poster wall of three, the middle one lit. Cinematic, the picture does the work.\nTradeoff: closest to Netflix; needs real TMDB art to hold up."
+    },
+    {
+      "id": "title-note",
+      "x": 0,
+      "y": 950,
+      "w": 460,
+      "text": "Title. Poster, headline, one mono facts line, the reason set large, Play. Cast row with the people you already like lit. The brain page below, names as links. Right panel: where this title sits in your taste."
+    },
+    {
+      "id": "map-note",
+      "x": 1540,
+      "y": 950,
+      "w": 460,
+      "text": "Taste map. You at the center, ring 1 the people you keep watching (accent = liked, dim = meh), ring 2 their titles, the industry graph faint behind. Rail shows the derived facts. Drawer: a selected person, with the one thing of theirs you haven't seen."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
