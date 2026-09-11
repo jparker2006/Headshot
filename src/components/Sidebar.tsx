@@ -1,5 +1,6 @@
 "use client";
 import type { ThreadMeta } from "./chat/threads";
+import { AccountRow } from "./auth/AccountRow";
 
 interface Props {
   threads: ThreadMeta[];
@@ -72,6 +73,9 @@ export function Sidebar({ threads, activeId, onSelect, onNew, onDelete, stats, o
           </div>
           {stats.mine > 0 && <div className="font-mono text-[11.5px] text-session">{stats.mine} added by you</div>}
         </button>
+      </div>
+      <div className="border-t border-line px-4 py-2.5">
+        <AccountRow />
       </div>
     </aside>
   );

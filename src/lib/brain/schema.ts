@@ -138,3 +138,53 @@ export const pagesRelations = relations(pages, ({ many }) => ({
 export const pageRevisionsRelations = relations(pageRevisions, ({ one }) => ({
   page: one(pages, { fields: [pageRevisions.imdbId], references: [pages.imdbId] }),
 }));
+
+// ---- v3: the taste store -------------------------------------------------
+// The private half of the product. Three tables, keyed by Neon Auth user id,
+// holding only what the user told us explicitly. Deleting an account deletes
+// all three rows sets (`TasteStore.deleteUser`). Nothing else is kept.
+
+/** Four buckets, per SPEC v3: Letterboxd stars and swipes both land here. */
+export const watched = pgTable(
+  "watched",
+  {
+    userId: text("user_id").notNull(),
+    titleImdbId: text("title_imdb_id").notNull(),
+    /** liked | meh | unseen | want */
+    rating: text("rating").$type<"liked" | "meh" | "unseen" | "want">().notNull(),
+    watchedAt: timestamp("watched_at", { withTimezone: true, mode: "date" }),
+    /** letterboxd | swipe | chat */
+    source: text("source").$type<"letterboxd" | "swipe" | "chat">().notNull(),
+    /** Series only: the season the user has marked. */
+    season: integer("season"),
+    /** Series only: the counter behind "one more episode of X". */
+    episodesWatched: integer("episodes_watched").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.titleImdbId] }), index("watched_user_id_idx").on(t.userId)],
+);
+
+/** The services the user actually pays for, as TMDB watch-provider ids. */
+export const services = pgTable("services", {
+  userId: text("user_id").primaryKey(),
+  providerIds: jsonb("provider_ids").$type<number[]>().notNull().default([]),
+  region: text("region").notNull().default("US"),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+/** Derived facts about a user's taste. Facts shape mirrors `TasteFacts`. */
+export interface TasteFactsJson {
+  people: { imdbId: string; name: string; count: number }[];
+  eras: Record<string, number>;
+  avgRuntimeFinished: number | null;
+  tvShare: number | null;
+  genresAvoided: string[];
+}
+
+/** One row per user: the nightly taste vector plus the facts derived with it. */
+export const taste = pgTable("taste", {
+  userId: text("user_id").primaryKey(),
+  vector: vector("vector", { dimensions: EMBEDDING_DIMS }),
+  facts: jsonb("facts").$type<TasteFactsJson>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
