@@ -11,16 +11,17 @@ const SYSTEM = `You rewrite one-line reasons for tonight's movie and TV picks. V
 
 export async function narrateReasons(model: LanguageModel, picks: Pick[]): Promise<string[]> {
   if (picks.length === 0) return [];
-  const names = (p: Pick) => p.reason.viaImdbIds; // ids for the check below
-  void names;
   const prompt = picks.map((p, i) => `${i + 1}. ${p.name}: ${p.reason.text}`).join("\n");
   let lines: string[] = [];
   try {
-    const { text } = await generateText({ model, system: SYSTEM, prompt, maxOutputTokens: 300 });
+    // A thinking model spends its whole budget reasoning about two lines; turn that off for this call.
+    const { text } = await generateText({ model, system: SYSTEM, prompt, maxOutputTokens: 400, providerOptions: { openrouter: { reasoning: { enabled: false } } } });
     lines = text
       .split("\n")
       .map((l) => l.replace(/^\s*\d+[.)]\s*/, "").trim())
       .filter(Boolean);
+    // The model likes to echo "**Title**: " in front; the title is rendered separately.
+    lines = lines.map((l, i) => l.replace(new RegExp(`^\\*{0,2}${picks[i]?.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") ?? ""}\\*{0,2}\\s*[:.,-]\\s*`, "i"), ""));
   } catch {
     lines = [];
   }
@@ -29,7 +30,8 @@ export async function narrateReasons(model: LanguageModel, picks: Pick[]): Promi
     if (!line) return p.reason.text;
     // Every name the engine cited must still be there, or we keep the engine's line.
     const cited = citedNames(p.reason.text);
-    const ok = cited.every((n) => line.includes(n)) && line.length <= 160;
+    const plain = line.replace(/\*\*/g, "");
+    const ok = cited.every((n) => plain.includes(n)) && line.length <= 180;
     return ok ? line : p.reason.text;
   });
 }
@@ -37,8 +39,8 @@ export async function narrateReasons(model: LanguageModel, picks: Pick[]): Promi
 /** Names the engine's line cites: capitalized runs (people, titles). Good enough as a guard. */
 export function citedNames(text: string): string[] {
   const out: string[] = [];
-  for (const m of text.matchAll(/([A-Z][\p{L}'’.\-]*(?:\s+(?:[A-Z][\p{L}'’.\-]*|\d+|of|the|and|de|van|der))*)/gu)) {
-    const s = m[1].replace(/\s+(of|the|and|de|van|der)$/i, "").trim();
+  for (const m of text.matchAll(/([A-Z][\p{L}'’.\-]*(?:\s+(?:[A-Z][\p{L}'’.\-]*|\d+))*)/gu)) {
+    const s = m[1].trim();
     if (s.length >= 3) out.push(s);
   }
   return out;

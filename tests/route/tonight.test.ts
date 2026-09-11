@@ -74,6 +74,15 @@ describe("tonight routes", () => {
     expect(data.picks.map((p) => p.imdbId)).toContain(GUMP);
   });
 
+  it("the onboarding deck skips titles already rated", async () => {
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "swipe" }]);
+    const res = await handlers.deck(get("/api/taste/deck"));
+    expect(res.status).toBe(200);
+    const { cards } = (await res.json()) as { cards: { imdbId: string; name: string }[] };
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.map((c) => c.imdbId)).not.toContain(APOLLO);
+  });
+
   it("swipe stores committed rows with last action wins, ignoring junk", async () => {
     const res = await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "liked" }, { imdbId: "bad", rating: "liked" }, { imdbId: GUMP, rating: "nope" }] }));
     expect(await res.json()).toEqual({ ok: true, saved: 1 });

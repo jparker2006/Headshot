@@ -103,6 +103,8 @@ export interface TasteStore {
   /** Tonight's stored picks and deck (any JSON the picks service produced), or null before the first run. */
   setTonight(userId: string, data: Record<string, unknown>): Promise<void>;
   getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null>;
+  /** Users with any taste activity (watched or services) updated since `since`; the nightly job's audience. */
+  activeUsers(since: Date): Promise<string[]>;
   /** Delete account: every per-user table, nothing left behind. */
   deleteUser(userId: string): Promise<void>;
 }

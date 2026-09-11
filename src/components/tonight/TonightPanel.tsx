@@ -9,6 +9,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TonightData, PickView } from "@/lib/picks/view";
+import { lookupName } from "@/components/chat/lookup";
+import { SwipeDeck } from "./SwipeDeck";
 
 interface Props {
   /** Open a person or title in the drawer. */
@@ -46,6 +48,7 @@ export function useTonight(): [State, () => void] {
 export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
   const [state, refresh] = useTonight();
   const [later, setLater] = useState<Set<string>>(() => new Set());
+  const [swiping, setSwiping] = useState(false);
 
   if (state.status === "loading") return <p className="font-mono text-[11px] text-ink-faint">finding three for tonight…</p>;
   if (state.status === "signed-out")
@@ -106,8 +109,20 @@ export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
               <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">today&apos;s deck · {data.deck.length}</span>
               <span className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-dim">later · {data.laterCount + later.size}</span>
             </div>
-            <span className="font-mono text-[10.5px] text-ink-faint">seen it · liked it · not for me · want to</span>
+            <button type="button" onClick={() => setSwiping((v) => !v)} className="font-mono text-[10.5px] text-ink-faint hover:text-ink">
+              {swiping ? "back to the strip" : "swipe the deck →"}
+            </button>
           </div>
+          {swiping ? (
+            <SwipeDeck
+              cards={data.deck.map((d) => ({ imdbId: d.imdbId, name: d.name, year: d.year, posterUrl: d.posterUrl, hint: d.reason.text.replace(/\*\*/g, "") }))}
+              onCommit={(rows) => {
+                void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) }).catch(() => {});
+              }}
+              onSelectNode={onSelectNode}
+              onDone={() => setSwiping(false)}
+            />
+          ) : (
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
             {data.deck.map((d) => (
               <button key={d.imdbId} type="button" onClick={() => onSelectNode(d.imdbId)} className="aspect-[3/4] overflow-hidden rounded-md bg-white/[0.05] ring-1 ring-line hover:ring-accent/60" title={`${d.name}: ${d.reason.text}`}>
@@ -120,6 +135,7 @@ export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
               </button>
             ))}
           </div>
+          )}
         </div>
       )}
 
@@ -133,33 +149,58 @@ export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
 function PickRow({ pick, last, onSelectNode, onLater }: { pick: PickView; last: boolean; onSelectNode: (id: string) => void; onLater: () => void }) {
   const meta = [pick.providerNames[0]?.toLowerCase(), pick.year || null, pick.progress ? `s${pick.progress.season}` : pick.titleType === "movie" ? null : "series"].filter(Boolean).join(" · ");
   return (
-    <div className={`flex items-center gap-5 border-t border-line py-4 ${last ? "border-b" : ""}`}>
+    <div className={`flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line py-4 ${last ? "border-b" : ""}`}>
       <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="h-16 w-12 shrink-0 overflow-hidden rounded bg-white/[0.05] ring-1 ring-line hover:ring-accent/60" title={pick.name}>
         {pick.posterUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={pick.posterUrl} alt="" className="h-full w-full object-cover" />
         ) : null}
       </button>
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-[20px] leading-[1.25] tracking-[-0.01em] text-ink-dim md:text-[22px]">
-          <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="font-semibold text-ink hover:underline decoration-accent/60 underline-offset-4">
+      <div className="min-w-[200px] flex-1 space-y-1">
+        <p className="text-[17px] leading-[1.3] tracking-[-0.01em] text-ink-dim lg:text-[20px] xl:text-[22px]">
+          <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="font-semibold text-ink underline-offset-4 decoration-accent/60 hover:underline">
             {pick.name}
           </button>
           {pick.kind === "continue" ? ", " : ". "}
-          {pick.reason.text}
+          <ReasonLine text={pick.reason.text} onSelectNode={onSelectNode} />
         </p>
         <p className="font-mono text-[11px] text-ink-faint">{meta}</p>
       </div>
-      {pick.playUrl && pick.playLabel ? (
-        <a href={pick.playUrl} target="_blank" rel="noopener" className="flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black">
-          {pick.playLabel}
-        </a>
-      ) : (
-        <span className="font-mono text-[11px] text-ink-faint">not streaming</span>
-      )}
-      <button type="button" onClick={onLater} className="shrink-0 font-mono text-[11px] text-ink-faint hover:text-ink">
-        later
-      </button>
+      <div className="flex basis-full items-center gap-4 pl-[68px] lg:basis-auto lg:pl-0">
+        {pick.playUrl && pick.playLabel ? (
+          <a href={pick.playUrl} target="_blank" rel="noopener" className="flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black">
+            {pick.playLabel}
+          </a>
+        ) : (
+          <span className="font-mono text-[11px] text-ink-faint">not streaming</span>
+        )}
+        <button type="button" onClick={onLater} className="shrink-0 font-mono text-[11px] text-ink-faint hover:text-ink">
+          later
+        </button>
+      </div>
     </div>
+  );
+}
+
+/** The reason with its **names** as links: the cursor-for-movies rule applies here too. */
+function ReasonLine({ text, onSelectNode }: { text: string; onSelectNode: (id: string) => void }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") ? (
+          <button
+            key={i}
+            type="button"
+            className="font-medium text-ink underline-offset-4 decoration-accent/50 hover:underline"
+            onClick={() => void lookupName(part.slice(2, -2)).then((id) => id && onSelectNode(id))}
+          >
+            {part.slice(2, -2)}
+          </button>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
   );
 }

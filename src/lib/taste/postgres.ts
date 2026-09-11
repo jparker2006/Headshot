@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { BrainDatabase } from "@/lib/brain/postgres";
 import { services, taste, tonight, watched } from "@/lib/brain/schema";
@@ -191,6 +191,14 @@ export class PostgresTasteStore implements TasteStore {
   async getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null> {
     const [row] = await this.db.select().from(tonight).where(eq(tonight.userId, userId)).limit(1);
     return row ? { data: row.data, generatedAt: row.generatedAt.toISOString() } : null;
+  }
+
+  async activeUsers(since: Date): Promise<string[]> {
+    const [a, b] = await Promise.all([
+      this.db.selectDistinct({ userId: watched.userId }).from(watched).where(gte(watched.updatedAt, since)),
+      this.db.selectDistinct({ userId: services.userId }).from(services).where(gte(services.updatedAt, since)),
+    ]);
+    return [...new Set([...a, ...b].map((r) => r.userId))].sort();
   }
 
   async deleteUser(userId: string): Promise<void> {

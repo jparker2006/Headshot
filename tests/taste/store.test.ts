@@ -209,6 +209,17 @@ function describeStore(name: string, factory: StoreFactory) {
       expect(await store.getTonight("u1")).toBeNull();
     });
 
+    it("activeUsers lists users with recent watched or services activity", async () => {
+      let clock = new Date("2026-09-01T00:00:00.000Z");
+      const store = await factory({ now: () => clock });
+      await store.upsertWatched("old", [{ titleImdbId: "tt0000001", rating: "liked", source: "swipe" }]);
+      clock = new Date("2026-09-10T00:00:00.000Z");
+      await store.setServices("fresh-services", { providerIds: [8] });
+      await store.upsertWatched("fresh-watched", [{ titleImdbId: "tt0000002", rating: "meh", source: "chat" }]);
+      expect(await store.activeUsers(new Date("2026-09-05T00:00:00.000Z"))).toEqual(["fresh-services", "fresh-watched"]);
+      expect(await store.activeUsers(new Date("2026-08-01T00:00:00.000Z"))).toEqual(["fresh-services", "fresh-watched", "old"]);
+    });
+
     it("the injected clock stamps updatedAt", async () => {
       const store = await factory({ now: () => new Date("2026-09-11T10:00:00.000Z") });
       await store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);

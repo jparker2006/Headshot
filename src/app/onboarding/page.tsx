@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { SignInGate } from "@/components/auth/SignInGate";
 import type { Provider } from "@/lib/taste/providers";
+import { SwipeDeck, type DeckCard } from "@/components/tonight/SwipeDeck";
 
 interface ReviewItem {
   name: string;
@@ -36,7 +37,7 @@ interface SearchHit {
   kind: string;
 }
 
-const STEPS = ["Services", "Letterboxd", "Tonight"] as const;
+const STEPS = ["Services", "Letterboxd", "Deck", "Tonight"] as const;
 
 export default function OnboardingPage() {
   return (
@@ -66,7 +67,8 @@ function Onboarding() {
 
       {step === 0 && <ServicesStep onDone={() => setStep(1)} />}
       {step === 1 && <ImportStep onDone={() => setStep(2)} />}
-      {step === 2 && <DoneStep />}
+      {step === 2 && <SwipeStep onDone={() => setStep(3)} />}
+      {step === 3 && <DoneStep />}
     </>
   );
 }
@@ -397,7 +399,86 @@ function ReviewRow({
   );
 }
 
-// ---- step 3 ----------------------------------------------------------------
+// ---- step 3: the swipe deck -------------------------------------------------
+
+function SwipeStep({ onDone }: { onDone: () => void }) {
+  const [cards, setCards] = useState<DeckCard[] | null>(null);
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const r = await fetch("/api/taste/deck", { cache: "no-store" });
+      if (!r.ok) {
+        if (alive) setCards([]);
+        return;
+      }
+      const { cards } = (await r.json()) as { cards: { imdbId: string; name: string; year: number }[] };
+      const base: DeckCard[] = cards.map((c) => ({ ...c, posterUrl: null }));
+      if (alive) setCards(base);
+      // Posters, forty ids per call, best effort.
+      const ids = cards.map((c) => c.imdbId);
+      const images: Record<string, string | null> = {};
+      for (let i = 0; i < ids.length; i += 40) {
+        try {
+          const d = (await (await fetch(`/api/enrich?ids=${ids.slice(i, i + 40).join(",")}`)).json()) as { images: Record<string, { url: string | null }> };
+          for (const [k, v] of Object.entries(d.images)) images[k] = v.url;
+        } catch {
+          /* posters are optional */
+        }
+      }
+      if (alive) setCards(base.map((c) => ({ ...c, posterUrl: images[c.imdbId] ?? null })));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const finish = () => {
+    // Picks are computed now so Tonight is ready when the user lands on it.
+    void fetch("/api/tonight/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
+    onDone();
+  };
+
+  return (
+    <section className="mt-8">
+      <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Fifty quick ones</h1>
+      <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
+        Tap what you think of each. Nothing you skip counts. Twenty is enough to start; you can stop any time after that.
+      </p>
+      <div className="mt-8">
+        {cards === null && <p className="font-mono text-[11px] text-ink-faint">dealing the deck…</p>}
+        {cards && cards.length === 0 && <p className="text-[13px] text-ink-dim">Nothing to deal right now. You can still go on.</p>}
+        {cards && cards.length > 0 && (
+          <SwipeDeck
+            key={cards.map((c) => c.imdbId).join(",")}
+            cards={cards}
+            onCommit={(rows) => {
+              setCount(rows.length);
+              void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) }).catch(() => {});
+            }}
+            onDone={finish}
+          />
+        )}
+      </div>
+      <div className="mt-8 flex items-center gap-4">
+        <button
+          type="button"
+          onClick={finish}
+          disabled={cards === null || (cards.length > 0 && count < 20)}
+          className="inline-flex h-11 items-center rounded-full bg-accent px-5 text-[13.5px] font-semibold text-bg transition-[filter] duration-[120ms] hover:brightness-110 disabled:opacity-40"
+        >
+          {count < 20 && cards && cards.length > 0 ? `${20 - count} more to unlock` : "That's enough"}
+        </button>
+        <button type="button" onClick={finish} className="font-mono text-[11px] text-ink-faint hover:text-ink">
+          skip for now
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ---- step 4 ----------------------------------------------------------------
 
 function DoneStep() {
   return (

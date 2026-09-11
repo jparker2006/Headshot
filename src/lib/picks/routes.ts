@@ -8,6 +8,7 @@ import type { TmdbClient } from "@/lib/tmdb/client";
 import type { TasteStore } from "@/lib/taste/types";
 import type { Filters } from "./engine";
 import { computeTonight, loadTonight } from "./service";
+import { onboardingDeck } from "./onboarding";
 
 export interface TonightRouteDeps {
   userId: (req: Request) => Promise<string | null>;
@@ -50,6 +51,15 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       }
       const data = await computeTonight(await build(), userId, parseFilters(body));
       return data ? Response.json(data) : Response.json({ error: "no_taste_yet" }, { status: 404 });
+    },
+
+    /** GET /api/taste/deck — the fifty-title onboarding deck, minus anything already rated. */
+    async deck(req: Request): Promise<Response> {
+      const userId = await deps.userId(req);
+      if (!userId) return unauthorized();
+      const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
+      const rated = (await store.listWatched(userId)).map((r) => r.titleImdbId);
+      return Response.json({ cards: onboardingDeck(graph, { size: 50, exclude: rated }) });
     },
 
     /** POST /api/taste/later { imdbId } — "not tonight": the title joins Later (bucket `want`). */

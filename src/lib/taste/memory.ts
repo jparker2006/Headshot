@@ -126,6 +126,13 @@ export class MemoryTasteStore implements TasteStore {
     return row ? { data: structuredClone(row.data), generatedAt: row.generatedAt } : null;
   }
 
+  async activeUsers(since: Date): Promise<string[]> {
+    const out = new Set<string>();
+    for (const [userId, rows] of this.watchedByUser) if ([...rows.values()].some((r) => new Date(r.updatedAt) >= since)) out.add(userId);
+    for (const [userId, row] of this.servicesByUser) if (new Date(row.updatedAt) >= since) out.add(userId);
+    return [...out].sort();
+  }
+
   async deleteUser(userId: string): Promise<void> {
     this.tonightByUser.delete(userId);
     this.watchedByUser.delete(userId);

@@ -10,6 +10,7 @@ import { FaceGrid } from "./FaceGrid";
 import { faceTapAction } from "./faceGridRule";
 import { egoDefaultFor, egoDelayMs } from "./egoDefault";
 import { TonightPanel } from "@/components/tonight/TonightPanel";
+import { lookupName } from "./lookup";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 
@@ -37,19 +38,6 @@ const TOOL_LABELS: Record<string, string> = {
   write_page: "Writing a page",
   show_on_brain: "Centering the brain",
 };
-
-/** An emphasized name the message did not carry an id for: exact search match first, then the top hit. */
-async function lookupName(name: string): Promise<string | null> {
-  try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
-    if (!r.ok) return null;
-    const { hits } = (await r.json()) as { hits: { imdbId: string; name: string }[] };
-    const exact = hits.find((h) => h.name.toLowerCase() === name.trim().toLowerCase());
-    return (exact ?? hits[0])?.imdbId ?? null;
-  } catch {
-    return null;
-  }
-}
 
 const EXAMPLES = [
   "How is Timothée Chalamet connected to Meryl Streep?",

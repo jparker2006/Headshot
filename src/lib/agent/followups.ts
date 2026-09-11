@@ -7,7 +7,8 @@ export async function generateFollowups(model: LanguageModel, question: string, 
     system:
       "Suggest 3 short follow-up questions a curious film fan would ask next, each under 12 words, each answerable by a graph of who worked with whom (paths between people, shared credits, who was in both titles, what someone is known for). Vary the type. Use names that appear in the answer. Output one question per line, nothing else.",
     prompt: `Question: ${question}\n\nAnswer:\n${answer}`,
-    maxOutputTokens: 120,
+    maxOutputTokens: 200,
+    providerOptions: { openrouter: { reasoning: { enabled: false } } },
   });
   return text
     .split("\n")
