@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
+import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
 
 interface PageData {
   node: {
@@ -62,6 +63,19 @@ interface Props {
 export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Props) {
   const [data, setData] = useState<PageData | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Names on the page that link: the subject and its neighbors.
+  const pageEntities = useMemo<EntityIndex>(
+    () =>
+      makeIndex(
+        data
+          ? [
+              { imdbId: data.node.imdbId, name: data.node.name, kind: data.node.kind },
+              ...data.neighbors.map((n) => ({ imdbId: n.imdbId, name: n.name, kind: n.kind === "person" ? ("person" as const) : ("title" as const) })),
+            ]
+          : [],
+      ),
+    [data],
+  );
 
   // The parent keys this panel by imdbId, so state resets on every new node.
   useEffect(() => {
@@ -202,7 +216,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
             <section>
               <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Brain page</h3>
               {data.page ? (
-                <Markdown text={data.page.body} />
+                <Markdown text={data.page.body} entities={pageEntities} onSelectNode={onSelectNode} />
               ) : (
                 <p className="text-[13px] text-ink-faint">Nothing written yet. Ask a question that touches this and the agent will start a page.</p>
               )}

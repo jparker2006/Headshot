@@ -9,6 +9,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
@@ -96,6 +97,32 @@ export const questions = pgTable(
     text: text("text").notNull(),
   },
   (t) => [index("questions_at_idx").on(t.at)],
+);
+
+/**
+ * Stored answers (v2): one row per (shape, sorted entity ids). A repeat
+ * question replays the row without a model call; public rows get permalinks.
+ */
+export const answers = pgTable(
+  "answers",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    shape: text("shape").notNull(),
+    entityIds: jsonb("entity_ids").$type<string[]>().notNull(),
+    cacheKey: text("cache_key").notNull().unique(),
+    question: text("question").notNull(),
+    chosenPath: jsonb("chosen_path").$type<string[] | null>(),
+    summary: jsonb("summary"),
+    narration: text("narration").notNull(),
+    followups: jsonb("followups").$type<string[]>().notNull().default([]),
+    events: jsonb("events").$type<{ type: string; data: unknown }[]>().notNull().default([]),
+    graphBuildId: text("graph_build_id").notNull(),
+    sessionId: text("session_id"),
+    public: boolean("public").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("answers_created_at_idx").on(t.createdAt)],
 );
 
 /** pgvector embeddings for the top tier of entities, for fuzzy resolution. */

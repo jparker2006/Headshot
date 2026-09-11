@@ -63,6 +63,14 @@ export function HeadshotApp() {
     [store],
   );
 
+  // "Show me X on the brain": the agent asked for an ego view (derived-state pattern, no effect).
+  const egoReq = state.egoRequest;
+  const [seenEgoReq, setSeenEgoReq] = useState<number | null>(null);
+  if (egoReq && egoReq.nonce !== seenEgoReq) {
+    setSeenEgoReq(egoReq.nonce);
+    select(egoReq.imdbId);
+  }
+
   // A new answer lighting a path takes over the panel: leave ego mode so the brain shows it.
   const litCount = state.highlight.altNodes.size;
   const [seenLit, setSeenLit] = useState(litCount);

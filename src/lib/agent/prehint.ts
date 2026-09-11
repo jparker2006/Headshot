@@ -38,6 +38,8 @@ export function extractCandidates(question: string): string[] {
   for (const phrase of [...out]) {
     if (phrase.includes("'s ")) for (const part of phrase.split("'s ")) out.add(part.trim());
     if (phrase.includes("’s ")) for (const part of phrase.split("’s ")) out.add(part.trim());
+    // "Severance and Succession" is two titles far more often than one.
+    if (/ (and|&) /.test(phrase)) for (const part of phrase.split(/ (?:and|&) /)) out.add(part.trim());
   }
   return [...out].filter((p) => p.length >= 3);
 }

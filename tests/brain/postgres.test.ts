@@ -33,7 +33,7 @@ afterAll(async () => {
 
 async function truncate() {
   await db.execute(
-    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings"`,
+    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers"`,
   );
 }
 
@@ -197,6 +197,38 @@ function describeBrain(name: string, factory: BrainFactory) {
 
       clock = new Date("2026-03-01T12:00:00.000Z");
       expect(await brain.countQuestionsToday()).toBe(2);
+    });
+
+    it("saveAnswer stores by cache key, replaces in place, and is found by id", async () => {
+      const brain = await factory({ now: () => new Date("2026-09-11T10:00:00.000Z") });
+      const base = {
+        id: "ab12cd",
+        slug: "kevin-bacon-to-gary-sinise",
+        shape: "path",
+        entityIds: ["nm0000001", "nm0000004"],
+        cacheKey: "path:nm0000001,nm0000004",
+        question: "How is Kevin Bacon connected to Gary Sinise?",
+        chosenPath: ["nm0000001", "tt0000001", "nm0000004"],
+        summary: { baconNumber: 1 },
+        narration: "One hop via Apollo 13.",
+        followups: ["Who else was in Apollo 13?"],
+        events: [{ type: "node", data: { imdbId: "nm0000001" } }],
+        graphBuildId: "build-1",
+        sessionId: "s1",
+        public: true,
+      };
+      expect(await brain.getAnswer(base.cacheKey)).toBeNull();
+      const saved = await brain.saveAnswer(base);
+      expect(saved.createdAt).toBe("2026-09-11T10:00:00.000Z");
+      expect(await brain.getAnswer(base.cacheKey)).toMatchObject(base);
+      expect(await brain.answerById("ab12cd")).toMatchObject({ slug: base.slug, events: base.events });
+      expect(await brain.answerById("nope")).toBeNull();
+
+      // A recompute after a new graph build replaces the row for the same key.
+      await brain.saveAnswer({ ...base, id: "zz99yy", narration: "Rewritten.", graphBuildId: "build-2" });
+      const again = await brain.getAnswer(base.cacheKey);
+      expect(again).toMatchObject({ id: "zz99yy", narration: "Rewritten.", graphBuildId: "build-2" });
+      expect(await brain.answerById("ab12cd")).toBeNull();
     });
   });
 }

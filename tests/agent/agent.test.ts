@@ -20,7 +20,8 @@ describe("agent loop (mocked model seam)", () => {
       { text: "Kevin Bacon → Apollo 13 → Gary Sinise. Bacon number 1." },
     ]);
 
-    const chunks = await collect(runAgent({ model, graph, brain, tmdb: null, messages: [userMessage(question)], sessionId: "s1" }));
+    // fastPath off: this test exercises the model-driven tool seam end to end.
+    const chunks = await collect(runAgent({ model, graph, brain, tmdb: null, messages: [userMessage(question)], sessionId: "s1", fastPath: false }));
 
     // Model was called once per scripted step and saw tool results between steps.
     expect(model.doStreamCalls).toHaveLength(5);

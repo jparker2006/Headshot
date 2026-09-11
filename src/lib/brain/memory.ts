@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Overlay, OverlayEdge } from "@/lib/graph/engine";
-import type { Brain, BrainEdge, BrainNode, BrainNodeInput, BrainSnapshot, Page } from "./types";
+import type { Brain, BrainEdge, BrainNode, BrainNodeInput, BrainSnapshot, Page, StoredAnswer, StoredAnswerInput } from "./types";
 
 interface Persisted {
   nodes: BrainNode[];
@@ -9,6 +9,7 @@ interface Persisted {
   pages: Page[];
   sessions: Record<string, string[]>;
   questions: { at: string; sessionId?: string; text: string }[];
+  answers?: StoredAnswer[];
 }
 
 /**
@@ -21,6 +22,7 @@ export class MemoryBrain implements Brain {
   private pages = new Map<string, Page>();
   private sessions = new Map<string, Set<string>>();
   private questions: { at: string; sessionId?: string; text: string }[] = [];
+  private answers = new Map<string, StoredAnswer>();
   private now: () => Date;
   private file?: string;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -39,6 +41,7 @@ export class MemoryBrain implements Brain {
       for (const pg of p.pages ?? []) this.pages.set(pg.imdbId, pg);
       for (const [sid, ids] of Object.entries(p.sessions ?? {})) this.sessions.set(sid, new Set(ids));
       this.questions = p.questions ?? [];
+      for (const a of p.answers ?? []) this.answers.set(a.cacheKey, a);
       console.log(`[brain] loaded ${this.nodes.size} nodes, ${this.edges.size} overlay edges, ${this.pages.size} pages from ${file}`);
     } catch (err) {
       console.warn(`[brain] could not read ${file}:`, err);
@@ -62,6 +65,7 @@ export class MemoryBrain implements Brain {
       pages: [...this.pages.values()],
       sessions: Object.fromEntries([...this.sessions].map(([k, v]) => [k, [...v]])),
       questions: this.questions,
+      answers: [...this.answers.values()],
     };
     mkdirSync(path.dirname(this.file), { recursive: true });
     writeFileSync(this.file, JSON.stringify(data));
@@ -140,6 +144,22 @@ export class MemoryBrain implements Brain {
   async recordQuestion(input: { sessionId?: string; text: string }): Promise<void> {
     this.questions.push({ at: this.now().toISOString(), ...input });
     this.dirty();
+  }
+
+  async getAnswer(cacheKey: string): Promise<StoredAnswer | null> {
+    return this.answers.get(cacheKey) ?? null;
+  }
+
+  async answerById(id: string): Promise<StoredAnswer | null> {
+    for (const a of this.answers.values()) if (a.id === id) return a;
+    return null;
+  }
+
+  async saveAnswer(input: StoredAnswerInput): Promise<StoredAnswer> {
+    const answer: StoredAnswer = { ...input, createdAt: input.createdAt ?? this.now().toISOString() };
+    this.answers.set(answer.cacheKey, answer);
+    this.dirty();
+    return answer;
   }
 
   /** No-op: embeddings need pgvector, which only the Postgres brain has. */

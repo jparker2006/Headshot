@@ -7,6 +7,7 @@ import type { BrainStore } from "@/components/canvas/brainStore";
 import { Markdown } from "./Markdown";
 import { PathGraphic } from "./PathGraphic";
 import { loadMessages, renameThread, saveMessages } from "./threads";
+import { threadIndex, type EntityIndex } from "./entityLinks";
 
 interface Props {
   threadId: string;
@@ -29,7 +30,21 @@ const TOOL_LABELS: Record<string, string> = {
   expand_node: "Expanding the brain",
   read_page: "Reading a page",
   write_page: "Writing a page",
+  show_on_brain: "Centering the brain",
 };
+
+/** An emphasized name the message did not carry an id for: exact search match first, then the top hit. */
+async function lookupName(name: string): Promise<string | null> {
+  try {
+    const r = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
+    if (!r.ok) return null;
+    const { hits } = (await r.json()) as { hits: { imdbId: string; name: string }[] };
+    const exact = hits.find((h) => h.name.toLowerCase() === name.trim().toLowerCase());
+    return (exact ?? hits[0])?.imdbId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const EXAMPLES = [
   "How is Timothée Chalamet connected to Meryl Streep?",
@@ -92,6 +107,14 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   };
 
   const chips = useMemo(() => followUps(messages), [messages]);
+  const entities = useMemo(() => threadIndex(messages), [messages]);
+  const lookup = (name: string) => {
+    store.setStatus(`Looking up ${name}…`);
+    void lookupName(name).then((id) => {
+      store.setStatus(id ? null : `No match for ${name}`);
+      if (id) onSelectNode(id);
+    });
+  };
 
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Chat">
@@ -116,7 +139,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
           )}
           <div className="space-y-6">
             {messages.map((m) => (
-              <Message key={m.id} m={m} onSelectNode={onSelectNode} />
+              <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} />
             ))}
             {busy && (
               <div className="flex items-center gap-2 text-[13px] text-ink-dim">
@@ -201,7 +224,7 @@ function Chip({ children, onClick }: { children: string; onClick: () => void }) 
   );
 }
 
-function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id: string) => void }) {
+function Message({ m, onSelectNode, entities, onLookup }: { m: HeadshotUIMessage; onSelectNode: (id: string) => void; entities: EntityIndex; onLookup: (name: string) => void }) {
   if (m.role === "user") {
     const text = m.parts.filter((p) => p.type === "text").map((p) => ("text" in p ? p.text : "")).join("");
     return (
@@ -214,7 +237,7 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
   return (
     <div className="rise space-y-2">
       {m.parts.map((part, i) => {
-        if (part.type === "text") return <Markdown key={i} text={part.text} />;
+        if (part.type === "text") return <Markdown key={i} text={part.text} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />;
         if (part.type === "data-paths")
           return <PathGraphic key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
         if (part.type.startsWith("tool-")) {

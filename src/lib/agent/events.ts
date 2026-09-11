@@ -61,7 +61,19 @@ export type HeadshotDataParts = {
   followups: { questions: string[] };
   /** Transient status line ("Searching TMDB for…"). */
   status: { text: string };
+  /** The panel should switch to this node's ego view and open its drawer ("show me him on the brain"). */
+  "focus-ego": { imdbId: string; name: string };
+  /**
+   * The server answered part of the question before the model ran (v2 fast
+   * path) or replayed a stored answer. `cached` means no model was called.
+   */
+  fast: { shape: AnswerShape; imdbIds: string[]; cached: boolean; answerId?: string; stale?: boolean };
+  /** The answer was stored; `public` answers get a permalink at /a/<slug>-<id>. */
+  answer: { id: string; slug: string; public: boolean };
 };
+
+/** Question shapes the server can answer deterministically (v2 fast path). */
+export type AnswerShape = "path" | "costar" | "both" | "known-for" | "identify";
 
 export type HeadshotUIMessage = UIMessage<never, HeadshotDataParts>;
 

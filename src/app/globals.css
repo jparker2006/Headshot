@@ -86,3 +86,23 @@ body {
 .prose-headshot p + p { margin-top: 0.6em; }
 .prose-headshot strong { color: var(--ink); font-weight: 600; }
 .prose-headshot em { color: var(--accent); font-style: normal; }
+/* Cursor for movies: emphasized entity names are links into the drawer. */
+.entity-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--accent) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: background-color 120ms, text-decoration-color 120ms;
+}
+.entity-link:hover, .entity-link:focus-visible { background: color-mix(in oklab, var(--accent) 18%, transparent); text-decoration-color: var(--accent); outline: none; }
+.entity-link[data-kind="title"] { text-decoration-style: dotted; }
+.entity-link-soft { text-decoration-color: color-mix(in oklab, var(--ink) 25%, transparent); }

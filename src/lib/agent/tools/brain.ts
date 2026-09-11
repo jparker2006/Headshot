@@ -4,12 +4,27 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import type { AgentContext } from "../context";
+import { type AgentContext, toCanvasNode, touch } from "../context";
 
 const imdbId = z.string().regex(/^(nm|tt)\d+$/);
 
 export function brainTools(ctx: AgentContext) {
   return {
+    show_on_brain: tool({
+      description:
+        "Center the brain panel on a person or title: switches to their ego view (everyone one and two hops away) and opens their page. Use whenever the user asks to see or show someone on the brain, graph, or map. Needs no path. Say one short line after calling it.",
+      inputSchema: z.object({ imdbId }),
+      execute: async ({ imdbId }) => {
+        const node = ctx.graph.nodeByImdbId(imdbId);
+        const stored = node ? null : await ctx.brain.getNode(imdbId);
+        if (!node && !stored) return { error: "unknown_entity", hint: "Resolve the name with find_entities first." };
+        const canvas = node ? toCanvasNode(node) : { ...stored!, inIndustryGraph: false };
+        await touch(ctx, [canvas]);
+        ctx.emit("focus-ego", { imdbId, name: canvas.name });
+        return { ok: true, showing: canvas.name };
+      },
+    }),
+
     read_page: tool({
       description: "Read the brain's wiki page for an entity: what earlier questions already figured out. Check before re-deriving trivia.",
       inputSchema: z.object({ imdbId }),

@@ -2,8 +2,8 @@ import { and, asc, cosineDistance, eq, gte, isNotNull, lt, sql } from "drizzle-o
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { Overlay, OverlayEdge } from "@/lib/graph/engine";
-import { embeddings, nodes, overlayEdges, pageRevisions, pages, questions } from "./schema";
-import type { Brain, BrainEdge, BrainNode, BrainNodeInput, BrainSnapshot, Page } from "./types";
+import { answers, embeddings, nodes, overlayEdges, pageRevisions, pages, questions } from "./schema";
+import type { Brain, BrainEdge, BrainNode, BrainNodeInput, BrainSnapshot, Page, StoredAnswer, StoredAnswerInput } from "./types";
 
 /**
  * Any Postgres-dialect drizzle database. Neon's HTTP driver in production,
@@ -28,6 +28,26 @@ function toBrainNode(row: NodeRow): BrainNode {
     ...(row.posterUrl === null ? {} : { posterUrl: row.posterUrl }),
     ...(row.knownAs === null ? {} : { knownAs: row.knownAs }),
     firstSeenAt: row.firstSeenAt.toISOString(),
+  };
+}
+
+function toStoredAnswer(row: typeof answers.$inferSelect): StoredAnswer {
+  return {
+    id: row.id,
+    slug: row.slug,
+    shape: row.shape,
+    entityIds: row.entityIds,
+    cacheKey: row.cacheKey,
+    question: row.question,
+    chosenPath: row.chosenPath ?? null,
+    summary: row.summary ?? null,
+    narration: row.narration,
+    followups: row.followups,
+    events: row.events,
+    graphBuildId: row.graphBuildId,
+    sessionId: row.sessionId,
+    public: row.public,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -211,6 +231,59 @@ export class PostgresBrain implements Brain {
     await this.db
       .insert(questions)
       .values({ at: this.now(), sessionId: input.sessionId ?? null, text: input.text });
+  }
+
+  async getAnswer(cacheKey: string): Promise<StoredAnswer | null> {
+    const [row] = await this.db.select().from(answers).where(eq(answers.cacheKey, cacheKey)).limit(1);
+    return row ? toStoredAnswer(row) : null;
+  }
+
+  async answerById(id: string): Promise<StoredAnswer | null> {
+    const [row] = await this.db.select().from(answers).where(eq(answers.id, id)).limit(1);
+    return row ? toStoredAnswer(row) : null;
+  }
+
+  async saveAnswer(input: StoredAnswerInput): Promise<StoredAnswer> {
+    const createdAt = input.createdAt ? new Date(input.createdAt) : this.now();
+    const values = {
+      id: input.id,
+      slug: input.slug,
+      shape: input.shape,
+      entityIds: input.entityIds,
+      cacheKey: input.cacheKey,
+      question: input.question,
+      chosenPath: input.chosenPath,
+      summary: input.summary,
+      narration: input.narration,
+      followups: input.followups,
+      events: input.events,
+      graphBuildId: input.graphBuildId,
+      sessionId: input.sessionId,
+      public: input.public,
+      createdAt,
+    };
+    // One row per cache key: a recompute after a new graph build replaces the old answer in place.
+    await this.db
+      .insert(answers)
+      .values(values)
+      .onConflictDoUpdate({
+        target: answers.cacheKey,
+        set: {
+          id: sql`excluded.id`,
+          slug: sql`excluded.slug`,
+          question: sql`excluded.question`,
+          chosenPath: sql`excluded.chosen_path`,
+          summary: sql`excluded.summary`,
+          narration: sql`excluded.narration`,
+          followups: sql`excluded.followups`,
+          events: sql`excluded.events`,
+          graphBuildId: sql`excluded.graph_build_id`,
+          sessionId: sql`excluded.session_id`,
+          public: sql`excluded.public`,
+          createdAt: sql`excluded.created_at`,
+        },
+      });
+    return { ...input, createdAt: createdAt.toISOString() };
   }
 
   /** Store or replace embeddings for the top tier of entities. */

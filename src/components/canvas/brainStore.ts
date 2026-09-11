@@ -47,6 +47,8 @@ export interface BrainState {
   highlight: Highlight;
   status: string | null;
   loaded: boolean;
+  /** "Show me X on the brain": the app switches to this node's ego view. Nonce so repeats fire. */
+  egoRequest: { imdbId: string; nonce: number } | null;
 }
 
 export const COLORS = {
@@ -82,6 +84,7 @@ export class BrainStore {
     highlight: emptyHighlight(),
     status: null,
     loaded: false,
+    egoRequest: null,
   };
   private hopTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -244,6 +247,19 @@ export class BrainStore {
       }
       case "page": {
         this.bump({ status: "Wrote a page" });
+        return;
+      }
+      case "focus-ego": {
+        const d = data as HeadshotDataParts["focus-ego"];
+        this.bump({ egoRequest: { imdbId: d.imdbId, nonce: Date.now() + Math.random() }, status: `Showing ${d.name}` });
+        return;
+      }
+      case "fast": {
+        const d = data as HeadshotDataParts["fast"];
+        this.bump({ status: d.cached ? "Remembered this one" : "Computed before asking the model" });
+        return;
+      }
+      case "answer": {
         return;
       }
     }

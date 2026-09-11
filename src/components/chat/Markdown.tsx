@@ -1,19 +1,50 @@
 "use client";
 import type { ReactNode } from "react";
+import { type EntityIndex, looksLikeName, resolveEntity } from "./entityLinks";
 
-/** Tiny markdown: paragraphs, **bold**, *emphasis*, `code`, and → arrows kept as-is. */
-export function Markdown({ text }: { text: string }) {
+interface Props {
+  text: string;
+  /** Names → ids from the message; emphasized names that match become links. */
+  entities?: EntityIndex;
+  onSelectNode?: (imdbId: string) => void;
+  /** Called for an emphasized name that is not in the index; resolves via search. */
+  onLookup?: (name: string) => void;
+}
+
+/** Tiny markdown: paragraphs, **bold**, *emphasis*, `code`, and → arrows kept as-is. Emphasized entity names become links. */
+export function Markdown({ text, entities, onSelectNode, onLookup }: Props) {
   const paragraphs = text.split(/\n{2,}/).filter((p) => p.trim().length > 0);
+  const link = (name: string, node: ReactNode, key: number): ReactNode => {
+    if (!onSelectNode) return node;
+    const hit = entities ? resolveEntity(entities, name) : null;
+    if (hit) {
+      return (
+        <button key={key} type="button" onClick={() => onSelectNode(hit.imdbId)} className="entity-link" data-kind={hit.kind} title={`Open ${hit.name}`}>
+          {node}
+        </button>
+      );
+    }
+    if (onLookup && looksLikeName(name)) {
+      return (
+        <button key={key} type="button" onClick={() => onLookup(name)} className="entity-link entity-link-soft" title={`Look up ${name}`}>
+          {node}
+        </button>
+      );
+    }
+    return node;
+  };
   return (
     <div className="prose-headshot text-[14.5px] leading-[1.55] text-ink">
       {paragraphs.map((p, i) => (
-        <p key={i}>{inline(p)}</p>
+        <p key={i}>{inline(p, link)}</p>
       ))}
     </div>
   );
 }
 
-function inline(text: string): ReactNode[] {
+type Linker = (name: string, node: ReactNode, key: number) => ReactNode;
+
+function inline(text: string, link: Linker): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
   let last = 0;
@@ -22,9 +53,14 @@ function inline(text: string): ReactNode[] {
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(lines(text.slice(last, m.index), k++));
     const tok = m[0];
-    if (tok.startsWith("**")) out.push(<strong key={k++}>{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith("`")) out.push(<code key={k++} className="font-mono text-[13px] text-accent">{tok.slice(1, -1)}</code>);
-    else out.push(<em key={k++}>{tok.slice(1, -1)}</em>);
+    if (tok.startsWith("**")) {
+      const name = tok.slice(2, -2);
+      out.push(link(name, <strong key={k++}>{name}</strong>, k++));
+    } else if (tok.startsWith("`")) out.push(<code key={k++} className="font-mono text-[13px] text-accent">{tok.slice(1, -1)}</code>);
+    else {
+      const name = tok.slice(1, -1);
+      out.push(link(name, <em key={k++}>{name}</em>, k++));
+    }
     last = m.index + tok.length;
   }
   if (last < text.length) out.push(lines(text.slice(last), k++));
