@@ -220,7 +220,7 @@ function Chip({ children, onClick, scroll = false }: { children: string; onClick
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-left text-[12.5px] text-ink transition hover:border-accent/70 hover:bg-accent/25 ${
+      className={`rounded-full border border-line bg-white/[0.02] px-3 py-1.5 text-left text-[12.5px] text-ink-dim transition-colors duration-[120ms] hover:border-line-strong hover:bg-white/[0.05] hover:text-ink ${
         scroll ? "shrink-0 whitespace-nowrap md:shrink md:whitespace-normal" : ""
       }`}
     >
