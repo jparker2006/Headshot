@@ -1,0 +1,65 @@
+import { createUIMessageStreamResponse, type LanguageModel } from "ai";
+import { cookies } from "next/headers";
+import { getIndustryGraph, type IndustryGraph } from "@/lib/graph";
+import { getBrain, type Brain } from "@/lib/brain";
+import { tmdbFromEnv, type TmdbClient } from "@/lib/tmdb/client";
+import { chatModelFromEnv } from "@/lib/agent/provider";
+import { runAgent, lastUserText, type HeadshotUIMessage } from "@/lib/agent";
+import { checkLimits, SESSION_COOKIE, newSessionId } from "@/lib/limits";
+
+export const maxDuration = 120;
+
+export interface ChatDeps {
+  model: () => LanguageModel;
+  graph: () => Promise<IndustryGraph>;
+  brain: () => Promise<Brain>;
+  tmdb: () => TmdbClient | null;
+  /** Resolve the session id for this request; may mint one. */
+  session: (req: Request) => Promise<{ id: string; setCookie: boolean }>;
+}
+
+/** Route handler factory so tests can inject a mock model, a fixture graph, and a memory brain. */
+export function createChatHandler(deps: ChatDeps) {
+  return async function POST(req: Request): Promise<Response> {
+    let body: { messages?: HeadshotUIMessage[] };
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const messages = body.messages ?? [];
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return Response.json({ error: "messages required" }, { status: 400 });
+    }
+
+    const [graph, brain] = await Promise.all([deps.graph(), deps.brain()]);
+    const session = await deps.session(req);
+
+    const limit = await checkLimits({ brain, ip: clientIp(req) });
+    if (!limit.ok) return Response.json({ error: limit.reason, resting: true }, { status: 429 });
+    await brain.recordQuestion({ sessionId: session.id, text: lastUserText(messages) });
+
+    const stream = runAgent({ model: deps.model(), graph, brain, tmdb: deps.tmdb(), messages, sessionId: session.id });
+    const res = createUIMessageStreamResponse({ stream });
+    if (session.setCookie) {
+      res.headers.append("Set-Cookie", `${SESSION_COOKIE}=${session.id}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`);
+    }
+    return res;
+  };
+}
+
+function clientIp(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
+}
+
+export const POST = createChatHandler({
+  model: chatModelFromEnv,
+  graph: getIndustryGraph,
+  brain: getBrain,
+  tmdb: tmdbFromEnv,
+  session: async () => {
+    const jar = await cookies();
+    const existing = jar.get(SESSION_COOKIE)?.value;
+    return existing ? { id: existing, setCookie: false } : { id: newSessionId(), setCookie: true };
+  },
+});
