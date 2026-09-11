@@ -54,8 +54,20 @@ export interface TmdbTitle {
 }
 
 export interface Provider {
+  /** TMDB watch-provider id (e.g. Netflix 8, Hulu 15, Max 1899). */
+  id?: number;
   name: string;
   logoUrl?: string;
+}
+
+export interface DiscoverHit {
+  tmdbId: number;
+  mediaType: "movie" | "tv";
+  name: string;
+  year?: number;
+  popularity: number;
+  voteCount: number;
+  posterUrl?: string;
 }
 
 export interface TitleFacts {
@@ -236,8 +248,38 @@ export class TmdbClient {
     const r = d?.results?.[region];
     if (!r) return null;
     const list = (k: string): Provider[] =>
-      Array.isArray(r[k]) ? (r[k] as Record<string, unknown>[]).map((p) => ({ name: String(p.provider_name), logoUrl: imageUrl(String(p.logo_path ?? ""), "w92") })) : [];
+      Array.isArray(r[k])
+        ? (r[k] as Record<string, unknown>[]).map((p) => ({ id: Number(p.provider_id), name: String(p.provider_name), logoUrl: imageUrl(String(p.logo_path ?? ""), "w92") }))
+        : [];
     return { link: r.link ? String(r.link) : undefined, flatrate: list("flatrate"), rent: list("rent"), buy: list("buy"), ads: list("ads") };
+  }
+
+  /**
+   * Titles streaming on the given providers in a region, most popular first.
+   * One page (20) per call; the pick engine's "new on your services" pool.
+   */
+  async discoverByProviders(mediaType: "movie" | "tv", providerIds: number[], opts: { region?: string; page?: number; sort?: "popularity.desc" | "primary_release_date.desc" | "first_air_date.desc" } = {}): Promise<DiscoverHit[]> {
+    if (providerIds.length === 0) return [];
+    const d = await this.get<{ results: Record<string, unknown>[] }>(`/discover/${mediaType}`, {
+      with_watch_providers: providerIds.join("|"),
+      watch_region: opts.region ?? "US",
+      with_watch_monetization_types: "flatrate",
+      sort_by: opts.sort ?? "popularity.desc",
+      page: String(opts.page ?? 1),
+      "vote_count.gte": "200",
+    });
+    return (d?.results ?? []).map((r) => {
+      const date = String(r.release_date ?? r.first_air_date ?? "");
+      return {
+        tmdbId: Number(r.id),
+        mediaType,
+        name: String(r.title ?? r.name ?? ""),
+        year: date ? Number(date.slice(0, 4)) : undefined,
+        popularity: Number(r.popularity ?? 0),
+        voteCount: Number(r.vote_count ?? 0),
+        posterUrl: imageUrl(String(r.poster_path ?? "")),
+      };
+    });
   }
 
   /** Title facts for a page: rating, runtime, tagline, overview, poster. Lighter than title(). */
