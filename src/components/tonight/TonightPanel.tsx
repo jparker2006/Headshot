@@ -183,7 +183,7 @@ function PickRow({ pick, last, onSelectNode, onLater }: { pick: PickView; last: 
 }
 
 /** The reason with its **names** as links: the cursor-for-movies rule applies here too. */
-function ReasonLine({ text, onSelectNode }: { text: string; onSelectNode: (id: string) => void }) {
+export function ReasonLine({ text, onSelectNode }: { text: string; onSelectNode: (id: string) => void }) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
   return (
     <>

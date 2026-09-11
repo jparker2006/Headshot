@@ -24,6 +24,8 @@ export interface TonightRouteDeps {
   schedule?: (work: () => Promise<void>) => void;
   model?: () => LanguageModel | null;
   log?: (m: string) => void;
+  /** Rewrite this user's memory (v4), scheduled after a swipe session's episode. */
+  rewrite?: (userId: string) => Promise<void>;
 }
 
 const unauthorized = () => Response.json({ error: "sign_in_required" }, { status: 401 });
@@ -121,8 +123,25 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
           return typeof x.imdbId === "string" && /^tt\d+$/.test(x.imdbId) && ["liked", "meh", "unseen", "want"].includes(String(x.rating));
         })
         .map((r) => ({ titleImdbId: r.imdbId, rating: r.rating, source: "swipe" as const }));
-      const store = await deps.store();
+      const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
       await store.upsertWatched(userId, rows);
+      if (rows.length) {
+        // One episode per session, not per card: "swiped: liked X, Y; meh Z".
+        const name = (id: string) => graph.nodeByImdbId(id)?.name ?? id;
+        const group = (rating: string) => rows.filter((r) => r.rating === rating).map((r) => name(r.titleImdbId));
+        const parts = ([["liked", "liked"], ["meh", "meh"], ["unseen", "never seen"], ["want", "want"]] as const)
+          .map(([rating, label]) => {
+            const names = group(rating);
+            return names.length ? `${label} ${names.join(", ")}` : "";
+          })
+          .filter(Boolean);
+        await store.addEpisodes(userId, [{ kind: "swipe", text: `swiped: ${parts.join("; ")}`.slice(0, 400) }]);
+        if (deps.rewrite) {
+          const work = () => deps.rewrite!(userId);
+          if (deps.schedule) deps.schedule(work);
+          else void work().catch(() => {});
+        }
+      }
       return Response.json({ ok: true, saved: rows.length });
     },
   };

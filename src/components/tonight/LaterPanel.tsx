@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { useImages } from "@/components/chat/useImages";
+import { useNames } from "@/components/chat/useNames";
 
 interface Row {
   titleImdbId: string;
@@ -91,32 +92,4 @@ export function LaterPanel({ onSelectNode }: Props) {
       </ul>
     </section>
   );
-}
-
-const nameCache = new Map<string, { name: string; year: number }>();
-/** Title names and years for a list of ids, through /api/names, cached for the tab. */
-function useNames(ids: string[]): Record<string, { name: string; year: number }> {
-  const key = ids.join(",");
-  const [names, setNames] = useState<Record<string, { name: string; year: number }>>({});
-  useEffect(() => {
-    const missing = key.split(",").filter((id) => id && !nameCache.has(id));
-    if (missing.length === 0) return;
-    let alive = true;
-    fetch(`/api/names?ids=${missing.join(",")}`)
-      .then((r) => r.json())
-      .then((d: { names: Record<string, { name: string; year: number }> }) => {
-        for (const [id, v] of Object.entries(d.names)) nameCache.set(id, v);
-        if (alive) setNames((prev) => ({ ...prev, ...d.names }));
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [key]);
-  const out: Record<string, { name: string; year: number }> = { ...names };
-  for (const id of ids) {
-    const c = nameCache.get(id);
-    if (c && !out[id]) out[id] = c;
-  }
-  return out;
 }

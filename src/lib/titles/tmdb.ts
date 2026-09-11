@@ -21,10 +21,20 @@ export type TmdbTitleFacts = Pick<TitleRow, "tmdbId" | "kind" | "runtime" | "sea
 export async function fetchTitleFacts(
   tmdb: TmdbClient,
   imdbId: string,
-  opts: { region?: string } = {},
+  opts: { region?: string; hint?: { kind: "movie" | "series"; tmdbId: number | null } } = {},
 ): Promise<TmdbTitleFacts | null> {
-  const found = await tmdb.findByImdbId(imdbId);
-  if (!found || found.mediaType === "person") return null;
+  // The graph is the authority on what a title is and, when it carries one,
+  // which TMDB id it has. TMDB's /find can answer a series id with a movie
+  // (Fleabag, tt5687612 → a stage recording), so a graph hint wins over it.
+  let found: { tmdbId: number; mediaType: "movie" | "tv" } | null = null;
+  const hintedType = opts.hint ? (opts.hint.kind === "series" ? "tv" : "movie") : null;
+  if (opts.hint?.tmdbId && hintedType) {
+    found = { tmdbId: opts.hint.tmdbId, mediaType: hintedType };
+  } else {
+    const f = await tmdb.findByImdbId(imdbId, hintedType ?? undefined);
+    if (!f || f.mediaType === "person") return null;
+    found = { tmdbId: f.tmdbId, mediaType: f.mediaType };
+  }
   const mediaType = found.mediaType;
   const facts = await tmdb.titleForCache(mediaType, found.tmdbId);
   if (!facts) return null;

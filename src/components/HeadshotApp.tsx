@@ -2,28 +2,34 @@
 /**
  * The shell: a collapsible ChatGPT-shaped sidebar, one reading column, and a
  * title drawer that slides in from the right when a name or poster is tapped.
- * Surfaces in the column: Tonight (home, which is also the chat), Later, and
- * Your taste. The graph canvas is not part of the product surface; /brain
- * keeps it for the curious.
+ * Surfaces in the column: You (home, SPEC v4), a thread, Later, and Your
+ * taste. The graph canvas is not part of the product surface; /brain keeps it
+ * for the curious.
+ *
+ * One way in: the You page carries a composer, and anything typed there (or
+ * asked from the drawer, or arriving on /?q=) opens a thread with the question
+ * already sent.
  */
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { PagePanel } from "./page/PagePanel";
 import { Sidebar, type Surface } from "./Sidebar";
 import { LaterPanel } from "./tonight/LaterPanel";
 import { TastePanel } from "./tonight/TastePanel";
+import { YouPage } from "./you/YouPage";
+import { Composer } from "./you/Composer";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 
 export function HeadshotApp() {
   const store = useMemo(() => new BrainStore(), []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number; send?: boolean } | null>(null);
   const threads = useThreads();
   const [chosenThread, setChosenThread] = useState<string | null>(null);
   const threadId = chosenThread && threads.some((t) => t.id === chosenThread) ? chosenThread : (threads[0]?.id ?? null);
-  const [surface, setSurface] = useState<Surface>("tonight");
+  const [surface, setSurface] = useState<Surface>("you");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
 
@@ -56,13 +62,29 @@ export function HeadshotApp() {
     select(egoReq.imdbId);
   }
 
+  /** Open a thread with `text` already asked: the composer, the drawer, /?q=. */
+  const ask = useCallback(
+    (text: string) => {
+      const empty = listThreads().find((t) => t.title === "New thread");
+      const t = empty ?? createThread();
+      setChosenThread(t.id);
+      setPrefill({ text, nonce: Date.now(), send: true });
+      setSurface("chat");
+      setMobileNav(false);
+    },
+    [],
+  );
+
+  // A question from /?q= or the agent opens a thread, which writes to storage
+  // — a side effect, so it happens in an effect rather than during render. The
+  // nonce is remembered in a ref: re-running must not re-ask.
   const prefillReq = state.prefillRequest;
-  const [seenPrefillReq, setSeenPrefillReq] = useState<number | null>(null);
-  if (prefillReq && prefillReq.nonce !== seenPrefillReq) {
-    setSeenPrefillReq(prefillReq.nonce);
-    setPrefill({ text: prefillReq.text, nonce: prefillReq.nonce });
-    setSurface("tonight");
-  }
+  const askedNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!prefillReq || prefillReq.nonce === askedNonce.current) return;
+    askedNonce.current = prefillReq.nonce;
+    ask(prefillReq.text);
+  }, [prefillReq, ask]);
 
   const expand = useCallback(
     async (imdbId: string) => {
@@ -72,19 +94,16 @@ export function HeadshotApp() {
     [select],
   );
 
-  const goTonight = () => {
-    // Home is Tonight: a fresh thread whose empty state is tonight's picks.
-    const empty = threads.find((t) => t.title === "New thread");
-    const t = empty ?? createThread();
-    setChosenThread(t.id);
-    setSurface("tonight");
+  const goYou = () => {
+    // Home is You: the log, the memory, tonight's row, the numbers.
+    setSurface("you");
     setMobileNav(false);
     store.clearHighlight();
   };
   const newChat = () => {
     const t = createThread();
     setChosenThread(t.id);
-    setSurface("tonight");
+    setSurface("chat");
     setMobileNav(false);
     store.clearHighlight();
   };
@@ -102,7 +121,7 @@ export function HeadshotApp() {
       collapsed={collapsed}
       onToggle={() => setCollapsed((c) => !c)}
       onNew={newChat}
-      onTonight={goTonight}
+      onYou={goYou}
       onLater={() => {
         setSurface("later");
         setMobileNav(false);
@@ -136,8 +155,18 @@ export function HeadshotApp() {
             + New
           </button>
         </div>
-        {(surface === "tonight" || surface === "chat") && threadId && (
-          <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} onHasMessages={(has) => has && setSurface("chat")} />
+        {surface === "you" && (
+          <>
+            <div className="scrollbar-thin flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
+                <YouPage onSelectNode={select} onAsk={ask} />
+              </div>
+            </div>
+            <Composer onSubmit={ask} />
+          </>
+        )}
+        {surface === "chat" && threadId && (
+          <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} />
         )}
         {surface === "later" && (
           <div className="scrollbar-thin flex-1 overflow-y-auto">
@@ -165,8 +194,7 @@ export function HeadshotApp() {
               onClose={() => setSelected(null)}
               onSelectNode={select}
               onAsk={(text) => {
-                setPrefill({ text, nonce: Date.now() });
-                setSurface("tonight");
+                ask(text);
                 setSelected(null);
               }}
               onExpand={expand}

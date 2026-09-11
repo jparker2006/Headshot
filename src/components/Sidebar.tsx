@@ -1,14 +1,15 @@
 "use client";
 /**
  * The sidebar, ChatGPT-shaped: collapsible to a 56px strip of icons, expanded
- * to 260px with New chat, Tonight, Later, then the history list, and the
- * account at the bottom as a menu (never a one-tap sign-out).
+ * to 260px with You (home), New chat, Tonight, Later, then the history list,
+ * and the account at the bottom as a menu (never a one-tap sign-out).
+ * Chunk B cuts everything but You and History.
  */
 import { useState } from "react";
 import type { ThreadMeta } from "./chat/threads";
 import { requireSignIn, signOut, useSessionUser } from "./auth/SignInGate";
 
-export type Surface = "tonight" | "later" | "taste" | "chat";
+export type Surface = "you" | "later" | "taste" | "chat";
 
 interface Props {
   surface: Surface;
@@ -17,20 +18,22 @@ interface Props {
   collapsed: boolean;
   onToggle: () => void;
   onNew: () => void;
-  onTonight: () => void;
+  /** Home. Tonight points here too until chunk B removes that item. */
+  onYou: () => void;
   onLater: () => void;
   onTaste: () => void;
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
 }
 
-export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew, onTonight, onLater, onTaste, onSelectThread, onDeleteThread }: Props) {
+export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew, onYou, onLater, onTaste, onSelectThread, onDeleteThread }: Props) {
   const [menu, setMenu] = useState(false);
   const { user, loading } = useSessionUser();
 
   const nav = [
+    { key: "you", label: "You", onClick: onYou, icon: <Icon.home />, active: surface === "you" },
     { key: "new", label: "New chat", onClick: onNew, icon: <Icon.plus />, active: false },
-    { key: "tonight", label: "Tonight", onClick: onTonight, icon: <Icon.home />, active: surface === "tonight" },
+    { key: "tonight", label: "Tonight", onClick: onYou, icon: <Icon.moon />, active: false },
     { key: "later", label: "Later", onClick: onLater, icon: <Icon.bookmark />, active: surface === "later" },
   ] as const;
 
@@ -59,7 +62,7 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew
   return (
     <aside className="relative flex h-full w-[260px] shrink-0 flex-col border-r border-line bg-bg" aria-label="Sidebar">
       <div className="flex items-center justify-between px-3 pb-1 pt-3">
-        <button onClick={onTonight} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/[0.04]">
+        <button onClick={onYou} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/[0.04]">
           <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
           <span className="text-[14px] font-semibold tracking-tight text-ink">Headshot</span>
         </button>
@@ -135,6 +138,11 @@ const Icon = {
   home: () => (
     <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
       <path d="M3 9.5 10 3l7 6.5V17h-4.5v-4h-5v4H3z" />
+    </svg>
+  ),
+  moon: () => (
+    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
+      <path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z" />
     </svg>
   ),
   plus: () => (

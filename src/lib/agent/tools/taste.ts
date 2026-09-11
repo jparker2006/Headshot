@@ -9,8 +9,12 @@ import type { AgentContext } from "../context";
 import { describe } from "../context";
 import { loadTonight } from "@/lib/picks/service";
 import { tasteSummary } from "../tasteContext";
+import { memoryText } from "@/lib/memory";
 
 const imdbTitle = z.string().regex(/^tt\d+$/, "an IMDb title id like tt0113277");
+
+/** How a bucket reads back in the record. */
+const VERB: Record<string, string> = { liked: "liked", meh: "meh on", unseen: "never seen", want: "wants to watch" };
 
 export function tasteTools(ctx: AgentContext): ToolSet {
   const store = ctx.taste;
@@ -18,9 +22,23 @@ export function tasteTools(ctx: AgentContext): ToolSet {
   if (!store || !userId) return {};
   return {
     my_taste: tool({
-      description: "Everything the user has told us about their taste: counts, services, the people they keep watching, decades, recently rated titles, Later list, series in progress. Call when asked what they like or before judging whether they would like something.",
+      description: "What you know about this user: first your own memory of them (the notes you keep, including lines they pinned), then the facts — counts, services, the people they keep watching, decades, recently rated titles, Later list, series in progress. Call when asked what they like or before judging whether they would like something.",
       inputSchema: z.object({}),
-      execute: async () => (await tasteSummary(ctx.graph, store, userId)) ?? { empty: true, hint: "They have not rated anything yet. Suggest onboarding: pick services, import Letterboxd, or swipe the deck." },
+      execute: async () => {
+        const [memory, facts] = await Promise.all([memoryText(store, userId), tasteSummary(ctx.graph, store, userId)]);
+        if (!memory && !facts) return { empty: true, hint: "They have not rated anything yet. Suggest onboarding: pick services, import Letterboxd, or swipe the deck." };
+        return { memory: memory || null, facts };
+      },
+    }),
+
+    recall: tool({
+      description: "Search everything this user has done or said about film and TV (logs, swipes, chat), newest first. Use for 'what did I say about X', 'when did I watch X', or to check the memory against the record before claiming something.",
+      inputSchema: z.object({ query: z.string().describe("A word or title to search the record for; empty for the most recent activity."), limit: z.number().int().min(1).max(50).optional() }),
+      execute: async ({ query, limit }) => {
+        const rows = await store.listEpisodes(userId, { query: query.trim() || undefined, limit: limit ?? 12 });
+        if (rows.length === 0) return { empty: true, query, hint: "Nothing in the record for that. Say so rather than guessing." };
+        return { query, episodes: rows.map((r) => `${r.at.slice(0, 10)} [${r.kind}] ${r.text}`) };
+      },
     }),
 
     have_i_seen: tool({
@@ -40,6 +58,10 @@ export function tasteTools(ctx: AgentContext): ToolSet {
         const node = ctx.graph.nodeByImdbId(imdbId);
         if (!node || node.kind !== "title") return { error: "unknown_title" };
         await store.upsertWatched(userId, [{ titleImdbId: imdbId, rating, source: "chat" }]);
+        // Every write is evidence: the memory rewrite reads episodes, not rows.
+        await store.addEpisodes(userId, [
+          { kind: "chat", titleImdbId: imdbId, text: `${VERB[rating]} ${node.name}${node.year ? ` (${node.year})` : ""}` },
+        ]);
         return { ok: true, title: describe(node), rating };
       },
     }),
@@ -51,6 +73,10 @@ export function tasteTools(ctx: AgentContext): ToolSet {
         const node = ctx.graph.nodeByImdbId(imdbId);
         if (!node || node.kind !== "title") return { error: "unknown_title" };
         await store.setProgress(userId, imdbId, { season, episodesWatched });
+        const where = [season != null ? `season ${season}` : "", episodesWatched != null ? `${episodesWatched} episodes in` : ""].filter(Boolean).join(", ");
+        await store.addEpisodes(userId, [
+          { kind: "chat", titleImdbId: imdbId, text: `watching ${node.name}${where ? `: ${where}` : ""}` },
+        ]);
         return { ok: true, title: describe(node), season, episodesWatched };
       },
     }),

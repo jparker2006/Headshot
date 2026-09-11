@@ -8,6 +8,8 @@ const HEAT = "tt0113277";
 const SOPRANOS = "tt0141842";
 const UNKNOWN = "tt9999999";
 const BOOM = "tt5555555";
+/** A series whose /find answer is a movie (TMDB does this for Fleabag). */
+const FLEABAG = "tt5687612";
 
 function node(partial: Partial<NodeInfo>): NodeInfo {
   return { id: 0, imdbId: "", name: "", kind: "title", titleType: "movie", year: 0, votes: 0, genres: "", overlay: false, ...partial };
@@ -20,6 +22,7 @@ const graph: TitleLookup = {
       [SOPRANOS]: node({ imdbId: SOPRANOS, name: "The Sopranos", titleType: "tvSeries", year: 1999, genres: "Drama" }),
       [UNKNOWN]: node({ imdbId: UNKNOWN, name: "Tiny Indie", titleType: "movie", year: 2021 }),
       [BOOM]: node({ imdbId: BOOM, name: "Broken", titleType: "movie", year: 2001 }),
+      [FLEABAG]: node({ imdbId: FLEABAG, name: "Fleabag", titleType: "tvSeries", year: 2016, genres: "Comedy,Drama", tmdbId: 67070 }),
     };
     return rows[imdbId];
   },
@@ -43,7 +46,12 @@ function fakeTmdb() {
     if (url.includes(`/find/${BOOM}`)) return new Response("nope", { status: 500 });
     if (url.includes(`/find/${HEAT}`)) return json({ movie_results: [{ id: 949 }], tv_results: [], person_results: [] });
     if (url.includes(`/find/${SOPRANOS}`)) return json({ movie_results: [], tv_results: [{ id: 1398 }], person_results: [] });
+    if (url.includes(`/find/${FLEABAG}`)) return json({ movie_results: [{ id: 1766152 }], tv_results: [{ id: 67070 }], person_results: [] });
     if (url.includes("/find/")) return json({ movie_results: [], tv_results: [], person_results: [] });
+    if (url.includes("/tv/67070/watch/providers")) return json({ results: {} });
+    if (url.includes("/tv/67070"))
+      return json({ id: 67070, name: "Fleabag", first_air_date: "2016-07-21", episode_run_time: [27], genres: [{ name: "Comedy" }], poster_path: "/fleabag.jpg", seasons: [{ season_number: 1, episode_count: 6 }, { season_number: 2, episode_count: 6 }] });
+    if (url.includes("/movie/1766152")) return json({ id: 1766152, title: "National Theatre Live: Fleabag", release_date: "2019-09-12", runtime: 80, genres: [] });
     if (url.includes("/movie/949/watch/providers"))
       return json({ results: { US: { link: "https://tmdb/movie/949/watch", flatrate: [{ provider_id: 8, provider_name: "Netflix" }] } } });
     if (url.includes("/tv/1398/watch/providers")) return json({ results: {} });
@@ -72,6 +80,22 @@ function fakeTmdb() {
 const now = () => new Date("2026-09-11T10:00:00.000Z");
 
 describe("getTitles", () => {
+  it("trusts the graph's kind and TMDB id over /find, so a series never becomes a film", async () => {
+    const store = new MemoryTitlesStore();
+    const tmdb = fakeTmdb();
+    const got = await getTitles([FLEABAG], { store, tmdb: tmdb.client, graph, now });
+    const row = got.get(FLEABAG)!;
+    expect(row.kind).toBe("series");
+    expect(row.tmdbId).toBe(67070);
+    expect(row.runtime).toBe(27);
+    expect(row.seasons).toEqual([
+      { season: 1, episodes: 6 },
+      { season: 2, episodes: 6 },
+    ]);
+    expect(tmdb.calls.some((c) => c.startsWith(`/find/${FLEABAG}`))).toBe(false);
+    expect(tmdb.calls.some((c) => c.includes("/movie/1766152"))).toBe(false);
+  });
+
   it("fills a miss from the graph and then from TMDB, and stores the row", async () => {
     const store = new MemoryTitlesStore();
     const tmdb = fakeTmdb();

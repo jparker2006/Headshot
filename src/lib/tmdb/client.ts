@@ -168,7 +168,7 @@ export class TmdbClient {
   }
 
   /** Resolve an IMDb id to TMDB ids. */
-  async findByImdbId(imdbId: string): Promise<{ tmdbId: number; mediaType: "person" | "movie" | "tv" } | null> {
+  async findByImdbId(imdbId: string, prefer?: "movie" | "tv"): Promise<{ tmdbId: number; mediaType: "person" | "movie" | "tv" } | null> {
     const data = await this.get<{
       movie_results: { id: number }[];
       tv_results: { id: number }[];
@@ -176,6 +176,7 @@ export class TmdbClient {
     }>(`/find/${imdbId}`, { external_source: "imdb_id" });
     if (!data) return null;
     if (data.person_results?.[0]) return { tmdbId: data.person_results[0].id, mediaType: "person" };
+    if (prefer === "tv" && data.tv_results?.[0]) return { tmdbId: data.tv_results[0].id, mediaType: "tv" };
     if (data.movie_results?.[0]) return { tmdbId: data.movie_results[0].id, mediaType: "movie" };
     if (data.tv_results?.[0]) return { tmdbId: data.tv_results[0].id, mediaType: "tv" };
     return null;

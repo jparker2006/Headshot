@@ -1,7 +1,7 @@
 "use client";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HeadshotUIMessage, HeadshotDataParts } from "@/lib/agent/events";
 import type { BrainStore } from "@/components/canvas/brainStore";
 import { Markdown } from "./Markdown";
@@ -9,7 +9,6 @@ import { PathGraphic } from "./PathGraphic";
 import { FaceGrid } from "./FaceGrid";
 import { faceTapAction } from "./faceGridRule";
 import { egoDefaultFor, egoDelayMs } from "./egoDefault";
-import { TonightPanel } from "@/components/tonight/TonightPanel";
 import { lookupName } from "./lookup";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
@@ -17,8 +16,8 @@ import { threadIndex, type EntityIndex } from "./entityLinks";
 interface Props {
   threadId: string;
   store: BrainStore;
-  /** A question another panel wants asked (e.g. "Ask about this"). */
-  prefill: { text: string; nonce: number } | null;
+  /** A question another panel wants asked (e.g. "Ask about this"). `send` submits it rather than only filling the box. */
+  prefill: { text: string; nonce: number; send?: boolean } | null;
   onSelectNode: (imdbId: string) => void;
   /** Told whenever the thread has messages, so the shell can mark it as a chat rather than Tonight. */
   onHasMessages?: (has: boolean) => void;
@@ -54,6 +53,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
   const [input, setInput] = useState("");
   const [dismissedError, setDismissedError] = useState<Error | null>(null);
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
+  const sentNonce = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
@@ -88,9 +88,11 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
   const resting = error && error !== dismissedError ? restingText(error) : null;
 
   // Adopt a prefilled question from another panel (derived-state pattern, no effect).
+  // A `send` prefill (the You composer, the drawer's "ask", /?q=) is left to
+  // the effect below instead: sending is a side effect, not a render.
   if (prefill && prefill.nonce !== seenNonce) {
     setSeenNonce(prefill.nonce);
-    setInput(prefill.text);
+    if (!prefill.send) setInput(prefill.text);
   }
 
   useEffect(() => {
@@ -99,14 +101,26 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
 
   const busy = status === "submitted" || status === "streaming";
 
-  const ask = (text: string) => {
-    const t = text.trim();
-    if (!t || busy) return;
-    setDismissedError(error ?? null);
-    store.clearHighlight();
-    sendMessage({ text: t });
-    setInput("");
-  };
+  const ask = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t || busy) return;
+      setDismissedError(error ?? null);
+      store.clearHighlight();
+      sendMessage({ text: t });
+      setInput("");
+    },
+    [busy, error, sendMessage, store],
+  );
+
+  // A `send` prefill is asked once, so the thread the You composer just opened
+  // starts with the question already in flight. The nonce is remembered in a
+  // ref rather than state: re-running must not re-send.
+  useEffect(() => {
+    if (!prefill?.send || prefill.nonce === sentNonce.current) return;
+    sentNonce.current = prefill.nonce;
+    ask(prefill.text);
+  }, [prefill, ask]);
 
   const chips = useMemo(() => followUps(messages), [messages]);
   const entities = useMemo(() => threadIndex(messages), [messages]);
@@ -124,15 +138,8 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
         <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
           {messages.length === 0 && (
             <div className="rise flex min-h-[50vh] flex-col justify-end space-y-6 pb-6">
-              <TonightPanel
-                onSelectNode={onSelectNode}
-                onAsk={ask}
-                onLater={(imdbId) => {
-                  void fetch("/api/taste/later", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) }).catch(() => {});
-                }}
-              />
-              <div className="space-y-3 border-t border-line pt-5">
-                <p className="text-[13px] text-ink-dim">or ask the brain anything about who was in what with whom.</p>
+              <div className="space-y-3">
+                <p className="text-[13px] text-ink-dim">Ask the brain anything about who was in what with whom — or about what you have watched.</p>
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLES.map((e) => (
                     <Chip key={e} onClick={() => ask(e)}>{e}</Chip>

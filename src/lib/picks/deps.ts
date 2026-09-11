@@ -6,6 +6,7 @@ import { tmdbFromEnv } from "@/lib/tmdb/client";
 import { getTitlesStore } from "@/lib/titles";
 import { waitUntil } from "@vercel/functions";
 import { chatModelFromEnv, mockAgentEnabled } from "@/lib/agent/provider";
+import { rewriteMemoryForUser } from "@/lib/memory/deps";
 import { createTonightHandlers } from "./routes";
 
 /** Tonight's handlers wired to production dependencies. */
@@ -19,7 +20,9 @@ export const tonightHandlers = createTonightHandlers({
   },
   tmdb: tmdbFromEnv,
   titles: getTitlesStore,
-  schedule: (work) => waitUntil(work().catch((err) => console.warn("[titles] warm failed:", err))),
+  // A swipe session is new evidence: the memory is rewritten after the response.
+  rewrite: rewriteMemoryForUser,
+  schedule: (work) => waitUntil(work().catch((err) => console.warn("[tonight] background failed:", err))),
   model: () => (process.env.OPENROUTER_API_KEY && !mockAgentEnabled() ? chatModelFromEnv() : null),
   log: (m) => console.log(m),
 });

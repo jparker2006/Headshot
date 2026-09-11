@@ -60,9 +60,10 @@ export function createChatHandler(deps: ChatDeps) {
       embed: deps.embed?.(),
       userId: deps.userId ? await deps.userId(req) : null,
       taste: deps.taste ? await deps.taste() : null,
-      // Page writing outlives the response. waitUntil keeps the function alive on Vercel
-      // and simply runs the promise locally.
-      schedule: deps.schedule ?? ((work) => waitUntil(work().catch((err) => console.warn("[pages] background failed:", err)))),
+      // Page writing and the v4 memory job (extract the turn's taste statements,
+      // then rewrite the memory) outlive the response. waitUntil keeps the
+      // function alive on Vercel and simply runs the promise locally.
+      schedule: deps.schedule ?? ((work) => waitUntil(work().catch((err) => console.warn("[agent] background failed:", err)))),
     });
     const res = createUIMessageStreamResponse({ stream });
     if (session.setCookie) {

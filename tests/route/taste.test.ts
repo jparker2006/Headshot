@@ -16,6 +16,8 @@ let titles: MemoryTitlesStore;
 let signedInAs: string | null;
 /** Background warms the route scheduled; tests await them explicitly. */
 let scheduled: Promise<void>[];
+/** Stands in for TMDB's headshot lookup in the Numbers route. */
+let faces: Record<string, { url: string | null; knownAs?: string }>;
 
 const handlers = createTasteHandlers({
   userId: async () => signedInAs,
@@ -24,6 +26,7 @@ const handlers = createTasteHandlers({
   titles: async () => titles,
   // No TMDB in tests: a warm is a no-op beyond the graph half.
   tmdb: () => null,
+  faces: async (ids) => Object.fromEntries(ids.filter((id) => id in faces).map((id) => [id, faces[id]])),
   schedule: (work) => scheduled.push(work()),
 });
 
@@ -32,6 +35,7 @@ beforeEach(() => {
   titles = new MemoryTitlesStore();
   signedInAs = "user-1";
   scheduled = [];
+  faces = {};
 });
 
 const json = (body: unknown, method = "POST") =>
@@ -54,6 +58,7 @@ describe("taste routes: sign-in", () => {
       handlers.confirmImport(json({ fixes: [] })),
       handlers.log(json({ query: "Apollo" })),
       handlers.log(json({ imdbId: "tt0000001", rating: "liked" })),
+      handlers.numbers(get()),
     ];
     for (const res of await Promise.all(calls)) {
       expect(res.status).toBe(401);
@@ -263,5 +268,82 @@ describe("taste routes: log", () => {
     const cached = await titles.getMany(["tt0000001", "tt0000002"]);
     expect(cached.get("tt0000001")).toMatchObject({ name: "Apollo 13" });
     expect(cached.get("tt0000002")).toMatchObject({ name: "Forrest Gump" });
+  });
+});
+
+describe("taste routes: numbers", () => {
+  /** Enough of the titles cache for the route to have runtimes and seasons. */
+  async function seedTitles(): Promise<void> {
+    await titles.upsertMany([
+      { imdbId: "tt0000001", tmdbId: null, kind: "movie", name: "Apollo 13", year: 1995, runtime: 140, seasons: null, genres: ["Drama"], posterPath: "/a.jpg", providers: null, fetchedAt: new Date().toISOString() },
+      { imdbId: "tt0000002", tmdbId: null, kind: "movie", name: "Forrest Gump", year: 1994, runtime: 142, seasons: null, genres: ["Drama"], posterPath: null, providers: null, fetchedAt: new Date().toISOString() },
+      { imdbId: "tt0000004", tmdbId: null, kind: "series", name: "Long Runner", year: 1990, runtime: 45, seasons: [{ season: 1, episodes: 10 }, { season: 2, episodes: 12 }], genres: ["Drama"], posterPath: null, providers: null, fetchedAt: new Date().toISOString() },
+      { imdbId: "tt0000009", tmdbId: null, kind: "series", name: "Good Series", year: 2018, runtime: 50, seasons: [{ season: 1, episodes: 10 }], genres: ["Thriller"], posterPath: null, providers: null, fetchedAt: new Date().toISOString() },
+      { imdbId: "tt0000006", tmdbId: null, kind: "series", name: "Mini Series", year: 2010, runtime: 55, seasons: [{ season: 1, episodes: 6 }], genres: ["War"], posterPath: null, providers: null, fetchedAt: new Date().toISOString() },
+      { imdbId: "tt0000011", tmdbId: null, kind: "movie", name: "TV Movie", year: 2008, runtime: 90, seasons: null, genres: ["Drama"], posterPath: null, providers: null, fetchedAt: new Date().toISOString() },
+    ]);
+  }
+
+  it("answers an empty log with empty numbers, not an error", async () => {
+    const res = await handlers.numbers(get());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.totals).toMatchObject({ titles: 0, hours: 0 });
+    expect(body.log).toEqual([]);
+    expect(body.people).toEqual([]);
+    expect(body.months).toHaveLength(24);
+  });
+
+  it("computes the page from the watched rows and the titles cache", async () => {
+    const now = new Date().toISOString();
+    await seedTitles();
+    await store.upsertWatched("user-1", [
+      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: now },
+      { titleImdbId: "tt0000002", rating: "meh", source: "letterboxd", watchedAt: now },
+      { titleImdbId: "tt0000004", rating: "seen", source: "netflix", watchedAt: now, season: 2 },
+      { titleImdbId: "tt0000009", rating: "liked", source: "log", watchedAt: now, episodesWatched: 5 },
+      { titleImdbId: "tt0000006", rating: "want", source: "log" },
+      { titleImdbId: "tt0000011", rating: "seen", source: "imdb" },
+    ]);
+
+    const body = await (await handlers.numbers(get())).json();
+    // 140 + 142 + (22 x 45) + (5 x 50) + 90 = 1612 minutes; the want row is not watching.
+    expect(body.totals).toEqual({ titles: 6, films: 3, shows: 3, hours: 27, liked: 2, meh: 1, seen: 2, want: 1 });
+    expect(body.undated).toBe(1);
+    expect(body.months.at(-1)).toMatchObject({ month: new Date().toISOString().slice(0, 7), films: 2, shows: 2 });
+    expect(body.runtimeFinished).toBe(124);
+    expect(body.genres.find((g: { genre: string }) => g.genre === "War")).toBeUndefined();
+    expect(body.log).toHaveLength(6);
+    expect(body.log.at(-1).watchedAt).toBeNull();
+    expect(body.log[0]).toMatchObject({ name: "Apollo 13", kind: "movie", rating: "liked", posterPath: "/a.jpg" });
+  });
+
+  it("hands the people grid a face and upgrades the role TMDB knows", async () => {
+    await seedTitles();
+    await store.upsertWatched("user-1", [
+      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: new Date().toISOString() },
+    ]);
+    faces = {
+      "nm0000002": { url: "https://image.tmdb.test/hanks.jpg", knownAs: "Acting" },
+      "nm0000006": { url: null, knownAs: "Directing" },
+    };
+
+    const body = await (await handlers.numbers(get())).json();
+    const by = Object.fromEntries(body.people.map((p: { imdbId: string }) => [p.imdbId, p]));
+    expect(by["nm0000002"]).toMatchObject({ name: "Tom Hanks", face: "https://image.tmdb.test/hanks.jpg", role: "actor" });
+    expect(by["nm0000006"]).toMatchObject({ name: "Wes Director", face: null, role: "director" });
+    // A person TMDB said nothing about still renders, with no face.
+    expect(by["nm0000003"]).toMatchObject({ face: null });
+  });
+
+  it("answers from the graph when the titles cache is cold, and warms it after", async () => {
+    await store.upsertWatched("user-1", [
+      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: new Date().toISOString() },
+    ]);
+    const body = await (await handlers.numbers(get())).json();
+    expect(body.log[0]).toMatchObject({ name: "Apollo 13", year: 1995, kind: "movie", runtime: null });
+    await Promise.all(scheduled);
+    expect((await titles.getMany(["tt0000001"])).get("tt0000001")).toMatchObject({ name: "Apollo 13" });
   });
 });

@@ -4,6 +4,8 @@ import { getBrain } from "@/lib/brain";
 import { currentUserId } from "@/lib/auth/server";
 import { getTitlesStore } from "@/lib/titles";
 import { tmdbFromEnv } from "@/lib/tmdb/client";
+import { personFaces } from "@/lib/tmdb/faces";
+import { rewriteMemoryForUser } from "@/lib/memory/deps";
 import { createTasteHandlers } from "./routes";
 import { getTasteStore } from "./index";
 
@@ -22,7 +24,12 @@ export const tasteHandlers = createTasteHandlers({
   },
   titles: getTitlesStore,
   tmdb: tmdbFromEnv,
+  // Numbers asks for at most twelve headshots, and the brain caches each one
+  // the first time anyone sees it.
+  faces: async (ids) => personFaces(ids, { brain: await getBrain(), tmdb: tmdbFromEnv() }),
   // Warming the titles cache outlives the response: the user never waits on
   // TMDB to see their own log line.
-  schedule: (work) => waitUntil(work().catch((err) => console.warn("[titles] warm failed:", err))),
+  // A log is new evidence: the memory is rewritten after the response.
+  rewrite: rewriteMemoryForUser,
+  schedule: (work) => waitUntil(work().catch((err) => console.warn("[taste] background failed:", err))),
 });

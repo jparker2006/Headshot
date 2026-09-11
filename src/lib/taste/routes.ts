@@ -16,14 +16,18 @@ import {
   type MatchedRow,
   type TitleSearch,
 } from "./letterboxd";
+import { computeNumbers, roleFromDepartment, type NumbersGraph, type NumbersPerson } from "./numbers";
 import { normalizeProviderIds, PROVIDERS } from "./providers";
 import type { TasteStore, WatchedRating, WatchedRow } from "./types";
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
 
-/** The graph slice these routes need: name lookup plus single-id resolution. */
-export interface GraphLookup extends TitleSearch {
+/**
+ * The graph slice these routes need: name lookup, single-id resolution, and
+ * (for Numbers) the credits behind a title.
+ */
+export interface GraphLookup extends TitleSearch, NumbersGraph {
   nodeByImdbId(imdbId: string): NodeInfo | undefined;
 }
 
@@ -37,12 +41,25 @@ export interface TasteDeps {
   titles?: () => Promise<TitlesStore>;
   tmdb?: () => TmdbClient | null;
   /**
+   * Headshots for the people Numbers found, keyed by IMDb id. Absent in tests
+   * and in keyless dev: the grid then renders initials.
+   */
+  faces?: (imdbIds: string[]) => Promise<Record<string, { url: string | null; knownAs?: string }>>;
+  /**
    * Run background work that outlives the response (`waitUntil` on Vercel).
    * The default awaits nothing and swallows failures: warming the titles cache
    * must never fail a log or an import.
    */
   schedule?: (work: () => Promise<void>) => void;
+  /**
+   * Rewrite this user's memory (v4). Runs through `schedule` after anything
+   * that added episodes; absent in tests that do not care about the memory.
+   */
+  rewrite?: (userId: string) => Promise<void>;
 }
+
+/** Longest pinned block the Edit control accepts. */
+export const MAX_PINNED_CHARS = 2000;
 
 /** The four buckets a log field offers. `unseen` is a swipe verb, not a log one. */
 const LOG_RATINGS = ["liked", "meh", "want", "seen"] as const;
@@ -124,6 +141,12 @@ export function createTasteHandlers(deps: TasteDeps) {
     });
   }
 
+  /** Queue the memory rewrite for this user, if one is wired up. */
+  function rewriteMemory(userId: string): void {
+    if (!deps.rewrite) return;
+    schedule(() => deps.rewrite!(userId));
+  }
+
   /** Resolve the user or hand back the 401 the caller should return. */
   async function withUser(req: Request): Promise<{ userId: string } | { response: Response }> {
     const userId = await deps.userId(req);
@@ -131,6 +154,39 @@ export function createTasteHandlers(deps: TasteDeps) {
   }
 
   return {
+    /**
+     * GET /api/taste/memory — the prose profile at the top of You: what the
+     * rewrite job wrote, plus the lines the user pinned themselves.
+     */
+    async getMemory(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      const store = await deps.store();
+      const row = await store.getMemory(who.userId);
+      return Response.json({ markdown: row?.markdown ?? "", pinned: row?.pinned ?? "", updatedAt: row?.updatedAt ?? null });
+    },
+
+    /**
+     * PUT /api/taste/memory { pinned } — the Edit control. A user's edit lands
+     * in `pinned`, never in the markdown: the rewrite owns its own prose and
+     * re-attaches these lines verbatim.
+     */
+    async putMemory(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      let body: { pinned?: unknown };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return badRequest("Invalid JSON");
+      }
+      if (typeof body.pinned !== "string") return badRequest("pinned required");
+      if (body.pinned.length > MAX_PINNED_CHARS) return badRequest(`pinned must be ${MAX_PINNED_CHARS} characters or fewer`);
+      const store = await deps.store();
+      await store.setMemory(who.userId, { pinned: body.pinned });
+      return Response.json({ ok: true });
+    },
+
     /** GET /api/taste/watched — everything the store holds for this user. */
     async listWatched(req: Request): Promise<Response> {
       const who = await withUser(req);
@@ -267,6 +323,8 @@ export function createTasteHandlers(deps: TasteDeps) {
         },
       ]);
       warmTitles([imdbId], graph);
+      // New evidence: the memory is rewritten after the response has gone out.
+      rewriteMemory(who.userId);
 
       const row = (await store.listWatched(who.userId)).find((r) => r.titleImdbId === imdbId) as WatchedRow;
       return Response.json({ ok: true, row });
@@ -326,6 +384,47 @@ export function createTasteHandlers(deps: TasteDeps) {
       }
 
       return Response.json({ corrected, dropped, watched: await store.listWatched(who.userId) });
+    },
+
+    /**
+     * GET /api/taste/numbers — everything the Numbers page draws, computed.
+     *
+     * The response never waits on TMDB: the titles cache answers with whatever
+     * it has (plus the graph's name/year/kind for a row it has never seen), and
+     * the rows that are missing runtime, genres or a poster are warmed after
+     * the response, so the second visit is complete. Faces are the one network
+     * call, and only for the twelve people the grid shows.
+     */
+    async numbers(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
+      const watched = await store.listWatched(who.userId);
+      const ids = watched.map((r) => r.titleImdbId);
+
+      let titles = new Map<string, TitleRow>();
+      if (deps.titles && ids.length) {
+        const titlesStore = await deps.titles();
+        // tmdb null: cached rows come back as they are and a miss is filled
+        // from the graph alone, in process. The TMDB half is the warm below.
+        titles = await getTitles(ids, { store: titlesStore, tmdb: null, graph });
+        warmTitles(
+          ids.filter((id) => !titles.get(id)?.fetchedAt),
+          graph,
+        );
+      }
+
+      const data = computeNumbers({ watched, titles, graph });
+      let people: (NumbersPerson & { face: string | null })[] = data.people.map((p) => ({ ...p, face: null }));
+      if (deps.faces && people.length) {
+        const faces = await deps.faces(people.map((p) => p.imdbId)).catch((): Record<string, { url: string | null; knownAs?: string }> => ({}));
+        people = people.map((p) => {
+          const hit = faces[p.imdbId];
+          return { ...p, face: hit?.url ?? null, role: roleFromDepartment(hit?.knownAs) ?? p.role };
+        });
+      }
+
+      return Response.json({ ...data, people }, { headers: { "cache-control": "no-store" } });
     },
   };
 }

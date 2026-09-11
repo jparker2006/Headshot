@@ -118,7 +118,8 @@ export async function getTitles(ids: string[], deps: GetTitlesDeps): Promise<Map
   await pooled(misses, deps.concurrency ?? DEFAULT_CONCURRENCY, async (id) => {
     const base = out.get(id)!;
     try {
-      const facts = await fetchTitleFacts(tmdb, id, { region: deps.region });
+      const known = deps.graph.nodeByImdbId(id) !== undefined;
+      const facts = await fetchTitleFacts(tmdb, id, { region: deps.region, hint: known ? { kind: base.kind, tmdbId: base.tmdbId } : undefined });
       if (!facts) {
         // TMDB does not know this id. Store the graph half so the row exists,
         // with fetchedAt null: cheap to retry, never blocking.
@@ -128,7 +129,8 @@ export async function getTitles(ids: string[], deps: GetTitlesDeps): Promise<Map
       const row: TitleRow = {
         ...base,
         tmdbId: facts.tmdbId,
-        kind: facts.kind,
+        // The graph decides film vs series when it knows the title at all.
+        kind: known ? base.kind : facts.kind,
         name: base.name && base.name !== id ? base.name : facts.name,
         year: base.year ?? facts.year,
         runtime: facts.runtime,

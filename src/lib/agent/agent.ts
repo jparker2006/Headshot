@@ -31,6 +31,7 @@ import { toBrainInput } from "./context";
 import type { EmbedFn } from "./embeddings";
 import type { TasteStore } from "@/lib/taste/types";
 import { formatTasteContext, tasteSummary } from "./tasteContext";
+import { extractEpisodes, memoryText, rewriteMemory, titleCandidates } from "@/lib/memory";
 import type { CanvasNode } from "./events";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
@@ -61,7 +62,17 @@ export interface RunAgentOptions {
   /** Signed-in user and taste store: unlocks the taste tools and the "about this user" block. */
   userId?: string | null;
   taste?: TasteStore | null;
+  /**
+   * v4 memory: carry the memory markdown in the system prompt and, after the
+   * turn, extract taste statements into episodes and rewrite the memory.
+   * Default true for a signed-in request; tests that script every model call
+   * turn it off.
+   */
+  memory?: boolean;
 }
+
+/** The heading the memory markdown arrives under in the system prompt. */
+export const MEMORY_HEADING = "## What you remember about this person (your own notes, keep them consistent)";
 
 /** Adapts the UI stream writer to the tools' emitter interface, recording replayable events. */
 class WriterEmitter implements CanvasEmitter {
@@ -164,6 +175,7 @@ export function runAgent(opts: RunAgentOptions) {
       const tools = headshotTools(ctx);
       const hints = formatHints(prehint(opts.graph, question));
       let about = "";
+      let memory = "";
       if (opts.userId && opts.taste) {
         try {
           const t = await tasteSummary(opts.graph, opts.taste, opts.userId);
@@ -171,8 +183,16 @@ export function runAgent(opts: RunAgentOptions) {
         } catch (err) {
           console.warn("[agent] taste context failed:", err instanceof Error ? err.message : err);
         }
+        if (opts.memory !== false) {
+          try {
+            const md = await memoryText(opts.taste, opts.userId);
+            if (md) memory = `${MEMORY_HEADING}\n${md}`;
+          } catch (err) {
+            console.warn("[agent] memory read failed:", err instanceof Error ? err.message : err);
+          }
+        }
       }
-      const system = [SYSTEM_PROMPT, about, hints, fast ? `Precomputed for this question (the user already sees it on the canvas):\n${fast.context}` : ""].filter(Boolean).join("\n\n");
+      const system = [SYSTEM_PROMPT, about, memory, hints, fast ? `Precomputed for this question (the user already sees it on the canvas):\n${fast.context}` : ""].filter(Boolean).join("\n\n");
       const result = streamText({
         model: opts.model,
         system,
@@ -237,6 +257,27 @@ export function runAgent(opts: RunAgentOptions) {
       }
 
       writer.write({ type: "finish" });
+
+      // v4 memory: what the user said this turn becomes evidence, then the
+      // memory is rewritten from it. Both outlive the response.
+      if (opts.userId && opts.taste && opts.memory !== false && question) {
+        const store = opts.taste;
+        const userId = opts.userId;
+        const work = async () => {
+          try {
+            const found = await extractEpisodes(side, question, { knownTitles: titleCandidates(opts.graph, question) });
+            if (found.length) {
+              await store.addEpisodes(userId, found.map((e) => ({ kind: "chat" as const, titleImdbId: e.titleImdbId ?? null, text: e.text })));
+            }
+          } catch (err) {
+            console.warn("[memory] extract failed:", err instanceof Error ? err.message : err);
+          }
+          await rewriteMemory({ store, graph: opts.graph, model: side, log: (m) => console.log(m) }, userId);
+        };
+        if (opts.schedule) opts.schedule(work);
+        else await work();
+      }
+
       if (answer && ctx.touched.length) {
         const work = () =>
           writePagesForTurn({ model: side, brain: opts.brain, question, answer, touched: ctx.touched, log: (m) => console.log(m) }).then(() => undefined);
