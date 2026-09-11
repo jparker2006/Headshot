@@ -212,3 +212,89 @@ Not tested: the canvas rendering itself, the force layout, live OpenRouter or TM
 - **Model verification.** `deepseek/deepseek-v4.1-flash` was confirmed to exist on OpenRouter with tool-calling support on 2026-09-10. The OpenRouter embeddings endpoint was confirmed to serve `openai/text-embedding-3-small` (and Voyage 4 Lite as an equal-priced alternative if the OpenAI model ever misbehaves).
 - **IMDb license.** The datasets are for personal and non-commercial use. This project is a non-commercial portfolio piece; keep it that way or swap the topology source.
 - **Open follow-ups after this spec is confirmed:** issue-tracker setup (`/setup-matt-pocock-skills` per the to-spec skill), repo scaffold, pipeline first, engine second, agent third, canvas last.
+
+---
+
+# v2 — Useful to people searching
+
+Decided in a second grilling on 2026-09-11, after v1 shipped to headshot-hazel.vercel.app. Same rule as v1: every item below was put to Jake and confirmed. v1 sections above remain in force except where this section says otherwise.
+
+## Who it's for, and the one question
+
+- **Audience:** the mid-show itch first (phone in hand, "who is that guy," wants a face and a name in five seconds), the trivia player second. Professionals are a different product.
+- **Headline capability:** identification ("who is that guy" from a title plus a vague detail), with "what else was she in" as its natural follow-up. Paths stay the showpiece.
+- **Cursor for movies:** every entity mentioned in an answer is a link. Clicking a person or title name anywhere in the chat opens it in the drawer (page plus ego view) without leaving the conversation. This is the interaction model the whole UI serves.
+
+## User stories (v2)
+
+38. As a viewer, I want to describe someone vaguely with the show they were in and get a small grid of faces to pick from, so that I never have to know the name.
+39. As a viewer, I want to tap a face and have the answer continue (or the page open, if identifying was the whole question), so that disambiguation is one tap.
+40. As a viewer, I want the chain to appear in under a second when I name two people exactly, so that the app feels instant.
+41. As a viewer, I want a question I've asked before to come back instantly, so that repeat questions cost nothing.
+42. As a viewer, I want every name in an answer to be clickable and open that person or title in the side panel, so that reading and exploring are the same motion.
+43. As a viewer, I want to say "show me him on the brain" and have the panel center on that person, so that the graph responds to the conversation.
+44. As a viewer, I want to share an answer as a link that shows the chain as an image in iMessage or Slack, so that a good answer travels.
+45. As a searcher on Google, I want answer pages to be indexable, so that "how is A connected to B" can land on Headshot.
+46. As a viewer, I want "who was in both X and Y" to include guest and recurring cast, not only the top ten, so that the answer is actually right.
+47. As a viewer on a phone, I want the faces first and the prose second, with follow-ups in a scroller, so that the answer fits my thumb.
+48. As a viewer, I want the right panel to open on the person I asked about, not a hairball, so that the graph is about my question.
+49. As the owner, I want the full-cast crawl to be part of the monthly build with cached raw data, so that it's reproducible and cheap to rerun.
+
+## Implementation decisions (v2)
+
+### Data: full casts from TMDB, packed offline
+- A second pipeline stage crawls TMDB credits for the top 20,000 titles by IMDb votes (about one call per title at TMDB's rate limit, ten minutes). Raw JSON cached on disk under `data/tmdb/` so reruns are free.
+- Results are packed into the same graph file as **weak-tier** edges (they include guest and recurring cast), plus a side table of character names keyed by (person, title). People not in the IMDb graph are added as nodes with their TMDB ids and IMDb ids from external_ids.
+- The packed format gains a version bump; the loader keeps reading v1 files. Expected size around 45 MB.
+- Character names from the side table replace the runtime roles route for titles in the crawl; the route stays as a fallback for the long tail.
+- Episode-level IMDb credits, awards, and box office stay out of scope.
+
+### Identification
+- New deterministic tool `find_by_constraints`: input is what the model extracted from the question (titles mentioned, a role hint, era, optional gender), output is up to eight candidates with images and the matching credit and character. The server intersects cast sets across the mentioned titles, then scores by role hint against character names, prominence, and era.
+- Mandatory when the question mentions at least one title. With no title, the model resolves the show first, then calls it. Free reasoning through tmdb_search is the last resort.
+- Embeddings over the top 50,000 entities (name, known-for, bio, character names) back the tool when constraints are thin, using the pgvector table that already exists.
+- **Face grid:** two to eight candidates render as a grid of faces with name and the matching credit, thumb-sized on phone. If the model's answer text after the grid is empty, tapping a face opens that person's page and ego view. Otherwise tapping posts "I mean <name>" as a user turn and the agent continues.
+
+### The fast path (before the model)
+- Question shapes: `path`, `costar`, `both`, `known-for`, `identify`. A lightweight classifier (regex over the question plus the resolved entities) assigns a shape when it can.
+- When a shape is assigned and every entity resolves exactly and unambiguously, the server computes the deterministic result (tiered paths, shared credits, common neighbors, top credits) and streams the chain or card **before** the agent starts. The agent then runs with the result already in context and narrates without calling the graph tool.
+- Ambiguous names (two exact matches with close prominence) fall through to the agent as today.
+
+### Answer store and cache
+- Table `answers`: id, short id, slug, shape, resolved entity ids (sorted), question text, chosen path, paths summary, narration, follow-ups, graph build id, session id, public flag, created at.
+- Cache key is shape plus sorted entity ids, never the raw text. A hit skips the model entirely and replays the stored answer, including the events that light the panel.
+- Staleness: answers carry the graph build id. After a new build ships, cached answers still serve and are recomputed in the background on the next hit.
+- Public permalinks only for answers that pass a length cap and a profanity filter on the question; the rest stay private to the session.
+
+### Entity links in answers ("cursor for movies")
+- The model keeps emphasizing entity names in its prose. The client resolves emphasized names against the message's touched nodes (the `data-node` parts it already receives) and renders matches as links that open the drawer.
+- Unmatched emphasized names resolve on click through the search route (exact match first) before opening.
+- The same treatment applies to names in the face grid, the chain, the follow-up chips, and the wiki pages.
+
+### "Show me on the brain"
+- New tool `show_on_brain({ imdbId })` emits a `focus-ego` event. The panel switches to that node's ego view and opens its drawer. No path required.
+
+### Permalinks and Open Graph
+- URL `/a/<slug>-<shortid>` (e.g. `/a/heath-ledger-to-natalie-portman-7f3k`). The page renders the chain with faces, the narration, follow-ups (linking to their own permalinks once answered), and the ego view of the first person. No composer; an "Ask your own" button.
+- Open Graph image rendered server-side (Next image response): posters and arrows on the dark ground, degrees count, wordmark.
+- Answer pages are indexable; thread views are not.
+
+### Panel and phone
+- Ego view is the default right panel after any answer, centered on the first person in the question, drawer open on their page. Fresh load with no thread shows the whole brain. Focus keeps the whole-brain view as "what everyone has asked."
+- Phone: answer-first. The chain is a full-width horizontal strip of faces at the top of each answer, narration below, follow-ups as a horizontal chip scroller, brain behind a header button. Composer pinned at the bottom. Face grids are thumb-sized.
+
+## Testing decisions (v2)
+- Pipeline seam extends to the TMDB stage with a fixture of cached credit JSON: packed weak edges, character table, new-person nodes, and v2 format round trip.
+- Engine seam: constraint solving over the fixture (intersection, role-hint scoring, era filter).
+- Agent seam: fast path emits chain before any model call; cache hit replays without a model call; `show_on_brain` emits the focus event; face-grid decision rule (empty answer text → page, otherwise user turn).
+- Route seam: permalink page renders from a stored answer; OG image route returns an image for a stored answer; private answers are not served publicly.
+- Client: entity-link resolution is a pure function over message parts, unit-tested.
+
+## Build order
+A. Fast path, answer store, cache, entity links, `show_on_brain`.
+B. TMDB full-cast crawl, packed format v2, `find_by_constraints`, embeddings, face grid.
+C. Permalinks and Open Graph images.
+D. Ego view by default and the phone layout.
+
+## Out of scope (v2)
+Accounts, episode-level credits, awards and box office data, recommendations, any editing of pages by humans, a mobile app.
