@@ -52,5 +52,12 @@ async function worker() {
   }
 }
 
-await Promise.all(Array.from({ length: concurrency }, worker));
-console.log(`done: ${ok} ok, ${failed} failed, ${questions.length} total`);
+async function main() {
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  console.log(`done: ${ok} ok, ${failed} failed, ${questions.length} total`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
