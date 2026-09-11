@@ -4,12 +4,14 @@
  * no longer shows the graph by default.
  */
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import { BrainStore } from "./canvas/brainStore";
 import { BrainPanel } from "./BrainPanel";
 import type { RenderedBrain } from "@/lib/brain/render";
 import type { EgoNetwork } from "@/lib/graph/ego";
 
 export function BrainExplorer() {
+  const router = useRouter();
   const store = useMemo(() => new BrainStore(), []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export function BrainExplorer() {
         onSelect={select}
         onDeselect={() => setSelected(null)}
         onExpand={select}
-        onAsk={(text) => window.location.assign(`/?q=${encodeURIComponent(text)}`)}
+        onAsk={(text) => router.push(`/?q=${encodeURIComponent(text)}`)}
         onPick={select}
         ego={ego}
         egoImages={egoImages}
@@ -59,7 +61,7 @@ export function BrainExplorer() {
           setEgo(null);
           setSelected(null);
         }}
-        onClose={() => window.location.assign("/")}
+        onClose={() => router.push("/")}
       />
     </div>
   );

@@ -83,7 +83,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
     const first = messages.find((m) => m.role === "user");
     const text = first?.parts.find((p) => p.type === "text");
     if (text && "text" in text) renameThread(threadId, text.text.slice(0, 60));
-  }, [messages, threadId]);
+  }, [messages, threadId, onHasMessages]);
 
   const resting = error && error !== dismissedError ? restingText(error) : null;
 
