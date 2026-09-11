@@ -54,9 +54,10 @@ export const COLORS = {
   title: "#7d8cc4",
   accent: "#f4b63f",
   session: "#62e6b4",
-  edge: "rgba(255,255,255,0.055)",
-  edgeWeak: "rgba(255,255,255,0.03)",
-  edgeOverlay: "rgba(98,230,180,0.18)",
+  // Opaque colors only: sigma's WebGL edge programs ignore rgba alpha.
+  edge: "#262932",
+  edgeWeak: "#1b1d25",
+  edgeOverlay: "#1f4a3e",
 };
 
 export const edgeKey = (personImdbId: string, titleImdbId: string) => `${personImdbId}|${titleImdbId}`;

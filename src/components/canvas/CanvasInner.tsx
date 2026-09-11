@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import Sigma from "sigma";
+import { EdgeRectangleProgram } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { BrainStore, COLORS, type NodeAttrs, type EdgeAttrs } from "./brainStore";
@@ -14,9 +15,10 @@ export interface CanvasProps {
   onClickStage: () => void;
 }
 
-const DIM = "rgba(255,255,255,0.06)";
-const DIM_EDGE = "rgba(255,255,255,0.025)";
-const ALT = "rgba(244,182,63,0.35)";
+// Opaque colors only: sigma's WebGL programs ignore rgba alpha.
+const DIM = "#23262e";
+const DIM_EDGE = "#14161c";
+const ALT = "#7a5f24";
 
 export default function CanvasInner({ store, selected, onClickNode, onDoubleClickNode, onClickEdge, onClickStage }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,7 +47,8 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
       labelRenderedSizeThreshold: 5,
       labelDensity: 0.45,
       labelGridCellSize: 90,
-      defaultEdgeType: "line",
+      defaultEdgeType: "rectangle",
+      edgeProgramClasses: { rectangle: EdgeRectangleProgram },
       minCameraRatio: 0.03,
       maxCameraRatio: 40,
       zIndex: true,
