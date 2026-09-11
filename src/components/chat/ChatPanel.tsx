@@ -1,4 +1,11 @@
 "use client";
+/**
+ * The thread, board C ("Terminal for cinephiles"). DESIGN.md → Thread:
+ * a section header carrying the thread's own question, 28px of air, then
+ * bubbles at a 880px cap — yours squared off to the right, the agent's to the
+ * left — with the receipts line, the follow-up chips and the composer under
+ * them. No cards, no accent: the only accent on any screen is Play.
+ */
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,8 +17,10 @@ import { FaceGrid } from "./FaceGrid";
 import { faceTapAction } from "./faceGridRule";
 import { egoDefaultFor, egoDelayMs } from "./egoDefault";
 import { lookupName } from "./lookup";
-import { loadMessages, renameThread, saveMessages } from "./threads";
+import { loadMessages, renameThread, saveMessages, useThreads } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
+import { receiptSegments } from "./receipts";
+import { threadMetaLine } from "./threadMeta";
 
 interface Props {
   threadId: string;
@@ -23,30 +32,29 @@ interface Props {
   onHasMessages?: (has: boolean) => void;
 }
 
+/** Lowercase, the way every other label on board C reads. */
 const TOOL_LABELS: Record<string, string> = {
-  find_entities: "Resolving names",
-  find_by_constraints: "Matching the description",
-  shortest_path: "Searching the graph",
-  highlight_path: "Choosing a path",
-  common_neighbors: "Finding who's in both",
-  shared_credits: "Checking shared credits",
-  neighborhood: "Reading credits",
-  tmdb_search: "Searching TMDB",
-  tmdb_person: "Reading a profile",
-  tmdb_title: "Reading a title",
-  expand_node: "Expanding the brain",
-  read_page: "Reading a page",
-  write_page: "Writing a page",
-  show_on_brain: "Centering the brain",
+  find_entities: "resolving names",
+  find_by_constraints: "matching the description",
+  shortest_path: "searching the graph",
+  highlight_path: "choosing a path",
+  common_neighbors: "finding who's in both",
+  shared_credits: "checking shared credits",
+  neighborhood: "reading credits",
+  tmdb_search: "searching tmdb",
+  tmdb_person: "reading a profile",
+  tmdb_title: "reading a title",
+  expand_node: "expanding the brain",
+  read_page: "reading a page",
+  write_page: "writing a page",
+  show_on_brain: "centering the brain",
+  my_taste: "reading your log",
+  recall: "searching the record",
+  have_i_seen: "checking your log",
+  tonight_picks: "reading tonight's picks",
+  rate: "writing to your log",
+  mark_progress: "writing to your log",
 };
-
-const EXAMPLES = [
-  "How is Timothée Chalamet connected to Meryl Streep?",
-  "Have Pedro Pascal and Oscar Isaac worked together?",
-  "Who was in both Severance and Succession?",
-  "The bald guy from the Apple show who was also in Parks and Rec",
-  "Connect Zendaya to Al Pacino",
-];
 
 export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessages }: Props) {
   const initial = useMemo(() => loadMessages(threadId), [threadId]);
@@ -55,6 +63,8 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
   const sentNonce = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const threads = useThreads();
+  const meta = threads.find((t) => t.id === threadId) ?? null;
 
   const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
   const { messages, sendMessage, status, error, stop } = useChat<HeadshotUIMessage>({
@@ -132,54 +142,60 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
     });
   };
 
+  const headline = meta && meta.title !== "New thread" ? meta.title : "new thread";
+  const metaLine = threadMetaLine(meta?.createdAt, messages.length);
+
   return (
     <section className="flex h-full min-w-0 flex-col" aria-label="Chat">
-      <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
-          {messages.length === 0 && (
-            <div className="rise flex min-h-[50vh] flex-col justify-end space-y-6 pb-6">
-              <div className="space-y-3">
-                <p className="text-[13px] text-ink-dim">Ask the brain anything about who was in what with whom — or about what you have watched.</p>
-                <div className="flex flex-wrap gap-2">
-                  {EXAMPLES.map((e) => (
-                    <Chip key={e} onClick={() => ask(e)}>{e}</Chip>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="space-y-6">
-            {messages.map((m) => (
-              <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} onAsk={ask} />
-            ))}
-            {busy && (
-              <div className="flex items-center gap-2 text-[13px] text-ink-dim">
-                <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
-                <Thinking />
-              </div>
-            )}
-            {resting && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-ink">{resting}</p>}
-            {!busy && chips.length > 0 && (
-              <div className="scrollbar-thin -mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 pb-1 md:mx-0 md:flex-wrap md:px-0">
-                {chips.map((c) => (
-                  <Chip key={c} onClick={() => ask(c)} scroll>
-                    {c}
-                  </Chip>
-                ))}
-              </div>
-            )}
-          </div>
+      <div className="px-4 pt-[22px] md:px-[34px]">
+        <div className="section-head">
+          <h1 className="t-title min-w-0 truncate">{headline}</h1>
+          {metaLine && <span className="t-meta shrink-0">{metaLine}</span>}
         </div>
       </div>
 
-      <div className="bg-gradient-to-t from-bg via-bg to-transparent">
+      <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto px-4 md:px-[34px]">
+        <div className="flex w-full max-w-[880px] flex-col gap-[14px] pb-[30px] pt-[28px]">
+          {messages.length === 0 && <p className="t-prose">nothing asked yet. type a question below.</p>}
+
+          {messages.map((m) => (
+            <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} onAsk={ask} />
+          ))}
+
+          {busy && (
+            <span className="t-meta self-start pl-[2px]">
+              thinking
+              <span className="thinking-dot"> ·</span>
+              <span className="thinking-dot">·</span>
+              <span className="thinking-dot">·</span>
+            </span>
+          )}
+
+          {resting && <p className="self-start text-[13.5px] leading-[1.54] text-ink">{resting}</p>}
+
+          {!busy && chips.length > 0 && (
+            <div className="scrollbar-thin -mx-4 flex flex-nowrap gap-[9px] self-start overflow-x-auto px-4 pb-1 pt-[10px] md:mx-0 md:flex-wrap md:px-0 md:pl-[2px]">
+              {chips.map((c) => (
+                <button key={c} type="button" onClick={() => ask(c)} className="chip shrink-0 whitespace-nowrap text-left md:shrink md:whitespace-normal">
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 pb-[max(32px,env(safe-area-inset-bottom))] md:px-[34px] md:pb-[32px]">
         <form
-          className="mx-auto flex w-full max-w-[760px] items-end gap-2 px-6 pb-5 pt-3 md:px-8"
+          className="composer"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
         >
+          <span className="font-mono text-[13px] leading-none text-ink-ghost" aria-hidden>
+            &gt;
+          </span>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -190,17 +206,18 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
               }
             }}
             rows={1}
-            placeholder="Who was in that one thing with…"
-            className="max-h-40 min-h-[46px] flex-1 resize-none rounded-xl bg-raised px-4 py-3 text-[14.5px] text-ink outline-none ring-1 ring-line shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition-shadow duration-[120ms] placeholder:text-ink-faint focus:ring-line-strong"
+            aria-label="ask"
+            placeholder="log something, or just ask"
+            className="scrollbar-thin max-h-40 min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-[14px] leading-[1.5] text-ink outline-none placeholder:text-ink-faint"
           />
           {busy ? (
-            <button type="button" onClick={stop} className="h-11 rounded-xl px-4 text-[13px] text-ink-dim ring-1 ring-line hover:text-ink">
-              Stop
+            <button type="button" onClick={stop} className="t-link ml-auto shrink-0">
+              stop
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim()} className="h-[46px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-black transition-[filter] duration-[120ms] hover:brightness-110 disabled:opacity-40">
-              Ask
-            </button>
+            <span className="t-meta ml-auto shrink-0" aria-hidden>
+              ⏎
+            </span>
           )}
         </form>
       </div>
@@ -210,33 +227,9 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
 
 function restingText(error: Error): string {
   const msg = error.message ?? "";
-  if (msg.includes("daily_cap")) return "Headshot is resting until tomorrow. The brain is still browsable.";
-  if (msg.includes("rate_limited")) return "Easy there. A few questions a minute, please.";
-  return msg.slice(0, 200) || "Something went wrong.";
-}
-
-function Thinking() {
-  return (
-    <span className="flex items-center gap-1">
-      Thinking
-      <span className="thinking-dot">·</span>
-      <span className="thinking-dot">·</span>
-      <span className="thinking-dot">·</span>
-    </span>
-  );
-}
-
-function Chip({ children, onClick, scroll = false }: { children: string; onClick: () => void; scroll?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-full border border-line bg-white/[0.02] px-3 py-1.5 text-left text-[12.5px] text-ink-dim transition-colors duration-[120ms] hover:border-line-strong hover:bg-white/[0.05] hover:text-ink ${
-        scroll ? "shrink-0 whitespace-nowrap md:shrink md:whitespace-normal" : ""
-      }`}
-    >
-      {children}
-    </button>
-  );
+  if (msg.includes("daily_cap")) return "out of questions until tomorrow. the brain is still browsable.";
+  if (msg.includes("rate_limited")) return "too fast. a few questions a minute.";
+  return msg.slice(0, 200) || "that did not go through. ask it again.";
 }
 
 function Message({
@@ -254,38 +247,80 @@ function Message({
 }) {
   if (m.role === "user") {
     const text = m.parts.filter((p) => p.type === "text").map((p) => ("text" in p ? p.text : "")).join("");
-    return (
-      <div className="rise flex justify-end">
-        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[14.5px] leading-[1.5] text-ink ring-1 ring-line">{text}</p>
-      </div>
-    );
+    return <p className="rise bubble bubble-you">{text}</p>;
   }
+
   const chosen = m.parts.find((p) => p.type === "data-chosen");
   const stored = m.parts.find((p) => p.type === "data-answer");
   const share = stored && stored.type === "data-answer" && stored.data.public ? `/a/${stored.data.slug}-${stored.data.id}` : null;
+  const receipts = receiptSegments(m.parts);
+
+  // The bubble holds what the agent said; graphics and tool lines break out of
+  // it and sit under it with the board's 2px inset, like the receipts do.
+  const blocks: React.ReactNode[] = [];
+  let bubble: React.ReactNode[] = [];
+  const flush = () => {
+    if (bubble.length === 0) return;
+    blocks.push(
+      <div key={`b${blocks.length}`} className="bubble bubble-them">
+        {bubble}
+      </div>,
+    );
+    bubble = [];
+  };
+
+  m.parts.forEach((part, i) => {
+    if (part.type === "text") {
+      if (part.text.trim().length === 0) return;
+      bubble.push(<Markdown key={i} text={part.text} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />);
+      return;
+    }
+    if (part.type === "data-faces") {
+      flush();
+      blocks.push(
+        // `w-full`: the message column is `items-start`, so a fit-content
+        // wrapper collapses the row grid's `1fr` credit column to nothing.
+        <div key={i} className="w-full self-start pl-[2px]">
+          <FaceGrid faces={part.data} tap={faceTapAction(m.parts, i)} onSelectNode={onSelectNode} onAsk={onAsk} />
+        </div>,
+      );
+      return;
+    }
+    if (part.type === "data-paths") {
+      flush();
+      blocks.push(
+        // `w-full` so the chain's own `overflow-x-auto` has a width to scroll in.
+        <div key={i} className="w-full self-start pl-[2px]">
+          <PathGraphic paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />
+        </div>,
+      );
+      return;
+    }
+    if (part.type.startsWith("tool-")) {
+      const name = part.type.slice(5);
+      const state = "state" in part ? String(part.state) : "";
+      // Finished tool steps stay out of the way; only the live one and failures show.
+      if (state.startsWith("output") && state !== "output-error") return;
+      flush();
+      blocks.push(
+        <span key={i} className="t-meta self-start pl-[2px]">
+          {TOOL_LABELS[name] ?? name}
+          {state === "output-error" && " · failed"}
+        </span>,
+      );
+    }
+  });
+  flush();
+
   return (
-    <div className="rise space-y-2">
-      {m.parts.map((part, i) => {
-        if (part.type === "text") return <Markdown key={i} text={part.text} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />;
-        if (part.type === "data-faces") return <FaceGrid key={i} faces={part.data} tap={faceTapAction(m.parts, i)} onSelectNode={onSelectNode} onAsk={onAsk} />;
-        if (part.type === "data-paths")
-          return <PathGraphic key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
-        if (part.type.startsWith("tool-")) {
-          const name = part.type.slice(5);
-          const state = "state" in part ? String(part.state) : "";
-          const done = state.startsWith("output");
-          // Finished tool steps stay out of the way; only the live one and failures show.
-          if (done && state !== "output-error") return null;
-          return (
-            <p key={i} className="flex items-center gap-2 font-mono text-[11px] text-ink-faint">
-              <span className={`inline-block size-1.5 rounded-full ${state === "output-error" ? "bg-danger" : "bg-accent"}`} />
-              {TOOL_LABELS[name] ?? name}
-              {state === "output-error" && <span className="text-danger">· failed</span>}
-            </p>
-          );
-        }
-        return null;
-      })}
+    <div className="rise flex flex-col items-start gap-[11px]">
+      {blocks}
+      {receipts.length > 0 && (
+        <div className="flex flex-col self-start pl-[2px]">
+          <span className="text-[12.5px] leading-[1.3] text-ink-ghost">what that came from</span>
+          <span className="t-meta flex h-[32px] items-center">{receipts.join(" · ")}</span>
+        </div>
+      )}
       {share && <ShareLink href={share} />}
     </div>
   );
@@ -294,18 +329,18 @@ function Message({
 function ShareLink({ href }: { href: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-3 text-[11.5px] text-ink-faint">
-      <a href={href} target="_blank" rel="noopener" className="hover:text-ink">
-        Share this answer ↗
+    <div className="flex items-center gap-[14px] self-start pl-[2px]">
+      <a href={href} target="_blank" rel="noopener" className="t-link">
+        share this answer
       </a>
       <button
         type="button"
-        className="hover:text-ink"
+        className="t-link"
         onClick={() => {
           navigator.clipboard?.writeText(`${window.location.origin}${href}`).then(() => setCopied(true)).catch(() => {});
         }}
       >
-        {copied ? "Copied" : "Copy link"}
+        {copied ? "copied" : "copy link"}
       </button>
     </div>
   );

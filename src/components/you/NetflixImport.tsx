@@ -5,10 +5,11 @@
  *
  * The one difference is what it can know. Netflix records that you pressed
  * play and nothing else, so every row lands in the neutral `seen` bucket and
- * the screen says so rather than letting anyone believe it means "liked".
+ * the row says so rather than letting anyone believe it means "liked".
  */
 import { useCallback, useState } from "react";
 import { ReviewRow, type ReviewItem } from "./LetterboxdImport";
+import { FilePick, ImportRow } from "./importRow";
 
 interface ImportResult {
   source: string;
@@ -25,21 +26,18 @@ interface Props {
 }
 
 export function NetflixImport({ onDone }: Props) {
+  const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fixes, setFixes] = useState<Record<string, string | null>>({});
   const [done, setDone] = useState<number | null>(null);
 
-  const upload = useCallback(async (form: HTMLFormElement) => {
+  const upload = useCallback(async () => {
+    if (!file) return setError("pick NetflixViewingHistory.csv");
     setBusy(true);
     setError(null);
     try {
-      const file = new FormData(form).get("file");
-      if (!(file instanceof File) || file.size === 0) {
-        setError("Pick NetflixViewingHistory.csv.");
-        return;
-      }
       const body = new FormData();
       body.set("source", "netflix");
       body.set("file", file);
@@ -48,11 +46,11 @@ export function NetflixImport({ onDone }: Props) {
       setResult((await res.json()) as ImportResult);
       setDone(null);
     } catch {
-      setError("That import didn't go through. Try again.");
+      setError("that import did not go through. try again.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [file]);
 
   const confirm = useCallback(async () => {
     const payload = (result?.review ?? [])
@@ -70,22 +68,40 @@ export function NetflixImport({ onDone }: Props) {
       setDone(result?.imported ?? 0);
       setResult(null);
       setFixes({});
+      setFile(null);
       onDone?.();
     } finally {
       setBusy(false);
     }
   }, [fixes, onDone, result]);
 
-  if (result) {
-    return (
-      <section>
-        <p className="max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-          {result.imported} of {result.parsed} titles matched — episodes of the same show counted as one. These are the {result.review.length} least
-          certain; fix any that are wrong. Netflix only knows you played it, so every one of them is filed as seen, never liked.
-        </p>
-        {result.skipped > 0 && <p className="mt-2 text-[12.5px] tabular-nums text-ink-faint">{result.skipped} not found in the graph and skipped</p>}
+  const note = error
+    ? error
+    : done !== null
+      ? `imported ${done} titles`
+      : "account → profile → viewing activity · everything lands as seen, never liked";
 
-        <div className="mt-4">
+  return (
+    <>
+      <ImportRow
+        name="Netflix"
+        note={note}
+        controls={
+          <>
+            <FilePick name="file" label="NetflixViewingHistory.csv" chosen={file?.name ?? null} onPick={setFile} />
+            <button type="button" onClick={() => void upload()} disabled={busy || !file} className="t-link disabled:opacity-40">
+              {busy ? "matching…" : "replace"}
+            </button>
+          </>
+        }
+      />
+
+      {result && (
+        <div className="flex flex-col gap-[10px] py-[10px]">
+          <p className="t-prose max-w-[880px]">
+            {result.imported} of {result.parsed} titles matched — episodes of the same show counted as one. these are the {result.review.length} least certain.
+            {result.skipped > 0 ? ` ${result.skipped} were not in the graph and were skipped.` : ""}
+          </p>
           {result.review.map((item) => (
             <ReviewRow
               key={item.name}
@@ -94,51 +110,11 @@ export function NetflixImport({ onDone }: Props) {
               onChoose={(imdbId) => setFixes((prev) => ({ ...prev, [item.name]: imdbId }))}
             />
           ))}
-        </div>
-
-        <button
-          onClick={() => void confirm()}
-          disabled={busy}
-          className="mt-8 h-9 rounded-full bg-accent px-4 text-[12.5px] font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40"
-        >
-          {busy ? "Saving…" : "Looks right"}
-        </button>
-      </section>
-    );
-  }
-
-  return (
-    <section>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void upload(e.currentTarget);
-        }}
-      >
-        <label className="flex items-center justify-between gap-4 py-2.5">
-          <span className="text-[13.5px] text-ink-dim">NetflixViewingHistory.csv</span>
-          <input
-            type="file"
-            name="file"
-            accept=".csv,text/csv"
-            className="max-w-[60%] text-[13px] text-ink-dim file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-3 file:py-1.5 file:text-[12.5px] file:text-ink hover:file:border-line-strong"
-          />
-        </label>
-
-        {error && <p className="mt-4 text-[13px] text-ink-dim">{error}</p>}
-        {done !== null && !error && <p className="mt-4 text-[13px] text-ink-dim">Imported {done} titles.</p>}
-
-        <div className="mt-3 flex items-center gap-5">
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-9 rounded-full bg-accent px-4 text-[12.5px] font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40"
-          >
-            {busy ? "Matching…" : "Import"}
+          <button type="button" onClick={() => void confirm()} disabled={busy} className="btn btn-outline self-start disabled:opacity-40">
+            {busy ? "saving…" : "Looks right"}
           </button>
-          <span className="text-[12.5px] text-ink-faint">Replaces your previous Netflix import.</span>
         </div>
-      </form>
-    </section>
+      )}
+    </>
   );
 }

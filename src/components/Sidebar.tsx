@@ -1,15 +1,20 @@
 "use client";
 /**
- * The sidebar, ChatGPT-shaped: collapsible to a 56px strip of icons, expanded
- * to 260px. SPEC v4 cuts it to three things — You (home), History, and the
- * account row at the bottom as a menu (never a one-tap sign-out).
+ * The rail, board C (DESIGN.md → Sidebar): 176px, one hairline on the right,
+ * padding 22/0/22/24, internal gap 26. Wordmark, then `you` / `history` at
+ * 13.5px where the ink level *is* the state (no pill, no icon, no counter),
+ * then the threads under History, then the account name pushed to the bottom.
  *
- * The nav itself is decided in `navModel.ts` so the cuts are testable.
+ * Collapsed it keeps the same ground and the same type — just the wordmark's
+ * initial and the account's — because the doc has no second visual language
+ * for a rail. The nav itself is decided in `navModel.ts` so the cuts are
+ * testable.
  */
 import { useState } from "react";
 import type { ThreadMeta } from "./chat/threads";
+import { shortAgo } from "./chat/threadMeta";
 import { requireSignIn, signOut, useSessionUser } from "./auth/SignInGate";
-import { accountModel, navItems, type Surface } from "./navModel";
+import { accountModel, accountName, navItems, type Surface } from "./navModel";
 
 export type { Surface };
 
@@ -31,123 +36,101 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou
 
   const nav = navItems(surface);
   const account = accountModel(user, loading);
+  const signIn = () => requireSignIn(typeof window === "undefined" ? "/" : window.location.pathname);
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-14 shrink-0 flex-col items-center border-r border-line bg-bg py-3" aria-label="Sidebar">
-        <button onClick={onToggle} className="mb-2 flex size-10 items-center justify-center rounded-lg text-ink-dim hover:bg-white/[0.04] hover:text-ink" aria-label="Expand sidebar" title="Expand">
-          <Icon.panel />
+      <aside className="flex h-full w-[56px] shrink-0 flex-col items-start gap-[26px] border-r border-line bg-bg py-[22px] pl-[20px]" aria-label="Sidebar">
+        <button onClick={onToggle} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink" aria-label="Expand sidebar" title="headshot">
+          h
         </button>
         {nav.map((n) => (
-          <button key={n.key} onClick={onYou} title={n.label} aria-label={n.label} className={`flex size-10 items-center justify-center rounded-lg transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
-            <Icon.home />
+          <button key={n.key} onClick={onYou} title={n.label} aria-label={n.label} className={`t-ui ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"} transition-colors duration-[120ms]`}>
+            {n.label[0]}
           </button>
         ))}
-        <div className="mt-auto">
-          <button onClick={() => (user ? onToggle() : requireSignIn(window.location.pathname))} className="flex size-10 items-center justify-center rounded-lg text-ink-dim hover:bg-white/[0.04] hover:text-ink" title={account.label} aria-label={account.label}>
-            {user ? <Avatar email={user.email} /> : <Icon.user />}
-          </button>
-        </div>
+        <button onClick={() => (user ? onToggle() : signIn())} className="t-meta mt-auto text-ink-faint transition-colors duration-[120ms] hover:text-ink" title={account.label} aria-label={account.label}>
+          {accountName(account.label)[0] ?? "?"}
+        </button>
       </aside>
     );
   }
 
   return (
-    <aside className="relative flex h-full w-[260px] shrink-0 flex-col border-r border-line bg-bg" aria-label="Sidebar">
-      <div className="flex items-center justify-between px-3 pb-1 pt-3">
-        <button onClick={onYou} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/[0.04]">
-          <span className="inline-block size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
-          <span className="text-[14px] font-semibold tracking-tight text-ink">Headshot</span>
+    // 176px is the rail; as a phone sheet it gets 260px so a thread's own
+    // question is readable instead of truncating after four words.
+    <aside className="group/rail relative flex h-full w-[260px] shrink-0 flex-col gap-[26px] border-r border-line bg-bg py-[22px] pl-[24px] md:w-[176px]" aria-label="Sidebar">
+      <div className="flex items-baseline">
+        <button onClick={onYou} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+          headshot
         </button>
-        <button onClick={onToggle} className="rounded-md p-1.5 text-ink-dim hover:bg-white/[0.04] hover:text-ink" aria-label="Collapse sidebar" title="Collapse">
-          <Icon.panel />
+        <button
+          onClick={onToggle}
+          className="t-meta ml-auto mr-[10px] opacity-0 transition-opacity duration-[120ms] hover:text-ink group-hover/rail:opacity-100"
+          aria-label="Collapse sidebar"
+          title="Collapse"
+        >
+          «
         </button>
       </div>
 
-      <nav className="px-2 pt-1" aria-label="Surfaces">
+      <nav className="flex flex-col gap-[7px]" aria-label="Surfaces">
         {nav.map((n) => (
-          <button key={n.key} onClick={onYou} className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13.5px] transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
-            <span className="text-ink-faint">
-              <Icon.home />
-            </span>
+          <button
+            key={n.key}
+            onClick={onYou}
+            className={`t-ui text-left transition-colors duration-[120ms] ${n.active ? "text-ink" : "font-normal text-ink-faint hover:text-ink"}`}
+          >
             {n.label}
           </button>
         ))}
+        <span className={`t-ui ${surface === "chat" ? "text-ink" : "font-normal text-ink-faint"}`}>history</span>
       </nav>
 
-      <div className="mt-4 px-4 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">History</div>
-      <nav className="scrollbar-thin mt-1 flex-1 overflow-y-auto px-2" aria-label="History">
-        {threads.length === 0 && <p className="px-2.5 py-2 text-[12.5px] text-ink-faint">Nothing yet.</p>}
-        {threads.map((t) => (
-          <div key={t.id} className={`group flex items-center gap-1 rounded-md px-2.5 py-[6px] text-[13px] ${t.id === activeId && surface === "chat" ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
-            <button onClick={() => onSelectThread(t.id)} className="min-w-0 flex-1 truncate text-left">
-              {t.title}
-            </button>
-            <button onClick={() => onDeleteThread(t.id)} className="rounded p-1 text-ink-faint opacity-0 hover:text-danger group-hover:opacity-100" aria-label="Delete thread" title="Delete">
-              <Icon.x />
-            </button>
-          </div>
-        ))}
+      <nav className="scrollbar-thin mt-[4px] flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto pr-[12px]" aria-label="History">
+        {threads.length === 0 && <span className="t-meta">nothing asked yet</span>}
+        {threads.map((t) => {
+          const on = t.id === activeId && surface === "chat";
+          return (
+            <div key={t.id} className="group/row flex flex-col gap-[6px]">
+              <div className="flex items-start gap-[6px]">
+                <button onClick={() => onSelectThread(t.id)} className={`min-w-0 flex-1 truncate text-left text-[13px] leading-[1.3] transition-colors duration-[120ms] ${on ? "text-ink" : "text-ink-dim hover:text-ink"}`}>
+                  {t.title}
+                </button>
+                <button
+                  onClick={() => onDeleteThread(t.id)}
+                  className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink group-hover/row:opacity-100"
+                  aria-label="Delete thread"
+                  title="Delete"
+                >
+                  ×
+                </button>
+              </div>
+              <span className="t-meta">{shortAgo(t.createdAt)}</span>
+            </div>
+          );
+        })}
       </nav>
 
-      <div className="relative border-t border-line p-2">
+      <div className="relative mt-auto flex flex-col gap-[5px] pr-[12px]">
         {menu && user && (
-          <div className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-line bg-elev p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.5)]" role="menu">
-            <div className="truncate px-2.5 py-2 text-[12.5px] text-ink-dim">{user.email}</div>
-            <div className="my-1 h-px bg-line" />
-            <button onClick={() => void signOut()} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] text-ink-dim hover:bg-white/[0.05] hover:text-ink">
+          <div className="panel absolute bottom-full left-0 mb-[10px] w-[200px] p-[10px]" role="menu">
+            <div className="t-meta truncate pb-[8px]">{user.email}</div>
+            <button onClick={() => void signOut()} className="t-ui block w-full text-left text-ink-dim transition-colors duration-[120ms] hover:text-ink">
               Sign out
             </button>
           </div>
         )}
         <button
-          onClick={() => (user ? setMenu((m) => !m) : requireSignIn(window.location.pathname))}
-          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-ink-dim hover:bg-white/[0.04] hover:text-ink"
+          onClick={() => (user ? setMenu((m) => !m) : signIn())}
+          className="t-meta truncate text-left text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+          title={account.label}
           aria-haspopup={user ? "menu" : undefined}
           aria-expanded={menu}
         >
-          {user ? <Avatar email={user.email} /> : <Icon.user />}
-          <span className="min-w-0 flex-1 truncate">{account.label}</span>
-          {user && <Icon.dots />}
+          {accountName(account.label)}
         </button>
       </div>
     </aside>
   );
 }
-
-function Avatar({ email }: { email: string | null }) {
-  return <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-[11px] font-semibold text-accent">{(email ?? "?")[0].toUpperCase()}</span>;
-}
-
-const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-const Icon = {
-  home: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <path d="M3 9.5 10 3l7 6.5V17h-4.5v-4h-5v4H3z" />
-    </svg>
-  ),
-  panel: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <rect x="3" y="4" width="14" height="12" rx="2" />
-      <path d="M8 4v12" />
-    </svg>
-  ),
-  user: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <circle cx="10" cy="7" r="3.2" />
-      <path d="M3.5 17a6.5 6.5 0 0 1 13 0" />
-    </svg>
-  ),
-  dots: () => (
-    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-      <circle cx="4" cy="10" r="1.5" />
-      <circle cx="10" cy="10" r="1.5" />
-      <circle cx="16" cy="10" r="1.5" />
-    </svg>
-  ),
-  x: () => (
-    <svg width="14" height="14" viewBox="0 0 20 20" {...stroke}>
-      <path d="M5 5l10 10M15 5 5 15" />
-    </svg>
-  ),
-};

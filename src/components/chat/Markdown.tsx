@@ -11,7 +11,12 @@ interface Props {
   onLookup?: (name: string) => void;
 }
 
-/** Tiny markdown: paragraphs, **bold**, *emphasis*, `code`, and → arrows kept as-is. Emphasized entity names become links. */
+/**
+ * Tiny markdown: paragraphs, **bold**, *emphasis*, `code`, and → arrows kept
+ * as-is. Emphasized entity names become links ("cursor for movies") — ink and
+ * weight, never the accent. Paragraphs carry the bubble's voice (Geist 14 /
+ * 1.52 at --ink-dim) and sit 11px apart, per board C.
+ */
 export function Markdown({ text, entities, onSelectNode, onLookup }: Props) {
   const paragraphs = text.split(/\n{2,}/).filter((p) => p.trim().length > 0);
   const link = (name: string, node: ReactNode, key: number): ReactNode => {
@@ -34,7 +39,7 @@ export function Markdown({ text, entities, onSelectNode, onLookup }: Props) {
     return node;
   };
   return (
-    <div className="prose-headshot text-[14.5px] leading-[1.55] text-ink">
+    <div className="prose-headshot text-[14px] leading-[1.52] text-ink-dim">
       {paragraphs.map((p, i) => (
         <p key={i}>{inline(p, link)}</p>
       ))}
@@ -56,7 +61,7 @@ function inline(text: string, link: Linker): ReactNode[] {
     if (tok.startsWith("**")) {
       const name = tok.slice(2, -2);
       out.push(link(name, <strong key={k++}>{name}</strong>, k++));
-    } else if (tok.startsWith("`")) out.push(<code key={k++} className="font-mono text-[13px] text-accent">{tok.slice(1, -1)}</code>);
+    } else if (tok.startsWith("`")) out.push(<code key={k++} className="font-mono text-[13px] text-ink">{tok.slice(1, -1)}</code>);
     else {
       const name = tok.slice(1, -1);
       out.push(link(name, <em key={k++}>{name}</em>, k++));

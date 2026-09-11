@@ -1,22 +1,19 @@
 "use client";
 /**
  * Later: the titles you said "not tonight" to and your imported watchlist.
- * A plain list with posters; tap opens the title, "seen it" and "remove"
- * write through the swipe route. The pick engine draws from this list first.
+ * The recently-logged row form with the time gutter saying when it was added
+ * instead of when it was logged (DESIGN.md → You → Services, imports, later).
+ * Tonight draws from this list first.
  */
 import { useEffect, useState } from "react";
 import { useImages } from "@/components/chat/useImages";
 import { useNames } from "@/components/chat/useNames";
+import { terseTime } from "@/components/you/recent";
 
 interface Row {
   titleImdbId: string;
   rating: string;
   updatedAt: string;
-}
-interface Named {
-  imdbId: string;
-  name: string;
-  year: number;
 }
 
 interface Props {
@@ -24,7 +21,7 @@ interface Props {
 }
 
 export function LaterPanel({ onSelectNode }: Props) {
-  const [rows, setRows] = useState<Named[] | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -37,59 +34,73 @@ export function LaterPanel({ onSelectNode }: Props) {
       }
       const { watched } = (await r.json()) as { watched: Row[] };
       const want = watched.filter((w) => w.rating === "want").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      // Names and posters arrive through the hooks below; the list itself is just ids in order.
-      if (alive) setRows(want.map((w) => ({ imdbId: w.titleImdbId, name: w.titleImdbId, year: 0 })));
+      if (alive) setRows(want);
     })();
     return () => {
       alive = false;
     };
   }, []);
 
-  const ids = (rows ?? []).map((r) => r.imdbId).filter((id) => !gone.has(id));
+  const kept = (rows ?? []).filter((r) => !gone.has(r.titleImdbId));
+  const ids = kept.map((r) => r.titleImdbId);
   const images = useImages(ids);
   const names = useNames(ids);
 
-  const act = (imdbId: string, rating: "liked" | "meh" | "unseen") => {
+  const act = (imdbId: string, rating: "liked" | "unseen") => {
     setGone((g) => new Set(g).add(imdbId));
     void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating }] }) }).catch(() => {});
   };
 
-  if (rows === null) return <p className="font-mono text-[11px] text-ink-faint">loading later…</p>;
-  if (ids.length === 0)
-    return (
-      <div className="space-y-2">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Later</h1>
-        <p className="text-[14px] text-ink-dim">Nothing saved. Tap “later” on a pick, or import your Letterboxd watchlist, and it lands here. Tonight draws from this list first.</p>
-      </div>
-    );
   return (
-    <section className="space-y-4" aria-label="Later">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Later</h1>
-        <span className="font-mono text-[11px] text-ink-faint">{ids.length} saved · tonight draws from here first</span>
+    <section className="flex flex-col gap-[12px]" aria-label="Later">
+      <div className="section-head">
+        <h2 className="t-title">later</h2>
+        {ids.length > 0 && <span className="t-meta">{ids.length} saved · tonight draws from here first</span>}
       </div>
-      <ul className="stagger divide-y divide-line">
-        {ids.map((id) => (
-          <li key={id} className="flex items-center gap-4 py-3">
-            <button onClick={() => onSelectNode(id)} className="h-16 w-12 shrink-0 overflow-hidden rounded bg-white/[0.05] ring-1 ring-line hover:ring-accent/60">
-              {images[id]?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={images[id]!.url!} alt="" className="h-full w-full object-cover" loading="lazy" />
-              ) : null}
-            </button>
-            <button onClick={() => onSelectNode(id)} className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-[15px] font-medium text-ink">{names[id]?.name ?? "…"}</span>
-              <span className="font-mono text-[11px] text-ink-faint">{names[id]?.year || ""}</span>
-            </button>
-            <button onClick={() => act(id, "liked")} className="font-mono text-[11px] text-ink-faint hover:text-ink">
-              seen it, liked
-            </button>
-            <button onClick={() => act(id, "unseen")} className="font-mono text-[11px] text-ink-faint hover:text-ink">
-              remove
-            </button>
-          </li>
-        ))}
-      </ul>
+
+      {rows === null && <p className="t-meta">reading later…</p>}
+      {rows !== null && ids.length === 0 && (
+        <p className="t-prose">nothing saved. put a pick off, or import a watchlist, and it lands here.</p>
+      )}
+
+      <div className="flex flex-col">
+        {kept.map((row) => {
+          const id = row.titleImdbId;
+          return (
+            <div
+              key={id}
+              className="row h-[52px] grid-cols-[26px_minmax(0,1fr)_auto] sm:h-[38px] sm:grid-cols-[88px_26px_minmax(0,320px)_48px_minmax(0,1fr)]"
+            >
+              <span className="t-meta hidden sm:block">added {terseTime(row.updatedAt)}</span>
+              <button type="button" onClick={() => onSelectNode(id)} aria-label={names[id]?.name ?? id}>
+                {images[id]?.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={images[id]!.url!} alt="" className="poster-mark" loading="lazy" />
+                ) : (
+                  <span className="poster-mark" />
+                )}
+              </button>
+              <button type="button" onClick={() => onSelectNode(id)} className="min-w-0 text-left">
+                <span className="t-row block truncate">
+                  {names[id]?.name ?? "…"}
+                  {/* the phone row is two lines, year on the first: same shape as recently logged */}
+                  {names[id]?.year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{names[id]!.year}</span> : null}
+                </span>
+                <span className="t-meta block sm:hidden">added {terseTime(row.updatedAt)}</span>
+              </button>
+              <span className="t-meta hidden text-ink-faint sm:block">{names[id]?.year || ""}</span>
+              <span className="flex items-center gap-[14px] justify-self-end">
+                <button type="button" onClick={() => act(id, "liked")} className="t-link">
+                  seen it
+                </button>
+                <button type="button" onClick={() => act(id, "unseen")} className="t-link">
+                  remove
+                </button>
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

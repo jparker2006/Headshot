@@ -1,12 +1,9 @@
 "use client";
 /**
- * Imports — the three CSVs Headshot can read, in the order SPEC v4 lists them.
- * One component so You renders a single line; each importer owns its own file
- * input, its own review and its own "replaces your previous import" promise,
- * because each one replaces only its own rows.
- *
- * Chunk A's structure, not its final look: a plain sentence per importer and
- * nothing boxed, so chunk C can restyle from the winning board.
+ * Imports — the three CSVs Headshot can read, as three terse rows: the name,
+ * one mono line saying what it costs you, and its own file control
+ * (DESIGN.md → You → Services, imports, later). Each importer replaces only
+ * its own rows, so each one owns its own promise.
  */
 import { LetterboxdImport } from "./LetterboxdImport";
 import { NetflixImport } from "./NetflixImport";
@@ -19,28 +16,17 @@ interface Props {
 
 export function Imports({ onDone }: Props) {
   return (
-    <div className="space-y-8">
-      <div className="space-y-2">
-        <p className="max-w-[62ch] text-[14px] text-ink-dim">
-          Letterboxd: Settings → Import &amp; Export → Export your data, then drop the CSVs in. Ratings become liked or meh; the watchlist becomes want.
-        </p>
+    <section className="flex flex-col gap-[12px]" aria-label="Imports">
+      <div className="section-head">
+        <h2 className="t-title">imports</h2>
+        <span className="t-sub hidden sm:inline">re-uploading replaces that source, never piles on</span>
+      </div>
+      <div className="flex flex-col">
         <LetterboxdImport onDone={onDone} />
-      </div>
-
-      <div className="space-y-2">
-        <p className="max-w-[62ch] text-[14px] text-ink-dim">
-          Netflix: Account → Profile → Viewing activity → Download all. Episodes collapse to the show, and everything comes in as seen — Netflix never
-          knew whether you liked it.
-        </p>
         <NetflixImport onDone={onDone} />
-      </div>
-
-      <div className="space-y-2">
-        <p className="max-w-[62ch] text-[14px] text-ink-dim">
-          IMDb: Your Ratings → Export. The export carries IMDb ids, so nothing is matched by name: 7 and up is liked, below that is meh.
-        </p>
         <ImdbImport onDone={onDone} />
       </div>
-    </div>
+    </section>
   );
 }
+

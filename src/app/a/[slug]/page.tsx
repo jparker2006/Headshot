@@ -1,7 +1,13 @@
 /**
- * Permalink: a stored public answer as a shareable, indexable page. The chain
- * with faces, the narration, the follow-ups, and the ego view of the first
- * person. No composer; one button to ask your own.
+ * Permalink: a stored public answer as a shareable, indexable page.
+ *
+ * Board C, Thread grammar, minus the bubbles — this is a document someone
+ * landed on, not a conversation they are in (DESIGN.md § Sign-in and landing:
+ * "/a/… answer pages keep working signed out and use the Thread grammar
+ * unchanged"). So: the question as `.t-title` over one hairline, the chain as a
+ * thin row of poster marks with mono captions, the narration as `.t-say`
+ * paragraphs at the 880px column cap, the follow-ups as `.chip`s, the ego
+ * figure unboxed. No accent anywhere: nothing on this page is Play.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -44,49 +50,44 @@ export default async function AnswerPermalink({ params }: PageProps<"/a/[slug]">
   const askHref = `/?q=${encodeURIComponent(answer.question)}`;
 
   return (
-    <main className="field min-h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-[860px] px-5 py-8 md:py-12">
-        <header className="mb-8 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-            <span className="inline-block size-2.5 rounded-full bg-accent shadow-[0_0_12px_var(--accent)]" />
-            Headshot
+    <main className="field scrollbar-thin h-full overflow-y-auto">
+      <div className="mx-auto flex min-h-full w-full max-w-[1000px] flex-col gap-[30px] px-[16px] pb-[32px] pt-[22px] md:px-[34px]">
+        <header className="flex items-center justify-between gap-4">
+          <Link href="/" className="text-[14px] font-bold tracking-[-0.02em] text-ink">
+            headshot
           </Link>
-          <Link href="/" className="rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-black">
+          <Link href="/" className="btn btn-quiet">
             Ask your own
           </Link>
         </header>
 
-        <p className="text-[13px] text-ink-dim">Someone asked</p>
-        <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-tight text-ink md:text-[32px]" style={{ textWrap: "balance" }}>
-          {answer.question}
-        </h1>
+        <div className="section-head">
+          <h1 className="t-title">{answer.question}</h1>
+          <span className="t-meta">
+            {degrees !== null ? `${degrees} ${degrees === 1 ? "degree" : "degrees"} apart` : page.title.toLowerCase()}
+            {" · "}
+            {chain.length} in the chain
+          </span>
+        </div>
 
-        <section className="mt-8" aria-label="The chain">
-          <div className="mb-3 flex items-baseline justify-between text-[11px] uppercase tracking-wider text-ink-dim">
-            <span>
-              {degrees !== null ? (
-                <>
-                  <span className="text-ink">{degrees}</span> {degrees === 1 ? "degree" : "degrees"} apart
-                </>
-              ) : (
-                page.title
-              )}
-            </span>
-            <span className="normal-case tracking-normal text-ink-faint">tap a face to explore</span>
-          </div>
+        <section className="flex flex-col gap-[12px]" aria-label="The chain">
           <Chain chain={chain} />
+          <span className="t-meta">tap a poster to open it</span>
         </section>
 
-        <section className="mt-8 max-w-[62ch]">
-          <Markdown text={answer.narration} />
+        <section className="max-w-[880px]" aria-label="The answer">
+          {/* Markdown carries the thread's own size; this is the same 14/1.52 say. */}
+          <div className="[&_.prose-headshot]:text-[14px] [&_.prose-headshot]:leading-[1.52] [&_.prose-headshot]:text-ink-dim [&_.prose-headshot_p+p]:mt-[11px]">
+            <Markdown text={answer.narration} />
+          </div>
         </section>
 
         {followups.length > 0 && (
-          <section className="mt-8" aria-label="Keep going">
-            <p className="mb-2 text-[11px] uppercase tracking-wider text-ink-dim">Keep going</p>
-            <div className="flex flex-wrap gap-2">
+          <section className="flex flex-col gap-[10px]" aria-label="Keep going">
+            <span className="t-sub">keep going</span>
+            <div className="flex flex-wrap gap-[9px]">
               {followups.map((f) => (
-                <Link key={f.text} href={f.href} className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-[12.5px] text-ink transition hover:border-accent/70">
+                <Link key={f.text} href={f.href} className="chip">
                   {f.text}
                 </Link>
               ))}
@@ -95,18 +96,19 @@ export default async function AnswerPermalink({ params }: PageProps<"/a/[slug]">
         )}
 
         {ego && firstPerson && (
-          <section className="mt-10" aria-label={`${firstPerson.name} on the brain`}>
-            <p className="mb-2 text-[11px] uppercase tracking-wider text-ink-dim">
-              <span className="text-ink">{firstPerson.name}</span> on the brain
-            </p>
+          <section className="flex flex-col gap-[12px]" aria-label={`${firstPerson.name} on the brain`}>
+            <div className="section-head">
+              <h2 className="t-title">{firstPerson.name.toLowerCase()} on the brain</h2>
+              <span className="t-meta">{ego.nodes.filter((n) => n.ring === 1).length} closest</span>
+            </div>
             <EgoFigure ego={ego} centerImage={firstPerson.imageUrl} />
           </section>
         )}
 
-        <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-[12px] text-ink-faint">
-          <span>Computed from the industry graph, narrated by the agent. Every link is a real credit.</span>
-          <Link href={askHref} className="text-accent">
-            Ask this again →
+        <footer className="mt-auto flex flex-wrap items-center gap-x-[14px] gap-y-[8px] border-t border-line pt-[16px]">
+          <span className="t-meta">computed from the industry graph, narrated by the agent. every link is a real credit.</span>
+          <Link href={askHref} className="t-link ml-auto">
+            ask this again
           </Link>
         </footer>
       </div>
@@ -114,35 +116,24 @@ export default async function AnswerPermalink({ params }: PageProps<"/a/[slug]">
   );
 }
 
+/** The chain: thin poster marks, mono captions, a mono arrow between. */
 function Chain({ chain }: { chain: ChainNode[] }) {
   return (
-    <div className="overflow-x-auto">
-      <ol className="flex min-w-max items-start gap-2 pb-2">
+    <div className="scrollbar-thin overflow-x-auto">
+      <ol className="flex min-w-max items-start gap-[14px] pb-[4px]">
         {chain.map((node, i) => (
-          <li key={node.imdbId} className="flex items-start gap-2">
-            <Link href={`/?open=${node.imdbId}`} className="group block w-[104px] md:w-[124px]" title={node.name}>
-              <div
-                className={`aspect-[3/4] w-full overflow-hidden rounded-xl bg-white/[0.05] ring-1 transition group-hover:ring-accent ${
-                  node.kind === "person" ? "ring-accent/60" : "ring-title/60"
-                }`}
-              >
-                {node.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={node.imageUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[22px] font-semibold text-ink-faint">
-                    {node.name
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((w) => w[0]?.toUpperCase() ?? "")
-                      .join("")}
-                  </div>
-                )}
-              </div>
-              <div className="mt-1.5 truncate text-[12.5px] font-semibold text-ink">{node.name}</div>
-              <div className="text-[11px] text-ink-dim">{node.kind === "title" && node.year ? node.year : node.kind === "person" ? "person" : "title"}</div>
+          <li key={node.imdbId} className="flex items-start gap-[14px]">
+            <Link href={`/?open=${node.imdbId}`} className="flex w-[104px] flex-col gap-[6px]" title={node.name}>
+              {node.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={node.imageUrl} alt="" className="poster-mark poster-mark-lg" />
+              ) : (
+                <span className="poster-mark poster-mark-lg" />
+              )}
+              <span className="text-[13px] font-medium leading-[1.25] text-ink">{node.name}</span>
+              <span className="t-meta">{node.kind === "title" ? (node.year ? String(node.year) : "") : ""}</span>
             </Link>
-            {i < chain.length - 1 && <span className="pt-14 text-[20px] text-accent md:pt-16">→</span>}
+            {i < chain.length - 1 && <span className="t-meta pt-[18px] text-[13px]">→</span>}
           </li>
         ))}
       </ol>

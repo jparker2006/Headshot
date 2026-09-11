@@ -2,9 +2,14 @@
 
 /**
  * Onboarding, in the order SPEC v3 fixed: services (six taps) → Letterboxd
- * upload or skip → Tonight. The swipe deck is chunk C and slots in before the
- * last step. Styled against DESIGN.md: hairlines, no cards, one accent, space
- * instead of borders.
+ * upload or skip → the deck → done. Chunk D rewrites the flow itself; this is
+ * the board C restyle of the page around it.
+ *
+ * The grammar is the Log board's: one `.section-head` per step, sentence-case
+ * lowercase headings, `.t-prose` under them, mono only for figures, `.btn-outline`
+ * to confirm and `.t-link` to skip. No accent on this page — nothing here is
+ * Play. The step list is a mono index beside a Geist word, never an uppercase
+ * tracked label.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -13,12 +18,14 @@ import { ServicesChecklist } from "@/components/you/ServicesChecklist";
 import { LetterboxdImport } from "@/components/you/LetterboxdImport";
 import { SwipeDeck, type DeckCard } from "@/components/tonight/SwipeDeck";
 
-const STEPS = ["Services", "Letterboxd", "Deck", "Tonight"] as const;
+const STEPS = ["services", "letterboxd", "the deck", "done"] as const;
+/** Board C's "skippable after N": the deck unlocks its confirm at twenty. */
+const ENOUGH = 20;
 
 export default function OnboardingPage() {
   return (
     <main className="field h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-[680px] px-5 py-12 sm:px-10">
+      <div className="mx-auto w-full max-w-[1000px] px-[16px] pb-[32px] pt-[22px] md:px-[34px]">
         <SignInGate next="/onboarding" reason="Your taste is private and lives with an account. Headshot's chat and the shared brain stay open without one.">
           {() => <Onboarding />}
         </SignInGate>
@@ -31,21 +38,25 @@ function Onboarding() {
   const [step, setStep] = useState(0);
 
   return (
-    <>
-      <ol className="flex items-center gap-5 font-mono text-[11px] uppercase tracking-[0.08em]">
-        {STEPS.map((label, i) => (
-          <li key={label} className={i === step ? "text-ink" : "text-ink-faint"}>
-            <span className="tabular-nums">{String(i + 1).padStart(2, "0")}</span> {label}
-          </li>
-        ))}
-      </ol>
-      <div className="mt-5 h-px bg-line" />
+    <div className="flex flex-col gap-[30px]">
+      <div className="section-head">
+        <h1 className="t-title">set up</h1>
+        <span className="t-prose">what you pay for, what you have seen. two minutes.</span>
+        <ol className="ml-auto flex items-baseline gap-[16px]">
+          {STEPS.map((label, i) => (
+            <li key={label} className={`text-[13px] ${i === step ? "text-ink" : "text-ink-ghost"}`}>
+              <span className={`t-meta mr-[6px] ${i === step ? "text-ink-faint" : ""}`}>{i + 1}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
+      </div>
 
       {step === 0 && <ServicesChecklist intro onSaved={() => setStep(1)} />}
       {step === 1 && <LetterboxdImport intro onDone={() => setStep(2)} onSkip={() => setStep(2)} />}
       {step === 2 && <SwipeStep onDone={() => setStep(3)} />}
       {step === 3 && <DoneStep />}
-    </>
+    </div>
   );
 }
 
@@ -90,37 +101,34 @@ function SwipeStep({ onDone }: { onDone: () => void }) {
     onDone();
   };
 
+  const locked = cards === null || (cards.length > 0 && count < ENOUGH);
+
   return (
-    <section className="mt-8">
-      <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Fifty quick ones</h1>
-      <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-        Tap what you think of each. Nothing you skip counts. Twenty is enough to start; you can stop any time after that.
-      </p>
-      <div className="mt-8">
-        {cards === null && <p className="font-mono text-[11px] text-ink-faint">dealing the deck…</p>}
-        {cards && cards.length === 0 && <p className="text-[13px] text-ink-dim">Nothing to deal right now. You can still go on.</p>}
-        {cards && cards.length > 0 && (
-          <SwipeDeck
-            key={cards.map((c) => c.imdbId).join(",")}
-            cards={cards}
-            onCommit={(rows) => {
-              setCount(rows.length);
-              void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) }).catch(() => {});
-            }}
-            onDone={finish}
-          />
-        )}
+    <section className="flex flex-col gap-[18px]">
+      <div className="section-head">
+        <h2 className="t-title">the deck</h2>
+        <span className="t-prose">tap what you think of each. twenty is enough; stop any time after that.</span>
       </div>
-      <div className="mt-8 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={finish}
-          disabled={cards === null || (cards.length > 0 && count < 20)}
-          className="inline-flex h-11 items-center rounded-full bg-accent px-5 text-[13.5px] font-semibold text-bg transition-[filter] duration-[120ms] hover:brightness-110 disabled:opacity-40"
-        >
-          {count < 20 && cards && cards.length > 0 ? `${20 - count} more to unlock` : "That's enough"}
+
+      {cards === null && <p className="t-meta">dealing the deck…</p>}
+      {cards && cards.length === 0 && <p className="t-prose">nothing to deal right now. you can still go on.</p>}
+      {cards && cards.length > 0 && (
+        <SwipeDeck
+          key={cards.map((c) => c.imdbId).join(",")}
+          cards={cards}
+          onCommit={(rows) => {
+            setCount(rows.length);
+            void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) }).catch(() => {});
+          }}
+          onDone={finish}
+        />
+      )}
+
+      <div className="flex items-center gap-[16px]">
+        <button type="button" onClick={finish} disabled={locked} className="btn btn-outline disabled:opacity-40">
+          {locked && cards ? `${ENOUGH - count} more` : "That's enough"}
         </button>
-        <button type="button" onClick={finish} className="font-mono text-[11px] text-ink-faint hover:text-ink">
+        <button type="button" onClick={finish} className="t-link">
           skip for now
         </button>
       </div>
@@ -132,15 +140,15 @@ function SwipeStep({ onDone }: { onDone: () => void }) {
 
 function DoneStep() {
   return (
-    <section className="mt-8">
-      <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">That&apos;s enough to start</h1>
-      <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-        It knows what you pay for and what you have seen. Every pick from here comes with one real reason out of the graph.
+    <section className="flex flex-col gap-[18px]">
+      <div className="section-head">
+        <h2 className="t-title">that&apos;s enough to start</h2>
+        <span className="t-meta">rewrite queued</span>
+      </div>
+      <p className="t-prose max-w-[880px]">
+        it knows what you pay for and what you have seen. every pick from here comes with one real reason out of the graph.
       </p>
-      <Link
-        href="/"
-        className="mt-8 inline-flex h-11 items-center rounded-full bg-accent px-5 text-[13.5px] font-semibold text-bg transition-[filter] duration-[120ms] hover:brightness-110"
-      >
+      <Link href="/" className="btn btn-outline self-start">
         Go to your page
       </Link>
     </section>

@@ -86,17 +86,17 @@ export function SignInGate({ next, children, reason }: GateProps) {
   const go = useCallback(() => requireSignIn(next), [next]);
 
   if (!hydrated || loading) {
-    return <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">Checking…</div>;
+    return <span className="t-meta">checking…</span>;
   }
   if (!user) {
     return (
-      <div className="flex flex-col items-start gap-4">
-        <p className="max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
+      <div className="flex flex-col items-start gap-[22px]">
+        <p className="t-prose max-w-[62ch]">
           {reason ?? "Your taste is private and tied to an account. Headshot itself stays open — this is only for the part that remembers you."}
         </p>
         <button
           onClick={go}
-          className="rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-bg transition-colors duration-[120ms] hover:brightness-110"
+          className="btn btn-outline"
         >
           Sign in
         </button>

@@ -1,42 +1,73 @@
 @import "tailwindcss";
 
-/* Headshot design tokens. Dark field, glowing dots, warm accent. */
+/* ---------------------------------------------------------------------------
+   Headshot design tokens — board C, "Terminal for cinephiles".
+   Every value is lifted from design/boards-v4/C-*.dc.html. See DESIGN.md.
+   Rules: posters are the only color; one accent and it means Play; type
+   carries the personality; no bordered cards; no stat tiles; no uppercase
+   tracked labels.
+--------------------------------------------------------------------------- */
 :root {
-  --bg: #08090a;
-  --bg-elev: rgba(15, 16, 17, 0.92);
-  --bg-elev-solid: #0f1011;
-  --bg-raised: #191a1b;
-  --ink: #f2f1ec;
-  --ink-dim: #8a8f98;
-  --ink-faint: #62666d;
-  --line: rgba(255, 255, 255, 0.06);
-  --line-strong: rgba(255, 255, 255, 0.12);
-  --accent: #f4b63f;
-  --accent-soft: rgba(244, 182, 63, 0.18);
+  /* ground and the two elevations */
+  --bg: #0d0d0e;
+  --bg-elev: #151517;        /* assistant bubble, chips, quiet fills */
+  --bg-raised: #1c1c1e;      /* your own bubble, unselected bucket buttons */
+
+  /* hairlines — the only borders allowed, and never around an item in a list */
+  --line: rgba(230, 230, 227, 0.07);        /* section rules, rail, composer */
+  --line-strong: rgba(230, 230, 227, 0.16); /* quiet button, focus */
+  --line-input: rgba(230, 230, 227, 0.22);  /* the live log field underline */
+  --line-note: rgba(230, 230, 227, 0.14);   /* the optional-note underline */
+  --row-hover: rgba(230, 230, 227, 0.05);   /* row hover / selected candidate */
+
+  /* four levels of ink, warm off-white down to near-ground */
+  --ink: #e6e6e3;
+  --ink-dim: #8b8b87;
+  --ink-faint: #62625f;
+  --ink-ghost: #3f3f3d;
+
+  /* one accent, one job: Play */
+  --accent: #f0b429;
+  --accent-ink: #17140b;
+
+  /* ledger bars — ink at fixed alphas, never a hue */
+  --bar: rgba(230, 230, 227, 0.3);
+  --bar-strong: rgba(230, 230, 227, 0.55);
+  --bar-weak: rgba(230, 230, 227, 0.22);
+
+  /* canvas-only (the v2 brain graph). Not used on any v4 screen. */
   --person: #ded9c9;
   --title: #7d8cc4;
   --session: #62e6b4;
-  --danger: #f2705f;
-  --radius: 12px;
+
+  /* deliberate deviation: board C has no error colour. Words carry errors.
+     This exists only for irreversible-action text, never as a filled surface. */
+  --danger: #d9705e;
+
+  --radius: 6px;        /* buttons, chips, the picked-title fills */
+  --radius-row: 4px;    /* the row hover/selection shape */
+  --radius-bubble: 10px;
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-elev: var(--bg-elev-solid);
+  --color-elev: var(--bg-elev);
   --color-raised: var(--bg-raised);
   --color-ink: var(--ink);
   --color-ink-dim: var(--ink-dim);
   --color-ink-faint: var(--ink-faint);
+  --color-ink-ghost: var(--ink-ghost);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-row-hover: var(--row-hover);
   --color-accent: var(--accent);
-  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
   --color-person: var(--person);
   --color-title: var(--title);
   --color-session: var(--session);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
   --radius-panel: var(--radius);
 }
 
@@ -49,40 +80,364 @@ body {
   overflow: hidden;
 }
 
-/* Vignette behind the canvas so the field feels deep, not flat. */
+/* The ground is flat. No vignette, no wash: regions separate by ground shift,
+   space, and one hairline. */
 .field {
+  background: var(--bg);
+}
+
+/* The sigma canvas keeps its depth; it is the one surface that is a picture. */
+.field-canvas {
   background:
-    radial-gradient(ellipse 70% 60% at 50% 40%, rgba(125, 140, 196, 0.10), transparent 70%),
-    radial-gradient(ellipse 40% 40% at 80% 90%, rgba(244, 182, 63, 0.06), transparent 70%),
+    radial-gradient(ellipse 70% 60% at 50% 40%, rgba(125, 140, 196, 0.08), transparent 70%),
     var(--bg);
 }
 
+/* Everything below is a component layer: Tailwind utilities on an element win over these primitives. */
+@layer components {
+/* ---------------------------------------------------------------------------
+   Type scale. Geist carries prose and UI; JetBrains Mono carries figures,
+   years, counts, timestamps and identifiers — never a label, never uppercase.
+--------------------------------------------------------------------------- */
+.t-fig,
+.t-meta,
+.t-input,
+.tnum {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+/* section heading — sentence case, always */
+.t-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+/* the quiet label above a ledger block or a group of rows */
+.t-sub {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink-faint);
+}
+/* a heading inside a prose column */
+.t-strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+/* memory prose, profile paragraphs */
+.t-prose {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.54;
+  color: var(--ink-dim);
+}
+/* what the agent says: bubbles */
+.t-say {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.52;
+  color: var(--ink-dim);
+}
+/* the one graph reason under a pick */
+.t-reason {
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+/* your own words, quoted back — the most important line in a log row */
+.t-note {
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink);
+}
+/* the title in a list row */
+.t-row {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
+}
+/* buttons, rail items, anything you click that is not a row */
+.t-ui {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+/* mono metadata: timestamps, years, runtimes, imdb ids */
+.t-meta {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink-ghost);
+}
+/* mono figure in a ledger row */
+.t-fig {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--ink);
+}
+/* what you are typing into the log field */
+.t-input {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* a quiet text link: no colour, a 1px rule under it */
+.t-link {
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--ink-dim);
+  border-bottom: 1px solid color-mix(in oklab, var(--ink-dim) 40%, transparent);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+.t-link:hover,
+.t-link:focus-visible {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  outline: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Primitives
+--------------------------------------------------------------------------- */
+
+/* The C list row. Rows carry no rule between them — the rhythm separates them
+   and the section header carries the only hairline. Set grid-template-columns
+   per list. Padding/negative margin let the hover reach past the text. */
+.row {
+  display: grid;
+  align-items: center;
+  gap: 16px;
+  height: 38px;
+  padding-inline: 12px;
+  margin-inline: -12px;
+  border-radius: var(--radius-row);
+}
+.row-tight { height: 32px; gap: 14px; }  /* receipts under an answer */
+.row-pick  { height: 42px; gap: 16px; }  /* log-field candidates */
+.row-tall  { height: 68px; gap: 18px; }  /* tonight picks */
+.row-fig   { height: 24px; gap: 14px; padding-inline: 0; margin-inline: 0; }
+.row:hover,
+.row-pick:hover,
+.row-tall:hover,
+.row-tight:hover {
+  background: var(--row-hover);
+}
+.row[aria-selected="true"],
+.row-pick[aria-selected="true"],
+.is-active.row,
+.is-active.row-pick {
+  background: var(--row-hover);
+}
+
+/* The poster is a marker, not a picture. Three sizes, nothing else. */
+.poster-mark {
+  width: 22px;
+  height: 33px;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-raised);
+}
+.poster-mark-md { width: 30px; height: 45px; }
+.poster-mark-lg { width: 34px; height: 51px; }
+
+/* The rating is a word. liked reads louder; the rest sit at dim. */
+.bucket {
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--ink-dim);
+}
+.bucket-on {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Thread bubbles. Terse: one corner squared off toward the speaker. */
+.bubble {
+  border-radius: var(--radius-bubble);
+  max-width: 74%;
+}
+.bubble-you {
+  align-self: flex-end;
+  background: var(--bg-raised);
+  border-bottom-right-radius: 3px;
+  padding: 9px 15px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.bubble-them {
+  align-self: flex-start;
+  background: var(--bg-elev);
+  border-bottom-left-radius: 3px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+/* Phone: the column is narrower, so a bubble is allowed a little more of it. */
+@media (max-width: 767px) {
+  .bubble { max-width: 86%; }
+}
+
+/* The receipts ledger under an answer: the graph facts, unstyled and flat. */
+.receipt {
+  display: grid;
+  align-items: center;
+  gap: 14px;
+  height: 32px;
+}
+
+/* Follow-ups. Quiet fill, no border, no pill. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--ink-dim);
+  background: var(--bg-elev);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color 120ms, background-color 120ms;
+}
+.chip:hover,
+.chip:focus-visible {
+  color: var(--ink);
+  background: var(--bg-raised);
+  outline: none;
+}
+
+/* A bar in a ledger row. Width is the datum; alpha is the rank. */
+.ledger-bar {
+  display: block;
+  height: 5px;
+  background: var(--bar);
+}
+.ledger-bar-strong { background: var(--bar-strong); }
+.ledger-bar-weak { background: var(--bar-weak); }
+
+/* Buttons. 44px, 6px radius, no shadow, no gradient. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding-inline: 22px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms, color 120ms, border-color 120ms;
+}
+/* the only filled accent on any screen */
+.btn-play {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-play:hover { background: color-mix(in oklab, var(--accent) 88%, #fff); }
+/* the second and third pick, and any secondary action */
+.btn-quiet {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-dim);
+  font-weight: 500;
+}
+.btn-quiet:hover { color: var(--ink); border-color: var(--ink-faint); }
+/* the chosen bucket in the log field */
+.btn-solid {
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+}
+/* an unchosen bucket */
+.btn-fill {
+  background: var(--bg-raised);
+  color: var(--ink-dim);
+  font-size: 14px;
+  font-weight: 500;
+}
+.btn-fill:hover { color: var(--ink); }
+/* confirm: hairline, ink label */
+.btn-outline {
+  background: transparent;
+  border: 1px solid color-mix(in oklab, var(--ink) 26%, transparent);
+  color: var(--ink);
+  font-size: 14px;
+  padding-inline: 26px;
+}
+.btn-outline:hover { border-color: var(--ink-faint); }
+
+/* The composer sits at the bottom of every page: a rule, a prompt, a field. */
+.composer {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Section header: heading, mono count, an optional link pushed right, one rule. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+/* The block caret in the log field and the note field. */
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 18px;
+  background: var(--ink);
+}
+.caret-sm { height: 16px; }
+@keyframes caret-blink { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+.caret { animation: caret-blink 1.1s steps(1, end) infinite; }
+
+/* A floating overlay only: the autocomplete popover and the drawer. Never put
+   this around content that sits in the page flow — that is a bordered card. */
 .panel {
   background: var(--bg-elev);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-/* The summoned panel slides in from the right; on a phone it is a full-screen sheet. */
+/* The drawer: a region to the right behind one hairline, not a floating card.
+   On a phone it is a full-screen sheet over the ground. */
+.sheet { background: var(--bg); }
 @keyframes sheet-in {
-  from { opacity: 0; transform: translateX(16px); }
+  from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: none; }
 }
-.sheet { background: var(--bg); }
-.sheet > * { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet > * { animation: sheet-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 0.18s ease-out both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .sheet > *, .rise, .thinking-dot { animation: none !important; }
+  .sheet > *, .rise, .thinking-dot, .caret { animation: none !important; }
   * { transition-duration: 0ms !important; }
 }
-/* Staggered entrance for lists that arrive at once (picks, faces). */
-.stagger > * { animation: rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.stagger > *:nth-child(2) { animation-delay: 60ms; }
-.stagger > *:nth-child(3) { animation-delay: 120ms; }
-.stagger > *:nth-child(4) { animation-delay: 180ms; }
-.stagger > *:nth-child(n + 5) { animation-delay: 220ms; }
 
 .scrollbar-thin {
   scrollbar-width: thin;
@@ -97,32 +452,34 @@ body {
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 
-@keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-.rise { animation: rise 0.25s ease-out both; }
-
-.prose-headshot p + p { margin-top: 0.6em; }
-.prose-headshot strong { color: var(--ink); font-weight: 600; }
-.prose-headshot em { color: var(--accent); font-style: normal; }
-/* Cursor for movies: emphasized entity names are links into the drawer. */
+/* Board C: paragraphs inside a bubble sit 11px apart. */
+.prose-headshot p + p { margin-top: 11px; }
+.prose-headshot strong { color: var(--ink); font-weight: 500; }
+.prose-headshot em { color: var(--ink); font-style: italic; }
+/* Cursor for movies: emphasised entity names are links into the drawer.
+   The accent does not do this job — weight and a hairline underline do. */
 .entity-link {
   display: inline;
   padding: 0;
   margin: 0;
   font: inherit;
-  color: inherit;
+  font-weight: 500;
+  color: var(--ink);
   background: none;
   border: 0;
-  border-radius: 3px;
+  border-radius: 2px;
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--accent) 55%, transparent);
+  text-decoration-color: transparent;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  transition: background-color 120ms, text-decoration-color 120ms;
+  transition: text-decoration-color 120ms, color 120ms;
 }
-.entity-link:hover, .entity-link:focus-visible { background: color-mix(in oklab, var(--accent) 18%, transparent); text-decoration-color: var(--accent); outline: none; }
-.entity-link[data-kind="title"] { text-decoration-style: dotted; }
-.entity-link-soft { text-decoration-color: color-mix(in oklab, var(--ink) 25%, transparent); }
+.entity-link:hover,
+.entity-link:focus-visible {
+  text-decoration-color: color-mix(in oklab, var(--ink) 55%, transparent);
+  outline: none;
+}
+.entity-link-soft { color: var(--ink-dim); }
+
+}

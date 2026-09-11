@@ -1,29 +1,36 @@
 "use client";
 
 /**
- * Sign in. Magic link only — no passwords are offered here and none are
- * accepted as a fallback (SPEC v3). Reached from `requireSignIn(next)`; the
- * `?next=` parameter becomes the magic link's callback URL.
+ * Sign in, board C (DESIGN.md → Sign-in): one centred column at 560px on the
+ * ground, the wordmark top-left and nothing else in the chrome. The email
+ * field is drawn like the log field — 46px, one `--line-input` underline, a
+ * mono `>` prompt, a block caret — and the button is the outlined one.
+ *
+ * Magic link only: no passwords are offered here and none are accepted as a
+ * fallback (SPEC v3). Reached from `requireSignIn(next)`; `?next=` becomes the
+ * link's callback URL, and a link that has already been spent (mail clients
+ * prefetch them) lands back here as `?error=` with the state that explains it.
  */
 import { useCallback, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
+import { isSpentLink } from "@/components/auth/linkError";
 
 /** Seconds before "Send it again" becomes available. */
 const RESEND_AFTER = 30;
 
 /** The plugin is toggled in the Neon console; until then the endpoint 404s. */
 const PLUGIN_OFF =
-  "Magic link sign-in isn't switched on for this project yet. Enable the Magic Link plugin in the Neon console (Auth → Plugins) and add this domain under trusted domains.";
+  "magic link sign-in is not switched on for this project yet. enable the Magic Link plugin in the Neon console (Auth → Plugins) and add this domain under trusted domains.";
 
 const noop = () => () => {};
 
-/** `?next=`, read after hydration so the server HTML stays stable. */
-function useNextParam(): string {
+/** `?next=` and `?error=`, read after hydration so the server HTML stays stable. */
+function useParam(name: string, fallback = ""): string {
   return useSyncExternalStore(
     noop,
-    () => new URLSearchParams(window.location.search).get("next") || "/",
-    () => "/",
+    () => new URLSearchParams(window.location.search).get(name) || fallback,
+    () => fallback,
   );
 }
 
@@ -70,23 +77,29 @@ function isPluginOff(err: unknown): boolean {
 }
 
 export default function SignInPage() {
-  const next = useNextParam();
+  const next = useParam("next", "/");
+  const linkError = useParam("error");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [sentAt, setSentAt] = useState<number | null>(null);
+  const [dismissedLinkError, setDismissedLinkError] = useState(false);
   const elapsed = useSecondsSince(sentAt);
   const canResend = sentAt !== null && elapsed >= RESEND_AFTER;
+  const spent = !dismissedLinkError && status === "idle" && linkError !== "" && isSpentLink(linkError);
 
   const send = useCallback(
     async (address: string) => {
       setStatus("sending");
       setError(null);
+      setDismissedLinkError(true);
       try {
         const result = (await authClient.signIn.magicLink({
           email: address,
           callbackURL: next,
-        })) as { error?: unknown } | undefined;
+          // A spent or expired link comes back here, not to a bare error page.
+          errorCallbackURL: `/auth/sign-in?error=invalid_link&next=${encodeURIComponent(next)}`,
+        } as Parameters<typeof authClient.signIn.magicLink>[0])) as { error?: unknown } | undefined;
         if (result?.error) {
           setError(isPluginOff(result.error) ? PLUGIN_OFF : messageOf(result.error));
           setStatus("idle");
@@ -113,76 +126,83 @@ export default function SignInPage() {
   );
 
   return (
-    <main className="field flex h-full w-full items-center justify-center overflow-y-auto px-5 py-12">
-      <div className="w-full max-w-[380px]">
-        <div className="flex items-center gap-2">
-          <span className="inline-block size-2.5 rounded-full bg-accent shadow-[0_0_12px_var(--accent)]" />
-          <span className="text-[15px] font-semibold tracking-tight text-ink">Headshot</span>
-        </div>
-
-        {status === "sent" ? (
-          <>
-            <h1 className="mt-8 text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Check your email</h1>
-            <p className="mt-3 text-[14.5px] leading-[1.55] text-ink-dim">
-              A link is on its way to <span className="text-ink">{email.trim()}</span>. Open it on this device and you are in.
-            </p>
-            <div className="my-7 h-px bg-line" />
-            <button
-              onClick={() => void send(email.trim())}
-              disabled={!canResend}
-              className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors duration-[120ms] enabled:hover:text-ink disabled:cursor-default"
-            >
-              {canResend ? "Send it again" : `Send it again in ${RESEND_AFTER - elapsed}s`}
-            </button>
-            <button
-              onClick={() => {
-                setStatus("idle");
-                setSentAt(null);
-              }}
-              className="mt-3 block font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors duration-[120ms] hover:text-ink"
-            >
-              Use another address
-            </button>
-          </>
-        ) : (
-          <>
-            <h1 className="mt-8 text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Sign in</h1>
-            <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-              An account holds your taste — what you have seen, what you pay for. Headshot itself works without one.
-            </p>
-            <form onSubmit={onSubmit} className="mt-7">
-              <label htmlFor="email" className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="mt-2 block h-11 w-full rounded-full border border-line bg-transparent px-4 text-[14.5px] text-ink outline-none transition-colors duration-[120ms] placeholder:text-ink-faint focus:border-accent"
-              />
-              <button
-                type="submit"
-                disabled={status === "sending" || email.trim() === ""}
-                className="mt-4 h-11 w-full rounded-full bg-accent text-[13.5px] font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40"
-              >
-                {status === "sending" ? "Sending…" : "Send me a link"}
-              </button>
-            </form>
-            {error && <p className="mt-4 max-w-[62ch] text-[13px] leading-[1.55] text-ink-dim">{error}</p>}
-          </>
-        )}
-
-        <Link
-          href="/"
-          className="mt-10 block font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors duration-[120ms] hover:text-ink"
-        >
-          ← Back to Headshot
+    <main className="field flex h-full w-full flex-col overflow-y-auto">
+      <div className="px-4 pt-[22px] md:px-[34px]">
+        <Link href="/" className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+          headshot
         </Link>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center px-4 py-[56px] md:px-[34px]">
+        <div className="w-full max-w-[560px]">
+          {status === "sent" ? (
+            <>
+              <h1 className="t-title">check your email</h1>
+              <p className="t-prose pt-[14px]">
+                sent. a link is on its way to <span className="text-ink">{email.trim()}</span>. open it on this device and you are in.
+              </p>
+              <div className="flex items-center gap-[14px] pt-[22px]">
+                <button onClick={() => void send(email.trim())} disabled={!canResend} className="t-link disabled:cursor-default disabled:opacity-60">
+                  {canResend ? "send it again" : `send it again in ${RESEND_AFTER - elapsed}s`}
+                </button>
+                <button
+                  onClick={() => {
+                    setStatus("idle");
+                    setSentAt(null);
+                  }}
+                  className="t-link"
+                >
+                  use another address
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className="t-title">{spent ? "that link is already spent" : "an account holds your taste. headshot itself works without one."}</h1>
+              <p className="t-prose pt-[14px]">
+                {spent
+                  ? "mail clients open links before you do, which uses them up. type your address and we will send a fresh one."
+                  : "what you have seen, what you pay for, what I remember about you. the chat and the shared brain stay open signed out."}
+              </p>
+
+              <form onSubmit={onSubmit} className="pt-[26px]">
+                <label htmlFor="email" className="sr-only">
+                  email
+                </label>
+                <div className="flex h-[46px] max-w-[420px] items-center gap-[14px] border-b" style={{ borderColor: "var(--line-input)" }}>
+                  <span className="font-mono text-[15px] leading-none text-ink-ghost" aria-hidden>
+                    &gt;
+                  </span>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="t-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-ink-faint"
+                  />
+                  {email === "" && <span className="caret shrink-0" aria-hidden />}
+                </div>
+
+                <div className="flex items-center gap-[14px] pt-[22px]">
+                  <button type="submit" disabled={status === "sending" || email.trim() === ""} className="btn btn-outline disabled:opacity-40">
+                    {status === "sending" ? "Sending…" : spent ? "Send it again" : "Send the link"}
+                  </button>
+                  <span className="t-meta">we&apos;ll email you a link. no password, ever.</span>
+                </div>
+              </form>
+
+              {error && <p className="max-w-[62ch] pt-[18px] text-[13.5px] leading-[1.54] text-ink">{error}</p>}
+            </>
+          )}
+
+          <Link href="/" className="t-link mt-[40px] inline-block">
+            back to headshot
+          </Link>
+        </div>
       </div>
     </main>
   );
@@ -190,5 +210,5 @@ export default function SignInPage() {
 
 function messageOf(err: unknown): string {
   const m = (err as { message?: string } | null)?.message;
-  return m && m.length > 0 ? `${m} Try again.` : "That didn't send. Try again.";
+  return m && m.length > 0 ? `${m} try again.` : "that did not send. try again.";
 }

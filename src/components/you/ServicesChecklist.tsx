@@ -1,17 +1,20 @@
 "use client";
 /**
- * The six-tap provider checklist, lifted out of the onboarding page so You and
- * onboarding are the same control rather than two that drift. Behaviour is
- * unchanged: the list and the current selection come from GET
- * /api/taste/services, PUT replaces it.
+ * What you pay for. Board C has no toggle control and no filled chip, so this
+ * is the same grammar as every other list: a 38px row with the name and the
+ * state as a `.t-link` word (DESIGN.md → You → Services). The ones you pay for
+ * sit at `--ink`, the rest at `--ink-dim`; a tap saves immediately, because a
+ * Save button for six words is chrome.
+ *
+ * Shared with onboarding, which asks for the heading and a Continue.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Provider } from "@/lib/taste/providers";
 
 interface Props {
-  /** Called after a successful save (onboarding advances a step; You just says "saved"). */
+  /** Called after a successful save (onboarding advances a step). */
   onSaved?: () => void;
-  /** Onboarding mode: the big heading, the explainer and "Continue". */
+  /** Onboarding mode: the heading, the explainer and "Continue". */
   intro?: boolean;
 }
 
@@ -19,11 +22,9 @@ export function ServicesChecklist({ onSaved, intro = false }: Props) {
   const [providers, setProviders] = useState<Provider[] | null>(null);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef<Set<number>>(new Set());
 
-  // The checklist and the user's current selection come from the server; the
-  // fetch is the external system, so the effect only hands its answer back.
   useEffect(() => {
     let alive = true;
     void fetch("/api/taste/services", { cache: "no-store" })
@@ -32,96 +33,82 @@ export function ServicesChecklist({ onSaved, intro = false }: Props) {
         if (!alive || !body) return;
         setProviders(body.providers);
         setChosen(new Set(body.providerIds));
+        latest.current = new Set(body.providerIds);
       })
       .catch(() => {
-        if (alive) setError("Could not load the list. Reload the page.");
+        if (alive) setError("could not load the list. reload the page.");
       });
     return () => {
       alive = false;
     };
   }, []);
 
-  const toggle = useCallback((id: number) => {
-    setSaved(false);
-    setChosen((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-  }, []);
+  const save = useCallback(
+    async (ids: Set<number>) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/taste/services", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ providerIds: [...ids] }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        onSaved?.();
+      } catch {
+        setError("that did not save. try again.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onSaved],
+  );
 
-  const save = useCallback(async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/taste/services", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ providerIds: [...chosen] }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      setSaved(true);
-      onSaved?.();
-    } catch {
-      setError("That didn't save. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }, [chosen, onSaved]);
+  const toggle = (id: number) => {
+    const next = new Set(latest.current);
+    if (!next.delete(id)) next.add(id);
+    latest.current = next;
+    setChosen(next);
+    if (!intro) void save(next);
+  };
 
   return (
-    <section className={intro ? "mt-8" : ""}>
-      {intro && (
-        <>
-          <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">What do you pay for?</h1>
-          <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-            Tonight only recommends things you can actually open. If something is on none of these, you will still see it — with its rent price, not hidden.
-          </p>
-        </>
-      )}
+    <section className="flex flex-col gap-[12px]" aria-label="Services">
+      <div className="section-head">
+        <h2 className="t-title">{intro ? "what do you pay for?" : "services"}</h2>
+        <span className="t-sub hidden sm:inline">tonight only picks things you can open</span>
+        {!intro && <span className="t-meta ml-auto">{chosen.size} of {providers?.length ?? 0}</span>}
+      </div>
 
-      <div className={intro ? "mt-7" : ""}>
-        {providers === null ? (
-          <p className="text-[13.5px] text-ink-faint">Loading…</p>
-        ) : (
-          providers.map((p) => {
+      {providers === null ? (
+        <p className="t-meta">reading the list…</p>
+      ) : (
+        <div className="flex flex-col">
+          {providers.map((p) => {
             const on = chosen.has(p.id);
             return (
               <button
                 key={p.id}
+                type="button"
                 onClick={() => toggle(p.id)}
                 aria-pressed={on}
-                className="flex w-full items-center justify-between py-3 text-left transition-colors duration-[120ms]"
+                className="row grid-cols-[minmax(0,1fr)_44px] text-left"
               >
-                <span className={`text-[16px] ${on ? "text-ink" : "text-ink-dim"}`}>{p.name}</span>
-                <span
-                  className={`size-4 shrink-0 rounded-full border transition-all duration-[120ms] ${
-                    on ? "border-accent bg-accent shadow-[0_0_12px_var(--accent)]" : "border-line-strong"
-                  }`}
-                />
+                <span className={`truncate text-[14px] ${on ? "font-medium text-ink" : "text-ink-dim"}`}>{p.name}</span>
+                <span className={`t-link justify-self-end ${on ? "text-ink" : "text-ink-faint"}`}>{on ? "on" : "off"}</span>
               </button>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
-      {error && <p className="mt-4 text-[13px] text-ink-dim">{error}</p>}
+      {error && <p className="text-[13px] text-danger">{error}</p>}
 
-      <div className={`flex items-center gap-5 ${intro ? "mt-8" : "mt-4"}`}>
-        <button
-          onClick={() => void save()}
-          disabled={saving}
-          className={`rounded-full bg-accent font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40 ${
-            intro ? "h-11 px-5 text-[13.5px]" : "h-9 px-4 text-[12.5px]"
-          }`}
-        >
-          {saving ? "Saving…" : intro ? "Continue" : "Save"}
+      {intro && (
+        <button type="button" onClick={() => void save(chosen)} disabled={saving} className="btn btn-outline mt-[10px] self-start disabled:opacity-40">
+          {saving ? "saving…" : "Continue"}
         </button>
-        <span className="text-[12.5px] tabular-nums text-ink-faint">
-          {saved && !intro ? "saved · " : ""}
-          {chosen.size} selected
-        </span>
-      </div>
+      )}
     </section>
   );
 }

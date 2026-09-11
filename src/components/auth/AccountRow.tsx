@@ -11,26 +11,26 @@ export function AccountRow() {
   const { user, loading } = useSessionUser();
 
   if (loading) {
-    return <div className="font-mono text-[11.5px] text-ink-faint">…</div>;
+    return <span className="t-meta">…</span>;
   }
   if (!user) {
     return (
       <button
         onClick={() => requireSignIn(typeof window === "undefined" ? "/" : window.location.pathname)}
-        className="text-left text-[13px] text-ink-dim transition-colors duration-[120ms] hover:text-ink"
+        className="t-meta text-left text-ink-faint transition-colors duration-[120ms] hover:text-ink"
       >
-        Sign in
+        sign in
       </button>
     );
   }
   return (
-    <div className="flex items-center gap-2 text-[13px]">
-      <span className="min-w-0 flex-1 truncate text-ink-dim">{user.email ?? "Signed in"}</span>
+    <div className="flex items-center gap-[14px]">
+      <span className="t-meta min-w-0 flex-1 truncate text-ink-faint">{user.email ?? "signed in"}</span>
       <button
         onClick={() => void signOut()}
-        className="shrink-0 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+        className="t-link shrink-0"
       >
-        Sign out
+        sign out
       </button>
     </div>
   );

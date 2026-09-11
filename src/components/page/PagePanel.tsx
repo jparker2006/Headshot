@@ -1,14 +1,24 @@
 "use client";
 /**
- * The title (and person) drawer, built against design/boards/Title.dc.html and
- * DESIGN.md's "Title" layout: poster and headline, one mono facts line, the
- * reason set large with names as links, the actions row (Play, later, seen it,
- * trailer), the cast as a face row with the people you already like ringed in
- * accent, then the brain page. No cards; sections separate by space and one
- * hairline.
+ * The title (and person) drawer, rebuilt against board C and DESIGN.md's
+ * "Title drawer" section.
+ *
+ * It is a region, not a floating card: 420px on the right of the shell behind a
+ * single `border-left`, the same `--bg` ground as the page, no radius, no
+ * shadow, no blur. Full-screen sheet on a phone. Inside, the grammar is the Log
+ * board's picked-title header — poster mark, name in Geist 16/600, one mono
+ * facts line — then one `.btn-play` (the only accent in the view), the four
+ * bucket words as the way to rate from here, the graph reason as `.t-reason`,
+ * the cast as `.row`s with a 22px face marker and the role in mono, and the
+ * brain page as `.t-prose`.
  *
  * Everything per-user arrives on `taste` from /api/page/[imdbId]; `taste: null`
  * means signed out, which is the only signed-out check this panel makes.
+ *
+ * Deviations from DESIGN.md § Title drawer, both requested in the rebuild brief:
+ * the cast rows carry a 22px face marker and the role in mono (DESIGN.md says
+ * "no faces"), and `later` / `seen it` sit beside Play as `.btn-quiet` in
+ * addition to the four bucket words.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
@@ -16,6 +26,7 @@ import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
 import { useImages } from "@/components/chat/useImages";
 import { lookupName } from "@/components/chat/lookup";
 import { requireSignIn } from "@/components/auth/SignInGate";
+import { factsLine } from "./facts";
 
 interface Neighbor {
   imdbId: string;
@@ -93,13 +104,19 @@ interface Props {
   onExpand: (imdbId: string) => void;
 }
 
-const BUCKET_LABEL: Record<string, string> = { liked: "you liked this", meh: "you called it meh", unseen: "marked unseen", want: "in later" };
+/** The four buckets, in the log field's order. Rating is a word, never a colour. */
+const BUCKETS: { bucket: "liked" | "meh" | "want" | "unseen"; label: string }[] = [
+  { bucket: "liked", label: "liked" },
+  { bucket: "meh", label: "meh" },
+  { bucket: "want", label: "want" },
+  { bucket: "unseen", label: "seen" },
+];
 
 export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Props) {
   const [data, setData] = useState<PageData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
-  /** Optimistic bucket after the user taps a chip; falls back to the server's. */
+  /** Optimistic bucket after the user taps a word; falls back to the server's. */
   const [bucket, setBucket] = useState<PageTaste["rating"] | undefined>(undefined);
 
   // Names on the page that link: the subject and its neighbors.
@@ -128,6 +145,15 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
     };
   }, [imdbId]);
 
+  // Esc closes — the header states the hint in mono, so it has to be true.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const extras = data?.extras ?? null;
   const title = extras?.kind === "title" ? extras : null;
   const person = extras?.kind === "person" ? extras : null;
@@ -139,10 +165,10 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const playHref = providers?.link ?? null;
   const poster = title?.posterUrl ?? person?.profileUrl ?? data?.node.posterUrl;
 
-  // The face row: the cast for a title, the credits for a person.
-  const faces = useMemo(() => (data ? data.neighbors.filter((n) => (isPerson ? n.kind === "title" : n.kind === "person")).slice(0, 16) : []), [data, isPerson]);
-  const faceImages = useImages(faces.map((f) => f.imdbId));
-  const ringed = useMemo(() => new Set(data?.taste?.likedPeople ?? []), [data]);
+  // The cast for a title, the credits for a person: rows, not a face wall.
+  const cast = useMemo(() => (data ? data.neighbors.filter((n) => (isPerson ? n.kind === "title" : n.kind === "person")).slice(0, 14) : []), [data, isPerson]);
+  const castImages = useImages(cast.map((f) => f.imdbId));
+  const known = useMemo(() => new Set(data?.taste?.likedPeople ?? []), [data]);
   // Ids the reason can cite, so its names become links without a lookup round-trip.
   const nameIds = useMemo(() => {
     const m = new Map<string, string>();
@@ -154,227 +180,215 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   }, [data]);
 
   const currentBucket = bucket !== undefined ? bucket : (data?.taste?.rating ?? null);
-  const rate = (rating: "liked" | "want") => {
+  const rate = (rating: "liked" | "meh" | "want" | "unseen") => {
     if (signedOut) return requireSignIn(`/?open=${imdbId}`);
     setBucket(rating);
     const req =
       rating === "want"
         ? fetch("/api/taste/later", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) })
-        : fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating: "liked" }] }) });
+        : fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating }] }) });
     void req.catch(() => setBucket(data?.taste?.rating ?? null));
   };
 
-  const facts = data ? factsLine(data, title, person, onService, providers) : [];
+  const facts = data
+    ? factsLine({
+        kind: data.node.kind,
+        year: data.node.year,
+        titleType: data.node.titleType,
+        genres: data.node.genres,
+        degree: data.node.degree,
+        runtime: title?.runtime,
+        seasons: title?.seasons,
+        tmdbGenres: title?.genres,
+        birthday: person?.birthday,
+        deathday: person?.deathday,
+        knownForDepartment: person?.knownForDepartment,
+        onService,
+      })
+    : [];
   const reason = data ? reasonParts(data, nameIds) : null;
+  const prose = title?.overview ?? person?.biography ?? "";
 
   return (
-    <aside className="panel pointer-events-auto flex h-full w-full flex-col overflow-hidden" aria-label="Page">
-      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
-          {data ? (isPerson ? "person" : data.node.titleType || "title") : "loading"}
-        </span>
-        <button onClick={onClose} className="rounded-full px-2 py-1 font-mono text-[10.5px] text-ink-dim transition-colors duration-[120ms] hover:text-ink" aria-label="Close">
-          close
-        </button>
-      </header>
-
-      <div className="scrollbar-thin flex-1 overflow-y-auto px-4 py-5">
+    <aside className="sheet pointer-events-auto flex h-full w-full flex-col overflow-hidden bg-bg" aria-label="Page">
+      <div className="scrollbar-thin flex flex-1 flex-col gap-[30px] overflow-y-auto overflow-x-hidden pb-[18px]">
         {err && <p className="text-[13px] text-danger">{err}</p>}
+        {!data && !err && <p className="t-meta">loading…</p>}
         {data && (
           <>
-            {/* 1 — poster, name, the one mono facts line */}
-            <div className="flex gap-4">
-              <div className="aspect-[3/4] w-[104px] shrink-0 overflow-hidden rounded-[14px] bg-white/[0.04] ring-1 ring-line">
-                {poster && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={poster} alt="" className="h-full w-full object-cover" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <h2 className="text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink text-balance">
-                  {data.node.name}
-                  {!isPerson && data.node.year ? <span className="ml-1.5 font-normal text-ink-faint tabular-nums">{data.node.year}</span> : null}
-                </h2>
-                {facts.length > 0 && (
-                  <p className="font-mono text-[11px] leading-[1.5] text-ink-dim">
-                    {facts.map((f, i) => (
-                      <span key={i} className={f.strong ? "text-ink" : undefined}>
-                        {i > 0 ? " · " : ""}
-                        {f.text}
-                      </span>
-                    ))}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* 2 — the reason, set large */}
-            {reason && (
-              <p className="mt-5 text-[18px] leading-[1.3] tracking-[-0.01em] text-ink-dim">
-                {reason.map((part, i) =>
-                  part.id === null ? (
-                    <span key={i}>{part.text}</span>
-                  ) : (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => (part.id ? onSelectNode(part.id) : void lookupName(part.text).then((id) => id && onSelectNode(id)))}
-                      className="font-medium text-ink underline-offset-4 decoration-accent/50 transition-colors duration-[120ms] hover:underline"
-                    >
-                      {part.text}
-                    </button>
-                  ),
-                )}
-              </p>
-            )}
-
-            {/* 3 — actions */}
-            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-3">
-              {playHref && (
-                <a
-                  href={playHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-9 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black transition-[filter] duration-[120ms] hover:brightness-110"
+            {/* 1 — the picked-title header, lifted from the Log board */}
+            <div className="flex flex-col gap-[18px]">
+              <div className="flex items-center gap-[14px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={poster || undefined} alt="" className="poster-mark poster-mark-md shrink-0" />
+                <div className="flex min-w-0 flex-col gap-[3px]">
+                  <span className="truncate text-[16px] font-semibold leading-[1.2] text-ink">{data.node.name}</span>
+                  {facts.length > 0 && <span className="t-meta text-[12px] text-ink-faint">{facts.join(" · ")}</span>}
+                </div>
+                <button
+                  onClick={onClose}
+                  className="ml-auto flex h-8 shrink-0 items-center gap-2 text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+                  aria-label="Close"
                 >
+                  <span className="t-meta">esc</span>
+                  <span className="text-[15px] leading-none">×</span>
+                </button>
+              </div>
+
+              {/* 2 — one Play (the only accent here), then the two quiet actions.
+                     Two rows rather than one wrap: at 420px a long "Play on
+                     Amazon Prime Video" would leave a ragged orphan otherwise. */}
+              {playHref && (
+                <a href={playHref} target="_blank" rel="noreferrer" className="btn btn-play self-start">
                   {onService ? `Play on ${onService}` : "Where to watch"}
                 </a>
               )}
               {!isPerson && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => rate("want")}
-                    className="rounded-full border border-line px-3 py-1.5 font-mono text-[11px] text-ink-dim transition-colors duration-[120ms] hover:border-accent/40 hover:text-ink"
-                  >
+                <div className="grid grid-cols-2 gap-[10px]">
+                  <button type="button" onClick={() => rate("want")} className="btn btn-quiet px-0">
                     later
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => rate("liked")}
-                    className="rounded-full border border-line px-3 py-1.5 font-mono text-[11px] text-ink-dim transition-colors duration-[120ms] hover:border-accent/40 hover:text-ink"
-                  >
+                  <button type="button" onClick={() => rate("liked")} className="btn btn-quiet px-0">
                     seen it
                   </button>
-                </>
+                </div>
               )}
-              {title?.trailer && (
-                <button type="button" onClick={() => setShowTrailer((v) => !v)} className="font-mono text-[11px] text-ink-faint transition-colors duration-[120ms] hover:text-ink">
-                  {showTrailer ? "hide trailer" : "trailer"}
-                </button>
-              )}
-              {currentBucket && <span className="font-mono text-[11px] text-ink-faint">{BUCKET_LABEL[currentBucket]}</span>}
-            </div>
 
-            {showTrailer && title?.trailer && (
-              <div className="mt-3 overflow-hidden rounded-[14px] ring-1 ring-line" style={{ aspectRatio: "16 / 9" }}>
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${title.trailer.youtubeKey}`}
-                  title={title.trailer.name}
-                  loading="lazy"
-                  allow="accelerometer; encrypted-media; picture-in-picture"
-                  allowFullScreen
-                  className="h-full w-full"
-                />
-              </div>
-            )}
-
-            {/* 4 — the face row */}
-            {faces.length > 0 && (
-              <section className="mt-6 border-t border-line pt-5">
-                <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
-                  {isPerson ? "credits" : "cast"}
-                  {ringed.size > 0 ? " · the ones you know are lit" : ""}
-                </p>
-                <div className="scrollbar-thin -mx-4 mt-2.5 flex gap-3 overflow-x-auto px-4 pb-2">
-                  {faces.map((f) => (
-                    <button key={f.imdbId} type="button" onClick={() => onSelectNode(f.imdbId)} className="w-[84px] shrink-0 text-left">
-                      <div
-                        className={`h-[112px] w-[84px] overflow-hidden rounded-[10px] bg-white/[0.05] ${ringed.has(f.imdbId) ? "ring-1 ring-accent" : "ring-1 ring-line"}`}
-                      >
-                        {faceImages[f.imdbId]?.url && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={faceImages[f.imdbId]!.url!} alt="" className="h-full w-full object-cover" loading="lazy" />
-                        )}
-                      </div>
-                      <p className="mt-1.5 text-[12px] font-semibold leading-[1.2] text-ink">{f.name}</p>
-                      <p className="font-mono text-[10.5px] leading-[1.3] text-ink-faint">{f.character ?? (f.year ? String(f.year) : "")}</p>
+              {/* the four bucket words: rating from the drawer uses the log
+                  field's vocabulary, not a new control. */}
+              {!isPerson && (
+                <div className="flex flex-wrap items-center gap-[16px]">
+                  {BUCKETS.map((b) => (
+                    <button
+                      key={b.bucket}
+                      type="button"
+                      onClick={() => rate(b.bucket)}
+                      className={`bucket transition-colors duration-[120ms] hover:text-ink ${currentBucket === b.bucket ? "bucket-on" : ""}`}
+                    >
+                      {b.label}
                     </button>
                   ))}
-                  {data.node.degree > faces.length && (
-                    <span className="flex h-[112px] w-[84px] shrink-0 items-center justify-center font-mono text-[11px] text-ink-faint">+ {data.node.degree - faces.length}</span>
+                  {title?.trailer && (
+                    <button type="button" onClick={() => setShowTrailer((v) => !v)} className="t-link ml-auto">
+                      {showTrailer ? "hide trailer" : "trailer"}
+                    </button>
                   )}
                 </div>
-              </section>
+              )}
+
+              {showTrailer && title?.trailer && (
+                <div className="overflow-hidden" style={{ aspectRatio: "16 / 9" }}>
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${title.trailer.youtubeKey}`}
+                    title={title.trailer.name}
+                    loading="lazy"
+                    allow="accelerometer; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                </div>
+              )}
+
+              {/* 3 — the graph reason: why this connects to you, one or two lines */}
+              {reason && (
+                <p className="t-reason">
+                  {reason.map((part, i) =>
+                    part.id === null ? (
+                      <span key={i}>{part.text}</span>
+                    ) : (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => (part.id ? onSelectNode(part.id) : void lookupName(part.text).then((id) => id && onSelectNode(id)))}
+                        className="entity-link"
+                      >
+                        {part.text}
+                      </button>
+                    ),
+                  )}
+                </p>
+              )}
+            </div>
+
+            {/* 4 — who is in it: rows, a 22px face marker, the role in mono */}
+            {cast.length > 0 && (
+              <Section title={isPerson ? "what they are in" : "who is in it"} meta={data.node.degree > cast.length ? `${data.node.degree} in all` : undefined}>
+                <div className="flex flex-col">
+                  {cast.map((f) => (
+                    <button
+                      key={f.imdbId}
+                      type="button"
+                      onClick={() => onSelectNode(f.imdbId)}
+                      className="row text-left"
+                      style={{ gridTemplateColumns: "22px minmax(0, 1fr) 88px" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={castImages[f.imdbId]?.url ?? undefined} alt="" loading="lazy" className="poster-mark" />
+                      <span className={`t-row truncate ${known.has(f.imdbId) ? "text-ink" : "text-ink-dim"}`}>{f.name}</span>
+                      <span className="t-meta truncate text-right">{f.character || (f.year ? String(f.year) : "")}</span>
+                    </button>
+                  ))}
+                </div>
+              </Section>
             )}
 
-            {/* the TMDB blurb, quiet beneath the reason */}
-            {(title?.overview || person?.biography) && (
-              <section className="mt-6 border-t border-line pt-5">
-                {title?.tagline && <p className="mb-1 text-[13px] italic text-ink-dim">{title.tagline}</p>}
-                <p className="max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">{title?.overview ?? person?.biography}</p>
-              </section>
+            {/* the TMDB blurb, quiet */}
+            {prose && (
+              <Section title={isPerson ? "the short version" : "what it is"}>
+                {title?.tagline && <p className="t-prose mb-[6px] italic">{title.tagline}</p>}
+                <p className="t-prose">{prose}</p>
+              </Section>
             )}
 
-            {/* 5 — the brain page, then the page's own actions */}
-            <section className="mt-6 border-t border-line pt-5">
-              <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
-                brain page{data.page ? ` · written after ${data.page.revisions.length} question${data.page.revisions.length === 1 ? "" : "s"}` : ""}
-              </p>
+            {/* 5 — the brain page */}
+            <Section
+              title="what the brain wrote"
+              meta={data.page ? `after ${data.page.revisions.length} question${data.page.revisions.length === 1 ? "" : "s"}` : undefined}
+            >
+              {/* Markdown sets its own thread-sized type; the drawer is prose. */}
               {data.page ? (
-                <div className="max-w-[62ch] text-[14.5px] leading-[1.55]">
+                <div className="[&_.prose-headshot]:text-[13.5px] [&_.prose-headshot]:leading-[1.54] [&_.prose-headshot]:text-ink-dim">
                   <Markdown text={data.page.body} entities={pageEntities} onSelectNode={onSelectNode} />
                 </div>
               ) : (
-                <p className="text-[13px] text-ink-faint">Nothing written yet. Ask a question that touches this and the agent will start a page.</p>
+                <p className="t-prose">nothing written yet. ask a question that touches this and the agent starts a page.</p>
               )}
-            </section>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => onAsk(`Tell me about ${data.node.name} and who they're most connected to.`)}
-                className="font-mono text-[11px] text-accent transition-colors duration-[120ms] hover:brightness-110"
-              >
-                ask about this
-              </button>
-              <button onClick={() => onExpand(imdbId)} className="font-mono text-[11px] text-ink-faint transition-colors duration-[120ms] hover:text-ink">
-                expand on the brain
-              </button>
-            </div>
+              <div className="mt-[14px] flex flex-wrap items-center gap-[16px]">
+                <button onClick={() => onAsk(`Tell me about ${data.node.name} and who they're most connected to.`)} className="t-link">
+                  ask about this
+                </button>
+                <button onClick={() => onExpand(imdbId)} className="t-link">
+                  expand on the brain
+                </button>
+              </div>
+            </Section>
 
             {providers && (providers.flatrate.length > 0 || providers.ads.length > 0 || providers.rent.length > 0 || providers.buy.length > 0) && (
-              <section className="mt-6 border-t border-line pt-5">
-                <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">where to watch · {title?.region}</p>
-                <div className="flex flex-wrap items-center gap-2">
+              <Section title="where to watch" meta={title?.region?.toLowerCase()}>
+                {/* service names are metadata, and the board writes metadata in mono */}
+                <p className="t-meta leading-[1.7]">
                   {dedupe([...providers.flatrate, ...providers.ads, ...providers.rent, ...providers.buy])
                     .slice(0, 10)
-                    .map((p) => (
-                      <span key={p.name} title={p.name} className="flex items-center gap-1.5 font-mono text-[10.5px] text-ink-dim">
-                        {p.logoUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.logoUrl} alt="" className="size-4 rounded-[4px]" />
-                        )}
-                        {p.name.replace(/ Amazon Channel| Apple TV Channel/, "")}
-                      </span>
-                    ))}
-                </div>
-              </section>
+                    .map((p) => p.name.replace(/ Amazon Channel| Apple TV Channel/, "").toLowerCase())
+                    .join(" · ")}
+                </p>
+              </Section>
             )}
 
             {data.page && data.page.revisions.length > 0 && (
-              <section className="mt-6 border-t border-line pt-5">
-                <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">learned from</p>
-                <ul className="space-y-1">
+              <Section title="learned from">
+                <div className="flex flex-col">
                   {[...data.page.revisions]
                     .reverse()
                     .slice(0, 6)
                     .map((r, i) => (
-                      <li key={i} className="text-[12.5px] text-ink-dim">
-                        <span className="font-mono text-[11px] text-ink-faint tabular-nums">{new Date(r.at).toLocaleDateString()}</span> · “{r.question}”
-                      </li>
+                      <div key={i} className="row" style={{ gridTemplateColumns: "72px minmax(0, 1fr)" }}>
+                        <span className="t-meta">{when(r.at)}</span>
+                        <span className="truncate text-[13px] text-ink-dim">{r.question}</span>
+                      </div>
                     ))}
-                </ul>
-              </section>
+                </div>
+              </Section>
             )}
           </>
         )}
@@ -383,37 +397,23 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   );
 }
 
-interface Fact {
-  text: string;
-  /** The one thing on the line that is in ink rather than ink-dim: "on max". */
-  strong: boolean;
+/** A section: the heading, an optional mono aside, one hairline, then rows. */
+function Section({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-[12px]">
+      <div className="section-head">
+        <h2 className="t-title">{title}</h2>
+        {meta && <span className="t-meta">{meta}</span>}
+      </div>
+      {children}
+    </section>
+  );
 }
 
-/** "2h 50 · 8.3 · crime, drama · on max" — one line, mono, the service in ink. */
-function factsLine(
-  data: PageData,
-  title: Extract<PageData["extras"], { kind: "title" }> | null,
-  person: Extract<PageData["extras"], { kind: "person" }> | null,
-  onService: string | null,
-  providers: { rent: Provider[]; buy: Provider[] } | null,
-): Fact[] {
-  const bits: Fact[] = [];
-  const plain = (text: string) => bits.push({ text, strong: false });
-  if (data.node.kind === "person") {
-    if (person?.birthday) plain(`born ${person.birthday.slice(0, 4)}${person.placeOfBirth ? ` · ${person.placeOfBirth}` : ""}`);
-    if (person?.deathday) plain(`died ${person.deathday.slice(0, 4)}`);
-    if (data.node.degree) plain(`${data.node.degree} credits`);
-    return bits;
-  }
-  if (title?.seasons) plain(`${title.seasons} season${title.seasons === 1 ? "" : "s"}`);
-  else if (title?.runtime) plain(title.runtime >= 60 ? `${Math.floor(title.runtime / 60)}h ${title.runtime % 60}` : `${title.runtime}m`);
-  if (title && title.rating > 0) plain(title.rating.toFixed(1));
-  const genres = title?.genres?.length ? title.genres : data.node.genres.split(",").filter(Boolean);
-  if (genres.length) plain(genres.slice(0, 2).join(", ").toLowerCase());
-  if (onService) bits.push({ text: `on ${onService.toLowerCase()}`, strong: true });
-  else if (providers?.rent.length) plain("rent");
-  else if (providers?.buy.length) plain("buy");
-  return bits;
+/** "3 mar" — a date short enough for a 72px mono gutter. */
+function when(at: string): string {
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short" }).toLowerCase();
 }
 
 interface ReasonPart {

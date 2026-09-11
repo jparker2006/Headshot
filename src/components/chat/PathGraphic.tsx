@@ -1,7 +1,10 @@
 "use client";
 /**
- * The path is the graphic. A left-to-right chain of headshots and posters
- * joined by arrows, with the tied alternatives stacked faintly beneath.
+ * The path is the graphic — board C's version of it: a thin left-to-right
+ * chain of poster and headshot marks joined by a mono arrow, the role under
+ * the arrow in mono, names in Geist under each mark. No cards, no rings, no
+ * accent (the accent means Play and nothing else), no uppercase labels. Tied
+ * alternatives sit behind a quiet `.t-link`.
  */
 import { useEffect, useState } from "react";
 import type { HeadshotDataParts, NamedPath, PathsFound } from "@/lib/agent/events";
@@ -46,44 +49,43 @@ export function PathGraphic({ paths, chosen, onSelectNode }: Props) {
   const roles = useRoles(ids);
 
   if (!lit) {
-    return <p className="text-[13px] text-ink-dim">No connection found in the graph.</p>;
+    return <p className="t-prose">no connection in the graph.</p>;
   }
   const hops = lit.imdbIds.filter((id) => id.startsWith("tt")).length;
+  const tied = paths.full?.paths.length ?? 0;
 
   return (
-    <figure className="rise my-2">
-      <div className="mb-2 flex items-baseline justify-between text-[11px] uppercase tracking-wider text-ink-dim">
-        <span>
-          <span className="text-ink">{paths.baconNumber}</span> {paths.baconNumber === 1 ? "degree" : "degrees"} apart
-          {hops !== paths.baconNumber && <span> · shown route {hops} hops</span>}
-        </span>
-        <span>{paths.full?.paths.length ?? 0} tied</span>
-      </div>
+    <figure className="rise m-0 flex flex-col">
+      <span className="t-meta pb-[10px]">
+        {paths.baconNumber} {paths.baconNumber === 1 ? "degree" : "degrees"} apart
+        {hops !== paths.baconNumber && ` · shown route ${hops} hops`}
+        {tied > 1 && ` · ${tied} tied`}
+      </span>
 
       <div className="scrollbar-thin overflow-x-auto">
-        <div className="flex items-stretch gap-1.5 pb-1">
+        <div className="flex items-start gap-[10px] pb-1">
           {lit.imdbIds.map((id, i) => {
             const prev = lit.imdbIds[i - 1];
             // The role label belongs to the person→title pair on either side of this arrow.
             const pairKey = prev ? (prev.startsWith("nm") ? `${prev}|${id}` : `${id}|${prev}`) : "";
             return (
-              <div key={id + i} className="flex items-center gap-1.5">
+              <div key={id + i} className="flex items-start gap-[10px]">
                 {i > 0 && <Arrow label={roles[pairKey]} />}
-                <Card id={id} name={lit.names[i]} image={images[id]?.url} onClick={() => onSelectNode(id)} />
+                <Mark name={lit.names[i]} image={images[id]?.url} onClick={() => onSelectNode(id)} />
               </div>
             );
           })}
         </div>
       </div>
 
-      {chosen?.reason && <figcaption className="mt-1.5 text-[12px] text-ink-dim">{chosen.reason}</figcaption>}
+      {chosen?.reason && <figcaption className="t-reason pt-[10px]">{chosen.reason}</figcaption>}
 
       {alternates.length > 0 && (
-        <details className="mt-2 group">
-          <summary className="cursor-pointer select-none text-[11.5px] uppercase tracking-wider text-ink-faint hover:text-ink-dim">
+        <details className="group pt-[10px]">
+          <summary className="t-link inline-block list-none">
             {alternates.length} other {alternates.length === 1 ? "route" : "routes"}
           </summary>
-          <ul className="mt-1.5 space-y-1">
+          <ul className="m-0 flex list-none flex-col gap-[6px] p-0 pt-[8px]">
             {alternates.map((p) => (
               <li key={p.imdbIds.join()}>
                 <AltChain path={p} onSelectNode={onSelectNode} />
@@ -96,44 +98,42 @@ export function PathGraphic({ paths, chosen, onSelectNode }: Props) {
   );
 }
 
-function Card({ id, name, image, onClick }: { id: string; name: string; image?: string | null; onClick: () => void }) {
-  const isTitle = id.startsWith("tt");
+function Mark({ name, image, onClick }: { name: string; image?: string | null; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="group flex w-[104px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1 text-center hover:bg-white/[0.04]" title={name}>
-      <div
-        className={`relative h-[132px] w-[88px] overflow-hidden rounded-md ring-1 ring-line ${isTitle ? "bg-title/20" : "bg-person/10"} ${image === undefined ? "animate-pulse" : ""}`}
-      >
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.03]" loading="lazy" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[22px] font-semibold text-ink-faint">{initials(name)}</div>
-        )}
-        {isTitle && <span className="absolute inset-x-0 bottom-0 h-1 bg-title/80" />}
-      </div>
-      <span className={`line-clamp-2 text-[11.5px] leading-tight ${isTitle ? "text-title" : "text-ink"}`}>{name}</span>
+    <button onClick={onClick} className="flex w-[88px] shrink-0 flex-col items-start gap-[7px] text-left" title={name}>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" className="poster-mark poster-mark-lg" loading="lazy" />
+      ) : (
+        <span className="poster-mark poster-mark-lg flex items-center justify-center text-[11px] font-medium text-ink-faint">{initials(name)}</span>
+      )}
+      <span className="text-[12.5px] font-medium leading-[1.25] text-ink">{name}</span>
     </button>
   );
 }
 
 function Arrow({ label }: { label?: string }) {
   return (
-    <div className="flex w-[64px] shrink-0 flex-col items-center gap-1">
-      <svg width="18" height="14" viewBox="0 0 18 14" className="text-accent" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M1 7h14M10 2l5 5-5 5" />
-      </svg>
-      {label && <span className="line-clamp-2 text-center text-[10.5px] leading-tight text-ink-dim">{label}</span>}
+    <div className="flex w-[64px] shrink-0 flex-col items-center gap-[6px] pt-[18px]">
+      <span className="font-mono text-[11.5px] leading-none text-ink-faint" aria-hidden>
+        →
+      </span>
+      {label && <span className="t-meta text-center">{label}</span>}
     </div>
   );
 }
 
 function AltChain({ path, onSelectNode }: { path: NamedPath; onSelectNode: (id: string) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12px] text-ink-dim">
+    <div className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px] text-[12.5px] text-ink-dim">
       {path.names.map((n, i) => (
-        <span key={path.imdbIds[i] + i} className="flex items-center gap-1">
-          {i > 0 && <span className="text-ink-faint">→</span>}
-          <button onClick={() => onSelectNode(path.imdbIds[i])} className={`hover:underline ${path.imdbIds[i].startsWith("tt") ? "text-title/80" : ""}`}>
+        <span key={path.imdbIds[i] + i} className="flex items-center gap-[6px]">
+          {i > 0 && (
+            <span className="font-mono text-[11.5px] text-ink-ghost" aria-hidden>
+              →
+            </span>
+          )}
+          <button onClick={() => onSelectNode(path.imdbIds[i])} className="entity-link entity-link-soft">
             {n}
           </button>
         </span>

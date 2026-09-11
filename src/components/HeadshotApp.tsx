@@ -1,10 +1,15 @@
 "use client";
 /**
- * The shell: a collapsible ChatGPT-shaped sidebar, one reading column, and a
- * title drawer that slides in from the right when a name or poster is tapped.
- * Two surfaces only (SPEC v4): You (home — the log, the memory, tonight, the
- * numbers, later) and a thread. The graph canvas is not part of the product
- * surface and nothing links to it; /brain keeps it for the curious.
+ * The shell, board C: `176px | 1fr` — the rail, then one content column with
+ * the composer pinned at its bottom, and a 420px drawer behind one hairline on
+ * the right (DESIGN.md → Layouts, Rhythm). Two surfaces only (SPEC v4): You
+ * (home — the log, the memory, tonight, the numbers, later) and a thread. The
+ * graph canvas is not part of the product surface and nothing links to it;
+ * /brain keeps it for the curious.
+ *
+ * On a phone the rail becomes a 44px top bar (wordmark, `you` / `history`,
+ * account — no hamburger), History opens the rail as a sheet, and the drawer
+ * is full screen.
  *
  * One way in: You carries a composer, and anything typed there (or asked from
  * the drawer, or arriving on /?q=) opens a thread with the question already
@@ -15,9 +20,10 @@ import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { PagePanel } from "./page/PagePanel";
 import { Sidebar } from "./Sidebar";
-import type { Surface } from "./navModel";
+import { accountModel, accountName, type Surface } from "./navModel";
+import { useSessionUser, requireSignIn } from "./auth/SignInGate";
 import { YouPage } from "./you/YouPage";
-import { Composer } from "./you/Composer";
+import { Prompt } from "./you/Prompt";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 
 export function HeadshotApp() {
@@ -129,22 +135,22 @@ export function HeadshotApp() {
         </div>
       )}
 
-      <main className="relative flex h-full min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-line px-3 py-2 md:hidden">
-          <button onClick={() => setMobileNav(true)} className="text-[13px] text-ink-dim" aria-label="Menu">
-            ☰
-          </button>
-          <span className="text-[14px] font-semibold text-ink">Headshot</span>
-        </div>
+      {/* `overflow-clip`, not `hidden`: a focus inside the scroller (the account
+          button, a composer below the fold) would otherwise scroll this column
+          programmatically and shift the whole shell out of frame for good. */}
+      <main className="relative flex h-full min-w-0 flex-1 flex-col overflow-clip">
+        <TopBar surface={shown} onYou={goYou} onHistory={() => setMobileNav(true)} />
         {shown === "you" && (
           <>
             <div className="scrollbar-thin flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
+              <div className="w-full px-4 pb-[40px] pt-[22px] md:px-[34px]">
                 <YouPage onSelectNode={select} onAsk={ask} />
               </div>
             </div>
             {/* The composer is on the landing signed in or out: trivia chat is open to everyone. */}
-            <Composer onSubmit={ask} />
+            <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))] sm:px-[34px] sm:pb-[22px]">
+              <Prompt onAsk={ask} onSelectNode={select} />
+            </div>
           </>
         )}
         {shown === "chat" && threadId && (
@@ -152,10 +158,10 @@ export function HeadshotApp() {
         )}
       </main>
 
-      {/* The drawer: a title or a person, summoned by a tap */}
+      {/* The drawer: a region behind one hairline, 420px, full screen on a phone. */}
       {selected && (
-        <div className="sheet fixed inset-0 z-40 md:static md:inset-auto md:z-auto md:h-full md:w-[420px] md:shrink-0 md:border-l md:border-line lg:w-[460px]">
-          <div className="h-full p-3 md:p-4">
+        <div className="sheet fixed inset-0 z-40 md:static md:inset-auto md:z-auto md:h-full md:w-[420px] md:shrink-0 md:border-l md:border-line">
+          <div className="h-full px-4 py-[22px] md:px-6">
             <PagePanel
               key={selected}
               imdbId={selected}
@@ -170,6 +176,36 @@ export function HeadshotApp() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The phone's rail: 44px, wordmark left, `you` / `history` as text, account
+ * right. No hamburger (DESIGN.md → Rhythm); `history` opens the rail as a
+ * sheet, which is where the threads live.
+ */
+function TopBar({ surface, onYou, onHistory }: { surface: Surface; onYou: () => void; onHistory: () => void }) {
+  const { user, loading } = useSessionUser();
+  const account = accountModel(user, loading);
+  return (
+    <div className="flex h-[44px] shrink-0 items-center gap-[16px] border-b border-line px-4 md:hidden">
+      <button onClick={onYou} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+        headshot
+      </button>
+      <button onClick={onYou} className={`t-ui ${surface === "you" ? "text-ink" : "font-normal text-ink-faint"}`}>
+        you
+      </button>
+      <button onClick={onHistory} className={`t-ui ${surface === "chat" ? "text-ink" : "font-normal text-ink-faint"}`}>
+        history
+      </button>
+      <button
+        onClick={() => (user ? onHistory() : requireSignIn(window.location.pathname))}
+        className="t-meta ml-auto truncate text-ink-faint"
+        title={account.label}
+      >
+        {accountName(account.label)}
+      </button>
     </div>
   );
 }

@@ -1,27 +1,30 @@
 "use client";
 /**
- * You — home. The log with a brain, in the order SPEC v4 fixed: log field,
- * what I know about you, recently logged, tonight, numbers, services, imports,
- * later, the swipe button.
+ * You — home, drawn to board C (`design/boards-v4/C-You.dc.html`).
  *
- * This is chunk A's structure, not its final look: headings are plain
- * sentences and nothing is boxed, so chunk C can restyle from the winning
- * board without unpicking a card layout first.
+ * Order is fixed by DESIGN.md: memory, recently logged, tonight, numbers,
+ * services, imports, later, the swipe button. Sections separate by 38px of
+ * air and one hairline under each header — no card gets a border, no figure
+ * gets a tile, and the only amber thing on the page is the first Play.
+ *
+ * There is no log box at the top: the one prompt lives at the bottom of every
+ * screen (`Prompt`), and it tells this page through `logBus` when it writes.
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Markdown } from "@/components/chat/Markdown";
 import { lookupName } from "@/components/chat/lookup";
 import { useImages } from "@/components/chat/useImages";
 import { useNames } from "@/components/chat/useNames";
 import { useSessionUser, signInHref } from "@/components/auth/SignInGate";
 import { LaterPanel } from "@/components/tonight/LaterPanel";
-import { ReasonLine, useTonight } from "@/components/tonight/TonightPanel";
+import { TonightPanel } from "@/components/tonight/TonightPanel";
 import { Numbers } from "./Numbers";
-import { LogField } from "./LogField";
+import { MemoryProse } from "./MemoryProse";
 import { ServicesChecklist } from "./ServicesChecklist";
 import { Imports } from "./Imports";
-import { BUCKET_LABEL, recentlyLogged, relativeTime } from "./recent";
+import { bumpLog, useLogVersion } from "./logBus";
+import { terseTime } from "./recent";
+import { useNumbers } from "./useNumbers";
 import type { WatchedRow } from "@/lib/taste/types";
 
 interface Props {
@@ -33,16 +36,19 @@ interface Props {
 
 export function YouPage({ onSelectNode, onAsk }: Props) {
   const { user, loading } = useSessionUser();
-  const [logged, setLogged] = useState(0);
+  const version = useLogVersion();
+  const [allNumbers, setAllNumbers] = useState(false);
 
-  if (loading) return <p className="text-[13.5px] text-ink-faint">…</p>;
+  if (loading) return <p className="t-meta">…</p>;
+
   if (!user) {
     return (
-      <section className="space-y-4" aria-label="You">
-        <p className="max-w-[46ch] text-[19px] leading-[1.4] tracking-[-0.01em] text-ink">
-          Headshot keeps the log of everything you&apos;ve watched and learns your taste from it.
+      <section className="flex max-w-[560px] flex-col items-start gap-[22px]" aria-label="You">
+        <p className="text-[26px] font-semibold leading-[1.25] tracking-[-0.02em] text-ink">
+          I keep the log of everything you have watched, and I know what it says about you.
         </p>
-        <Link href={signInHref("/")} className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
+        <p className="t-meta">no password, ever. the chat below works without an account.</p>
+        <Link href={signInHref("/")} className="btn btn-outline">
           Sign in
         </Link>
       </section>
@@ -50,64 +56,41 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
   }
 
   return (
-    <div className="space-y-12" aria-label="You">
-      <LogField onLogged={() => setLogged((n) => n + 1)} />
-      <MemorySection onSelectNode={onSelectNode} refreshKey={logged} />
-      <RecentlyLogged onSelectNode={onSelectNode} refreshKey={logged} />
-      <TonightRow onSelectNode={onSelectNode} />
-
-      <Section title="Numbers">
-        <Numbers onSelectNode={onSelectNode} />
-      </Section>
-
-      <Section title="Services">
-        <p className="text-[14px] text-ink-dim">What you pay for. Tonight only picks things you can open.</p>
-        <ServicesChecklist />
-      </Section>
-
-      <Section title="Imports">
-        <Imports onDone={() => setLogged((n) => n + 1)} />
-      </Section>
-
+    <div className="flex flex-col gap-[28px] sm:gap-[38px]" aria-label="You">
+      <Memory onSelectNode={onSelectNode} version={version} />
+      <RecentlyLogged onSelectNode={onSelectNode} version={version} onWholeLog={() => setAllNumbers(true)} />
+      <TonightPanel onSelectNode={onSelectNode} onAsk={onAsk} initial={1} />
+      <div id="numbers">
+        <Numbers onSelectNode={onSelectNode} version={version} open={allNumbers} onToggle={() => setAllNumbers((v) => !v)} />
+      </div>
+      <ServicesChecklist />
+      <Imports onDone={bumpLog} />
       <LaterPanel onSelectNode={onSelectNode} />
-
-      <div className="space-y-2">
-        <Link href="/onboarding" className="inline-flex h-9 items-center rounded-full border border-line px-4 text-[13px] text-ink hover:border-line-strong">
-          Swipe through your back-catalog
+      <div>
+        <Link href="/onboarding" className="btn btn-quiet">
+          Swipe through ones you have probably seen
         </Link>
-        <p className="text-[13px] text-ink-faint">
-          Or just{" "}
-          <button type="button" onClick={() => onAsk("what should I watch tonight?")} className="text-accent">
-            ask
-          </button>
-          .
-        </p>
       </div>
     </div>
   );
 }
 
-/** A plain sentence heading and its block. No box, no rule, no label. */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-[17px] font-semibold tracking-tight text-ink">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
 // ---- what I know about you -------------------------------------------------
 
-interface Memory {
+interface MemoryRow {
   markdown: string;
   pinned: string;
   /** Null until the rewrite job has written once. */
   updatedAt: string | null;
 }
 
-function MemorySection({ onSelectNode, refreshKey }: { onSelectNode: (imdbId: string) => void; refreshKey: number }) {
-  const [memory, setMemory] = useState<Memory | null>(null);
+/**
+ * The page's opening, so its header carries no rule — it needs no seam
+ * (DESIGN.md → You → Memory). `edit` writes the pinned block, which the
+ * rewrite job copies through verbatim.
+ */
+function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => void; version: number }) {
+  const [memory, setMemory] = useState<MemoryRow | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -115,13 +98,13 @@ function MemorySection({ onSelectNode, refreshKey }: { onSelectNode: (imdbId: st
   useEffect(() => {
     let alive = true;
     fetch("/api/taste/memory", { cache: "no-store" })
-      .then(async (r) => (r.ok ? ((await r.json()) as Memory) : null))
+      .then(async (r) => (r.ok ? ((await r.json()) as MemoryRow) : null))
       .then((m) => alive && m && setMemory(m))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [version]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -141,13 +124,16 @@ function MemorySection({ onSelectNode, refreshKey }: { onSelectNode: (imdbId: st
   }, [draft]);
 
   // A **bold** name in the memory has no per-message entity index behind it,
-  // so it resolves the same way the chat's soft links do: through search.
+  // so it resolves the way the chat's soft links do: through search.
   const lookup = (name: string) => void lookupName(name).then((id) => id && onSelectNode(id));
 
+  const body = [memory?.markdown ?? "", memory?.pinned?.trim() ? `## Notes\n${memory.pinned}` : ""].filter(Boolean).join("\n");
+
   return (
-    <section className="space-y-3">
-      <div className="flex items-baseline gap-3">
-        <h2 className="text-[17px] font-semibold tracking-tight text-ink">What I know about you</h2>
+    <section className="flex flex-col gap-[16px]" aria-label="What I know about you">
+      <div className="flex flex-wrap items-baseline gap-[12px]">
+        <h1 className="t-title">what I know about you</h1>
+        {memory?.updatedAt && <span className="t-meta whitespace-nowrap">rewritten {terseTime(memory.updatedAt)}</span>}
         {!editing && (
           <button
             type="button"
@@ -155,187 +141,140 @@ function MemorySection({ onSelectNode, refreshKey }: { onSelectNode: (imdbId: st
               setDraft(memory?.pinned ?? "");
               setEditing(true);
             }}
-            className="text-[13px] text-ink-faint hover:text-ink"
+            className="t-link ml-auto shrink-0"
           >
-            Edit
+            edit
           </button>
         )}
       </div>
 
-      {memory?.markdown ? (
-        <Markdown text={memory.markdown} onSelectNode={onSelectNode} onLookup={lookup} />
-      ) : (
-        <p className="text-[14px] text-ink-dim">Nothing yet. Log a few things, or tell the chat what you love.</p>
-      )}
-
       {editing ? (
-        <div className="space-y-2">
-          <p className="text-[13px] text-ink-dim">In your words. These lines are kept exactly as you write them.</p>
+        <div className="flex max-w-[880px] flex-col gap-[12px]">
+          <p className="t-prose">in your words. these lines are kept exactly as you write them.</p>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={5}
             aria-label="in your words"
-            className="w-full resize-y rounded-panel bg-raised px-3 py-2 text-[14px] text-ink outline-none ring-1 ring-line placeholder:text-ink-faint focus:ring-line-strong"
+            className="t-note w-full resize-y border-b border-[color:var(--line-note)] bg-transparent pb-[8px] outline-none placeholder:text-ink-ghost"
             placeholder="I will watch anything shot on film."
           />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              className="h-9 rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black disabled:opacity-40"
-            >
-              {saving ? "Saving…" : "Save"}
+          <div className="flex items-center gap-[16px]">
+            <button type="button" onClick={() => void save()} disabled={saving} className="btn btn-outline disabled:opacity-40">
+              {saving ? "saving…" : "Save"}
             </button>
-            <button type="button" onClick={() => setEditing(false)} className="text-[13px] text-ink-faint hover:text-ink">
-              Cancel
+            <button type="button" onClick={() => setEditing(false)} className="t-link">
+              cancel
             </button>
           </div>
         </div>
+      ) : body ? (
+        <MemoryProse markdown={body} onLookup={lookup} />
       ) : (
-        memory?.pinned?.trim() && (
-          <div className="space-y-1">
-            <p className="text-[13px] text-ink-faint">In your words</p>
-            <Markdown text={memory.pinned} onSelectNode={onSelectNode} onLookup={lookup} />
-          </div>
-        )
+        <p className="t-prose">nothing yet. log a few things below, or tell the chat what you love.</p>
       )}
-
-      {memory?.updatedAt && !editing && <p className="text-[12.5px] text-ink-faint">updated {relativeTime(memory.updatedAt)}</p>}
     </section>
   );
 }
 
 // ---- recently logged -------------------------------------------------------
 
-function RecentlyLogged({ onSelectNode, refreshKey }: { onSelectNode: (imdbId: string) => void; refreshKey: number }) {
+const LIMIT = 10;
+
+function RecentlyLogged({
+  onSelectNode,
+  version,
+  onWholeLog,
+}: {
+  onSelectNode: (imdbId: string) => void;
+  version: number;
+  onWholeLog: () => void;
+}) {
   const [rows, setRows] = useState<WatchedRow[] | null>(null);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let alive = true;
     fetch("/api/taste/watched", { cache: "no-store" })
       .then(async (r) => (r.ok ? ((await r.json()) as { watched: WatchedRow[] }).watched : []))
-      .then((w) => alive && setRows(recentlyLogged(w, 10)))
+      .then((w) => {
+        if (!alive) return;
+        setTotal(w.length);
+        setRows([...w].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")).slice(0, LIMIT));
+      })
       .catch(() => alive && setRows([]));
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [version]);
 
   const ids = (rows ?? []).map((r) => r.titleImdbId);
   const images = useImages(ids);
   const names = useNames(ids);
+  // The kind, the runtime and the episode count live in Numbers' own GET,
+  // which this page makes anyway — so the mono column borrows it rather than
+  // asking a second route for the same three facts.
+  const numbers = useNumbers(version);
+  const meta = new Map(
+    numbers.status === "ready" ? numbers.data.log.map((r) => [r.imdbId, r] as const) : [],
+  );
 
   return (
-    <Section title="Recently logged">
-      {rows === null && <p className="text-[13.5px] text-ink-faint">reading the log…</p>}
-      {rows !== null && rows.length === 0 && <p className="text-[14px] text-ink-dim">Nothing logged yet. The field at the top takes ten seconds.</p>}
-      {rows !== null && rows.length > 0 && (
-        <ul className="divide-y divide-line">
-          {rows.map((row) => (
-            <li key={row.titleImdbId} className="flex items-center gap-4 py-3">
-              <button
-                onClick={() => onSelectNode(row.titleImdbId)}
-                className="h-14 w-10 shrink-0 overflow-hidden rounded bg-white/[0.05] ring-1 ring-line hover:ring-accent/60"
-                aria-label={names[row.titleImdbId]?.name ?? row.titleImdbId}
-              >
-                {images[row.titleImdbId]?.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={images[row.titleImdbId]!.url!} alt="" className="h-full w-full object-cover" loading="lazy" />
-                ) : null}
-              </button>
-              <button onClick={() => onSelectNode(row.titleImdbId)} className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-[15px] font-medium text-ink">{names[row.titleImdbId]?.name ?? "…"}</span>
-                <span className="text-[12.5px] text-ink-faint">
-                  {names[row.titleImdbId]?.year || ""}
-                  {names[row.titleImdbId]?.year ? " · " : ""}
-                  {BUCKET_LABEL[row.rating] ?? row.rating}
-                  {row.season ? ` · s${row.season}` : ""}
+    <section className="flex flex-col gap-[12px]" aria-label="Recently logged">
+      <div className="section-head">
+        <h2 className="t-title">recently logged</h2>
+        {total > 0 && (
+          <span className="t-meta">
+            {Math.min(LIMIT, total)} of {total}
+          </span>
+        )}
+        <button type="button" onClick={onWholeLog} className="t-link ml-auto shrink-0">
+          the whole log
+        </button>
+      </div>
+
+      {rows === null && <p className="t-meta">reading the log…</p>}
+      {rows !== null && rows.length === 0 && <p className="t-prose">nothing logged yet. type a title below.</p>}
+
+      <div className="flex flex-col">
+        {(rows ?? []).map((row) => {
+          const id = row.titleImdbId;
+          const m = meta.get(id);
+          const kind = m ? (m.kind === "series" ? "show" : "film") : "";
+          const tail = m ? [kind, m.kind === "series" ? null : m.runtime ? `${m.runtime}m` : null].filter(Boolean).join(" · ") : "";
+          const year = names[id]?.year || m?.year || "";
+          return (
+            <button
+              key={`${id}-${row.season ?? 0}`}
+              type="button"
+              onClick={() => onSelectNode(id)}
+              className="row h-[52px] grid-cols-[26px_minmax(0,1fr)] text-left sm:h-[38px] sm:grid-cols-[88px_26px_minmax(0,320px)_48px_64px_minmax(0,1fr)]"
+            >
+              <span className="t-meta hidden sm:block">{terseTime(row.updatedAt)}</span>
+              {images[id]?.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={images[id]!.url!} alt="" className="poster-mark" loading="lazy" />
+              ) : (
+                <span className="poster-mark" />
+              )}
+              <span className="min-w-0">
+                <span className="t-row block truncate">
+                  {names[id]?.name ?? m?.name ?? "…"}
+                  {row.season ? <span className="t-meta ml-[6px] text-ink-faint">s{row.season}</span> : null}
+                  {/* the phone row is two lines: poster + title + year, then the mono meta */}
+                  {year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{year}</span> : null}
                 </span>
-              </button>
-              <span className="shrink-0 text-[12.5px] text-ink-faint">{relativeTime(row.updatedAt)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  );
-}
-
-// ---- tonight ---------------------------------------------------------------
-
-function TonightRow({ onSelectNode }: { onSelectNode: (imdbId: string) => void }) {
-  const [state, refresh] = useTonight();
-  const [open, setOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const regenerate = async () => {
-    setRefreshing(true);
-    try {
-      await fetch("/api/tonight/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    } catch {
-      /* the refresh link is best effort; the state below says what happened */
-    } finally {
-      setRefreshing(false);
-      refresh();
-    }
-  };
-
-  const empty = (
-    <p className="text-[14px] text-ink-dim">
-      Rate a few things and this fills in tonight.{" "}
-      <button type="button" onClick={() => void regenerate()} disabled={refreshing} className="text-accent disabled:opacity-40">
-        {refreshing ? "looking…" : "look now"}
-      </button>
-    </p>
-  );
-
-  return (
-    <Section title="Tonight">
-      {state.status === "loading" && <p className="text-[13.5px] text-ink-faint">finding one for tonight…</p>}
-      {(state.status === "empty" || state.status === "signed-out" || state.status === "error") && empty}
-      {state.status === "ready" && state.data.picks.length === 0 && empty}
-      {state.status === "ready" && state.data.picks.length > 0 && (
-        <>
-          <div className="divide-y divide-line">
-            {(open ? state.data.picks : state.data.picks.slice(0, 1)).map((pick) => (
-              <div key={pick.imdbId} className="flex flex-wrap items-center gap-x-5 gap-y-3 py-3">
-                <button
-                  type="button"
-                  onClick={() => onSelectNode(pick.imdbId)}
-                  className="h-16 w-12 shrink-0 overflow-hidden rounded bg-white/[0.05] ring-1 ring-line hover:ring-accent/60"
-                  aria-label={pick.name}
-                >
-                  {pick.posterUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={pick.posterUrl} alt="" className="h-full w-full object-cover" />
-                  ) : null}
-                </button>
-                <p className="min-w-[200px] flex-1 text-[16px] leading-[1.35] text-ink-dim">
-                  <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="font-semibold text-ink underline-offset-4 decoration-accent/60 hover:underline">
-                    {pick.name}
-                  </button>
-                  {pick.kind === "continue" ? ", " : ". "}
-                  <ReasonLine text={pick.reason.text} onSelectNode={onSelectNode} />
-                </p>
-                {pick.playUrl && pick.playLabel ? (
-                  <a href={pick.playUrl} target="_blank" rel="noopener" className="flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black">
-                    {pick.playLabel}
-                  </a>
-                ) : (
-                  <span className="text-[12.5px] text-ink-faint">not streaming</span>
-                )}
-              </div>
-            ))}
-          </div>
-          {state.data.picks.length > 1 && (
-            <button type="button" onClick={() => setOpen((o) => !o)} className="text-[13px] text-ink-faint hover:text-ink">
-              {open ? "just the first one" : `show all ${state.data.picks.length}`}
+                <span className="t-meta block sm:hidden">
+                  {[terseTime(row.updatedAt), row.rating, tail].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <span className="t-meta hidden text-ink-faint sm:block">{year}</span>
+              <span className={`bucket hidden sm:block ${row.rating === "liked" ? "bucket-on" : ""}`}>{row.rating}</span>
+              <span className="t-meta hidden truncate sm:block">{tail}</span>
             </button>
-          )}
-        </>
-      )}
-    </Section>
+          );
+        })}
+      </div>
+    </section>
   );
 }

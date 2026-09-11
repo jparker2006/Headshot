@@ -52,3 +52,26 @@ export function recentlyLogged<T extends Pick<WatchedRow, "updatedAt">>(rows: re
     .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
     .slice(0, limit);
 }
+
+/**
+ * The terminal form of a timestamp: `just now`, `12m ago`, `3h ago`, `2d ago`.
+ * Board C sets every time in mono at 11.5px, where a sentence ("3 hours ago")
+ * reads as prose rather than as a readout — so the gutter uses this, and
+ * `relativeTime` stays for the places that speak in sentences.
+ */
+export function terseTime(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "";
+  const secs = Math.round((now.getTime() - ms) / 1000);
+  if (secs < 90) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 52) return `${weeks}w ago`;
+  return `${Math.round(days / 365)}y ago`;
+}

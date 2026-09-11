@@ -1,10 +1,12 @@
 "use client";
 /**
- * The Letterboxd CSV import, lifted out of the onboarding page so You and
- * onboarding share one control. Behaviour is unchanged: POST the chosen CSVs,
- * review the shakiest matches, then confirm the corrections.
+ * The Letterboxd CSV import, shared by You and onboarding. Behaviour is
+ * unchanged: POST the chosen CSVs, review the shakiest matches, then confirm
+ * the corrections. On You it is one terse row; `intro` gives onboarding the
+ * heading and a Skip.
  */
 import { useCallback, useState } from "react";
+import { FilePick, ImportRow } from "./importRow";
 
 export interface ReviewItem {
   name: string;
@@ -31,46 +33,48 @@ export interface SearchHit {
   kind: string;
 }
 
+const FILES = ["ratings", "watched", "watchlist"] as const;
+type FileKey = (typeof FILES)[number];
+
 interface Props {
   /** Called once the import (and any corrections) are in. */
   onDone?: () => void;
-  /** Onboarding mode: the big heading, the explainer and a Skip. */
+  /** Onboarding mode: the heading, the explainer and a Skip. */
   intro?: boolean;
   /** Onboarding's "Skip"; omitted on You, where there is nothing to skip past. */
   onSkip?: () => void;
 }
 
 export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
+  const [files, setFiles] = useState<Partial<Record<FileKey, File>>>({});
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fixes, setFixes] = useState<Record<string, string | null>>({});
   const [done, setDone] = useState<number | null>(null);
 
-  const upload = useCallback(async (form: HTMLFormElement) => {
+  const upload = useCallback(async () => {
+    const body = new FormData();
+    for (const key of FILES) {
+      const file = files[key];
+      if (file && file.size > 0) body.set(key, file);
+    }
+    if ([...body.keys()].length === 0) {
+      setError("pick at least one CSV from your Letterboxd export");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const data = new FormData(form);
-      // Drop the empty file inputs so the route sees only what was chosen.
-      const body = new FormData();
-      for (const key of ["ratings", "watched", "watchlist"]) {
-        const file = data.get(key);
-        if (file instanceof File && file.size > 0) body.set(key, file);
-      }
-      if ([...body.keys()].length === 0) {
-        setError("Pick at least one CSV from your Letterboxd export.");
-        return;
-      }
       const res = await fetch("/api/taste/import", { method: "POST", body });
       if (!res.ok) throw new Error(String(res.status));
       setResult((await res.json()) as ImportResult);
     } catch {
-      setError("That import didn't go through. Try again.");
+      setError("that import did not go through. try again.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [files]);
 
   const confirm = useCallback(async () => {
     const list = result?.review ?? [];
@@ -89,98 +93,85 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
       setDone(result?.imported ?? 0);
       setResult(null);
       setFixes({});
+      setFiles({});
       onDone?.();
     } finally {
       setBusy(false);
     }
   }, [fixes, onDone, result]);
 
-  if (result) {
+  const review = result && (
+    <div className="flex flex-col gap-[10px] py-[10px]">
+      <p className="t-prose max-w-[880px]">
+        {result.imported} of {result.parsed} rows matched. these are the {result.review.length} least certain — fix any that are wrong, then carry on.
+        watched but unrated counts as seen, not liked.
+        {result.unmatched.length > 0 ? ` ${result.unmatched.length} were not in the graph and were skipped.` : ""}
+      </p>
+      {result.review.map((item) => (
+        <ReviewRow
+          key={`${item.name}|${item.year}`}
+          item={item}
+          chosen={fixes[item.name] === undefined ? item.imdbId : fixes[item.name]}
+          onChoose={(imdbId) => setFixes((prev) => ({ ...prev, [item.name]: imdbId }))}
+        />
+      ))}
+      <button type="button" onClick={() => void confirm()} disabled={busy} className="btn btn-outline self-start disabled:opacity-40">
+        {busy ? "saving…" : "Looks right"}
+      </button>
+    </div>
+  );
+
+  const picks = FILES.map((key) => (
+    <FilePick key={key} name={key} label={`${key}.csv`} chosen={files[key]?.name ?? null} onPick={(f) => setFiles((prev) => ({ ...prev, [key]: f ?? undefined }))} />
+  ));
+
+  if (intro) {
     return (
-      <section className={intro ? "mt-8" : ""}>
-        {intro && <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Check the shaky ones</h1>}
-        <p className={`max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim ${intro ? "mt-3" : ""}`}>
-          {result.imported} of {result.parsed} rows matched. These are the {result.review.length} least certain — fix any that are wrong, then carry on. Watched but unrated counts as seen, not liked.
-        </p>
-        {result.unmatched.length > 0 && (
-          <p className="mt-2 text-[12.5px] tabular-nums text-ink-faint">{result.unmatched.length} not found in the graph and skipped</p>
-        )}
-
-        <div className={intro ? "mt-7" : "mt-4"}>
-          {result.review.map((item) => (
-            <ReviewRow
-              key={`${item.name}|${item.year}`}
-              item={item}
-              chosen={fixes[item.name] === undefined ? item.imdbId : fixes[item.name]}
-              onChoose={(imdbId) => setFixes((prev) => ({ ...prev, [item.name]: imdbId }))}
-            />
-          ))}
+      <section className="flex flex-col gap-[14px]" aria-label="Letterboxd">
+        <div className="section-head">
+          <h1 className="t-title">bring your Letterboxd</h1>
+          <span className="t-sub hidden sm:inline">ratings become liked or meh; the watchlist becomes want</span>
         </div>
-
-        <button
-          onClick={() => void confirm()}
-          disabled={busy}
-          className={`mt-8 rounded-full bg-accent font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40 ${
-            intro ? "h-11 px-5 text-[13.5px]" : "h-9 px-4 text-[12.5px]"
-          }`}
-        >
-          {busy ? "Saving…" : "Looks right"}
-        </button>
+        <p className="t-prose max-w-[880px]">
+          Settings → Import &amp; Export → Export your data. drop the CSVs in; re-uploading later replaces what is here rather than piling on.
+        </p>
+        <div className="flex flex-wrap items-center gap-[18px]">{picks}</div>
+        {error && <p className="text-[13px] text-danger">{error}</p>}
+        {review}
+        {!result && (
+          <div className="flex items-center gap-[16px]">
+            <button type="button" onClick={() => void upload()} disabled={busy} className="btn btn-outline disabled:opacity-40">
+              {busy ? "matching…" : "Import"}
+            </button>
+            {onSkip && (
+              <button type="button" onClick={onSkip} className="t-link">
+                skip
+              </button>
+            )}
+          </div>
+        )}
       </section>
     );
   }
 
+  const note = error ? error : done !== null ? `imported ${done} rows` : "settings → import & export · ratings become liked or meh";
+
   return (
-    <section className={intro ? "mt-8" : ""}>
-      {intro && (
-        <>
-          <h1 className="text-[26px] font-semibold leading-8 tracking-tight text-balance text-ink">Bring your Letterboxd</h1>
-          <p className="mt-3 max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">
-            Settings → Import &amp; Export → Export your data. Drop the CSVs in; re-uploading later replaces what is here rather than piling on.
-          </p>
-        </>
-      )}
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void upload(e.currentTarget);
-        }}
-        className={intro ? "mt-7" : ""}
-      >
-        {(["ratings", "watched", "watchlist"] as const).map((key) => (
-          <label key={key} className="flex items-center justify-between gap-4 py-2.5">
-            <span className="text-[13.5px] text-ink-dim">{key}.csv</span>
-            <input
-              type="file"
-              name={key}
-              accept=".csv,text/csv"
-              className="max-w-[60%] text-[13px] text-ink-dim file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-3 file:py-1.5 file:text-[12.5px] file:text-ink hover:file:border-line-strong"
-            />
-          </label>
-        ))}
-
-        {error && <p className="mt-4 text-[13px] text-ink-dim">{error}</p>}
-        {done !== null && !error && <p className="mt-4 text-[13px] text-ink-dim">Imported {done} rows.</p>}
-
-        <div className={`flex items-center gap-5 ${intro ? "mt-8" : "mt-3"}`}>
-          <button
-            type="submit"
-            disabled={busy}
-            className={`rounded-full bg-accent font-semibold text-bg transition-[filter] duration-[120ms] enabled:hover:brightness-110 disabled:opacity-40 ${
-              intro ? "h-11 px-5 text-[13.5px]" : "h-9 px-4 text-[12.5px]"
-            }`}
-          >
-            {busy ? "Matching…" : "Import"}
-          </button>
-          {onSkip && (
-            <button type="button" onClick={onSkip} className="text-[12.5px] text-ink-faint transition-colors duration-[120ms] hover:text-ink">
-              Skip
+    <>
+      <ImportRow
+        name="Letterboxd"
+        note={note}
+        controls={
+          <>
+            {picks}
+            <button type="button" onClick={() => void upload()} disabled={busy} className="t-link disabled:opacity-40">
+              {busy ? "matching…" : "replace"}
             </button>
-          )}
-        </div>
-      </form>
-    </section>
+          </>
+        }
+      />
+      {review}
+    </>
   );
 }
 
@@ -214,56 +205,52 @@ export function ReviewRow({
     chosen === null ? "dropped" : chosen === item.imdbId ? `${item.matchedName} · ${item.matchedYear}` : (hits.find((h) => h.imdbId === chosen)?.name ?? chosen);
 
   return (
-    <div className="border-t border-line py-3 first:border-t-0">
-      <div className="flex items-baseline justify-between gap-4">
-        <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold text-ink">
-            {item.name}
-            {item.year !== null && <span className="ml-2 text-[12.5px] tabular-nums text-ink-faint">{item.year}</span>}
-          </div>
-          <div className="mt-0.5 truncate text-[12px] text-ink-dim">
-            matched to <span className={chosen === null ? "text-ink-faint line-through" : "text-ink"}>{label}</span>
-          </div>
-        </div>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="shrink-0 rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-dim transition-colors duration-[120ms] hover:border-line-strong hover:text-ink"
-        >
-          {open ? "Close" : "Not it"}
+    <div className="flex flex-col">
+      <div className="row grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)_auto]">
+        <span className="t-row truncate">{item.name}</span>
+        <span className="tnum text-[11.5px] leading-[1.3] text-ink-faint">{item.year ?? ""}</span>
+        <span className={`truncate text-[13px] ${chosen === null ? "text-ink-ghost line-through" : "text-ink-dim"}`}>{label}</span>
+        <button type="button" onClick={() => setOpen((o) => !o)} className="t-link justify-self-end">
+          {open ? "close" : "not it"}
         </button>
       </div>
 
       {open && (
-        <div className="mt-3">
-          <input
-            value={query}
-            onChange={(e) => void search(e.target.value)}
-            placeholder="Search the graph…"
-            className="h-10 w-full rounded-full border border-line bg-transparent px-4 text-[14px] text-ink outline-none transition-colors duration-[120ms] placeholder:text-ink-faint focus:border-accent"
-          />
-          <div className="mt-2">
-            {hits.map((hit) => (
-              <button
-                key={hit.imdbId}
-                onClick={() => {
-                  onChoose(hit.imdbId);
-                  setOpen(false);
-                }}
-                className="block w-full py-1.5 text-left text-[13.5px] text-ink-dim transition-colors duration-[120ms] hover:text-ink"
-              >
-                {hit.name} <span className="text-[12px] tabular-nums text-ink-faint">{hit.year}</span>
-              </button>
-            ))}
+        <div className="flex flex-col gap-[6px] pb-[10px]">
+          <div className="flex h-[46px] items-center gap-[12px] border-b border-[color:var(--line-input)]">
+            <span className="tnum text-[15px] leading-none text-ink-ghost">&gt;</span>
+            <input
+              value={query}
+              onChange={(e) => void search(e.target.value)}
+              aria-label={`find the right title for ${item.name}`}
+              placeholder="search the graph"
+              className="t-input min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-ghost"
+            />
+          </div>
+          {hits.map((hit) => (
             <button
+              key={hit.imdbId}
+              type="button"
               onClick={() => {
-                onChoose(null);
+                onChoose(hit.imdbId);
                 setOpen(false);
               }}
-              className="mt-1 block py-1.5 text-[12.5px] text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+              className="row row-pick grid-cols-[minmax(0,1fr)_48px] text-left"
             >
-              None of these — drop it
+              <span className="t-row truncate text-ink-dim">{hit.name}</span>
+              <span className="tnum text-[11.5px] leading-[1.3] text-ink-faint">{hit.year}</span>
             </button>
-          </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              onChoose(null);
+              setOpen(false);
+            }}
+            className="t-link self-start"
+          >
+            none of these — drop it
+          </button>
         </div>
       )}
     </div>

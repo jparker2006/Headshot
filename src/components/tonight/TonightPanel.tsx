@@ -1,27 +1,37 @@
 "use client";
 /**
- * Tonight: three picks as hairline-separated rows (small poster, the reason
- * set large with names bold, a mono metadata line, Play, "later"), then the
- * deck as a compact poster strip with the Later chip. Matches
- * design/boards/Main.dc.html. Data comes from /api/tonight; this component
- * never computes a pick.
+ * Tonight, drawn to board C: a section header, then 68px rows of
+ * `34px | reason | 178px` — a 34×51 poster mark, one graph reason with its
+ * names linked over a mono `2012 · 165m · hbo max` line, and the button.
+ *
+ * The first pick's button is `.btn-play`; the second and third are
+ * `.btn-quiet`, because a screen gets exactly one amber thing
+ * (`design/handoff-C.md` rule 4). Data comes from /api/tonight; nothing here
+ * computes a pick, and every pick carries exactly one reason or it is not
+ * drawn.
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TonightData, PickView } from "@/lib/picks/view";
 import { lookupName } from "@/components/chat/lookup";
-import { SwipeDeck } from "./SwipeDeck";
 
 interface Props {
   /** Open a person or title in the drawer. */
   onSelectNode: (imdbId: string) => void;
-  /** Post a question into the chat ("swap the second one for something funnier"). */
-  onAsk: (text: string) => void;
-  /** Called when the user taps "later" on a pick. */
+  /** Post a question into the chat ("something funnier, under 40 minutes"). */
+  onAsk?: (text: string) => void;
+  /** Called when the user puts a pick off. */
   onLater?: (imdbId: string) => void;
+  /** How many picks show before the caret. You shows one; a thread shows all. */
+  initial?: number;
 }
 
-type State = { status: "loading" } | { status: "signed-out" } | { status: "empty" } | { status: "ready"; data: TonightData } | { status: "error"; message: string };
+type State =
+  | { status: "loading" }
+  | { status: "signed-out" }
+  | { status: "empty" }
+  | { status: "ready"; data: TonightData }
+  | { status: "error"; message: string };
 
 export function useTonight(): [State, () => void] {
   const [nonce, setNonce] = useState(0);
@@ -32,7 +42,7 @@ export function useTonight(): [State, () => void] {
       .then(async (r) => {
         if (r.status === 401) return { status: "signed-out" } as State;
         if (r.status === 404) return { status: "empty" } as State;
-        if (!r.ok) return { status: "error", message: `Tonight is unavailable (${r.status})` } as State;
+        if (!r.ok) return { status: "error", message: `tonight is unavailable (${r.status})` } as State;
         const data = (await r.json()) as TonightData;
         return data.picks.length ? ({ status: "ready", data } as State) : ({ status: "empty" } as State);
       })
@@ -45,138 +55,171 @@ export function useTonight(): [State, () => void] {
   return [state, () => setNonce((n) => n + 1)];
 }
 
-export function TonightPanel({ onSelectNode, onAsk, onLater }: Props) {
+export function TonightPanel({ onSelectNode, onAsk, onLater, initial = 1 }: Props) {
   const [state, refresh] = useTonight();
   const [later, setLater] = useState<Set<string>>(() => new Set());
-  const [swiping, setSwiping] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [looking, setLooking] = useState(false);
 
-  if (state.status === "loading") return <p className="font-mono text-[11px] text-ink-faint">finding three for tonight…</p>;
-  if (state.status === "signed-out")
-    return (
-      <div className="space-y-2">
-        <p className="text-[15px] leading-snug text-ink">want three picks for tonight, on the services you already pay for?</p>
-        <Link href="/auth/sign-in?next=/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
-          Sign in with a magic link
-        </Link>
-      </div>
-    );
-  if (state.status === "empty")
-    return (
-      <div className="space-y-2">
-        <p className="text-[15px] leading-snug text-ink">nothing for tonight yet. tell me what you pay for and what you&apos;ve seen, and I&apos;ll have three ready.</p>
-        <Link href="/onboarding" className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-black">
-          Set up Tonight
-        </Link>
-      </div>
-    );
-  if (state.status === "error")
-    return (
-      <p className="text-[13px] text-ink-dim">
-        {state.message}.{" "}
-        <button type="button" onClick={refresh} className="text-accent">
-          try again
-        </button>
-      </p>
-    );
-
-  const { data } = state;
-  const picks = data.picks.filter((p) => !later.has(p.imdbId));
-  const dismiss = (id: string) => {
-    setLater((s) => new Set(s).add(id));
-    onLater?.(id);
+  const lookNow = async () => {
+    setLooking(true);
+    try {
+      await fetch("/api/tonight/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    } catch {
+      /* best effort; the state below says what happened */
+    } finally {
+      setLooking(false);
+      refresh();
+    }
   };
-  const stamp = new Date(data.generatedAt);
+
+  const picks = state.status === "ready" ? state.data.picks.filter((p) => !later.has(p.imdbId)) : [];
+  const shown = open ? picks : picks.slice(0, initial);
+
   return (
-    <section className="space-y-6" aria-label="Tonight">
-      <div className="space-y-1.5">
-        <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
-          {stamp.toLocaleDateString(undefined, { weekday: "long" })} · {picks.filter((p) => p.kind === "continue").length ? "one to continue, " : ""}
-          {picks.filter((p) => p.kind === "start").length} new · on stuff you already pay for
-        </p>
-        <p className="text-[15px] leading-snug text-ink">ok, three for tonight.</p>
+    <section className="flex flex-col gap-[12px]" aria-label="Tonight">
+      <div className="section-head">
+        <h2 className="t-title">tonight</h2>
+        {picks.length > 0 && (
+          <span className="t-meta">
+            {picks.length} pick{picks.length === 1 ? "" : "s"}
+            {picks.every((p) => p.onYourServices) ? " · all already paid for" : ""}
+          </span>
+        )}
       </div>
 
-      <div className="stagger">
-        {picks.map((p, i) => (
-          <PickRow key={p.imdbId} pick={p} last={i === picks.length - 1} onSelectNode={onSelectNode} onLater={() => dismiss(p.imdbId)} />
-        ))}
-      </div>
+      {state.status === "loading" && <p className="t-meta">finding one for tonight…</p>}
 
-      {data.deck.length > 0 && (
-        <div className="space-y-2.5">
-          <div className="flex items-baseline justify-between">
-            <div className="flex items-baseline gap-3">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">today&apos;s deck · {data.deck.length}</span>
-              <span className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-dim">later · {data.laterCount + later.size}</span>
-            </div>
-            <button type="button" onClick={() => setSwiping((v) => !v)} className="font-mono text-[10.5px] text-ink-faint hover:text-ink">
-              {swiping ? "back to the strip" : "swipe the deck →"}
-            </button>
-          </div>
-          {swiping ? (
-            <SwipeDeck
-              cards={data.deck.map((d) => ({ imdbId: d.imdbId, name: d.name, year: d.year, posterUrl: d.posterUrl, hint: d.reason.text.replace(/\*\*/g, "") }))}
-              onCommit={(rows) => {
-                void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) }).catch(() => {});
-              }}
-              onSelectNode={onSelectNode}
-              onDone={() => setSwiping(false)}
-            />
-          ) : (
-          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-            {data.deck.map((d) => (
-              <button key={d.imdbId} type="button" onClick={() => onSelectNode(d.imdbId)} className="aspect-[3/4] overflow-hidden rounded-md bg-white/[0.05] ring-1 ring-line hover:ring-accent/60" title={`${d.name}: ${d.reason.text}`}>
-                {d.posterUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={d.posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <span className="flex h-full items-end p-1.5 text-left text-[10.5px] leading-tight text-ink-dim">{d.name}</span>
-                )}
-              </button>
-            ))}
-          </div>
-          )}
+      {state.status === "signed-out" && (
+        <div className="flex flex-col items-start gap-[12px]">
+          <p className="t-prose">three picks for tonight, on the services you already pay for.</p>
+          <Link href="/auth/sign-in?next=/" className="btn btn-quiet">
+            Sign in
+          </Link>
         </div>
       )}
 
-      <button type="button" onClick={() => onAsk("something funnier, under 40 minutes")} className="font-mono text-[11px] text-ink-faint hover:text-ink">
-        none of these? say what you&apos;re in the mood for ↵
-      </button>
+      {state.status === "error" && (
+        <p className="t-prose">
+          {state.message}.{" "}
+          <button type="button" onClick={refresh} className="t-link">
+            try again
+          </button>
+        </p>
+      )}
+
+      {(state.status === "empty" || (state.status === "ready" && picks.length === 0)) && (
+        <p className="t-prose">
+          nothing for tonight yet. log a few things, then{" "}
+          <button type="button" onClick={() => void lookNow()} disabled={looking} className="t-link disabled:opacity-40">
+            {looking ? "looking…" : "look now"}
+          </button>
+          .
+        </p>
+      )}
+
+      {shown.length > 0 && (
+        <div className="rise flex flex-col">
+          {shown.map((p, i) => (
+            <PickRow
+              key={p.imdbId}
+              pick={p}
+              accent={i === 0}
+              onSelectNode={onSelectNode}
+              onLater={
+                onLater
+                  ? () => {
+                      setLater((s) => new Set(s).add(p.imdbId));
+                      onLater(p.imdbId);
+                    }
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-[16px]">
+        {picks.length > initial && (
+          <button type="button" onClick={() => setOpen((o) => !o)} className="t-link">
+            {open ? "just the first one ⌃" : `show all ${picks.length} ⌄`}
+          </button>
+        )}
+        {onAsk && picks.length > 0 && (
+          <button type="button" onClick={() => onAsk("something funnier, under 40 minutes")} className="t-link">
+            none of these? say what you are in the mood for
+          </button>
+        )}
+      </div>
     </section>
   );
 }
 
-function PickRow({ pick, last, onSelectNode, onLater }: { pick: PickView; last: boolean; onSelectNode: (id: string) => void; onLater: () => void }) {
-  const meta = [pick.providerNames[0]?.toLowerCase(), pick.year || null, pick.progress ? `s${pick.progress.season}` : pick.titleType === "movie" ? null : "series"].filter(Boolean).join(" · ");
+/**
+ * One pick. On a phone it stops being a row and becomes a block: poster and
+ * reason on top, the button full width underneath (DESIGN.md → Rhythm).
+ */
+export function PickRow({
+  pick,
+  accent,
+  onSelectNode,
+  onLater,
+}: {
+  pick: PickView;
+  accent: boolean;
+  onSelectNode: (id: string) => void;
+  onLater?: () => void;
+}) {
+  const meta = [
+    pick.year || null,
+    pick.progress ? `s${pick.progress.season}` : pick.titleType === "movie" ? null : "show",
+    pick.providerNames[0]?.toLowerCase() ?? null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  // The button column is a fixed 178px, and "Play on Amazon Prime Video" wraps
+  // to two lines inside a 44px button there. The service is already on the mono
+  // line under the reason, so on the row a long label falls back to the verb;
+  // the phone block, which is full width, keeps the whole thing.
+  const long = (pick.playLabel?.length ?? 0) > 16;
+
+  const play = pick.playUrl && pick.playLabel ? (
+    <a href={pick.playUrl} target="_blank" rel="noopener" className={`btn w-full whitespace-nowrap ${accent ? "btn-play" : "btn-quiet"}`}>
+      <span className={long ? "sm:hidden" : undefined}>{pick.playLabel}</span>
+      {long && <span className="hidden sm:inline">Play</span>}
+    </a>
+  ) : (
+    <span className="t-meta">not streaming</span>
+  );
+
   return (
-    <div className={`flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line py-4 ${last ? "border-b" : ""}`}>
-      <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="h-16 w-12 shrink-0 overflow-hidden rounded bg-white/[0.05] ring-1 ring-line hover:ring-accent/60" title={pick.name}>
+    <div className="row row-tall h-auto grid-cols-[34px_minmax(0,1fr)] gap-x-[18px] gap-y-[10px] py-[12px] sm:h-[68px] sm:grid-cols-[34px_minmax(0,1fr)_178px] sm:py-0">
+      <button type="button" onClick={() => onSelectNode(pick.imdbId)} aria-label={pick.name} className="self-center">
         {pick.posterUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={pick.posterUrl} alt="" className="h-full w-full object-cover" />
-        ) : null}
+          <img src={pick.posterUrl} alt="" className="poster-mark poster-mark-lg" />
+        ) : (
+          <span className="poster-mark poster-mark-lg" />
+        )}
       </button>
-      <div className="min-w-[200px] flex-1 space-y-1">
-        <p className="text-[17px] leading-[1.3] tracking-[-0.01em] text-ink-dim lg:text-[20px] xl:text-[22px]">
-          <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="font-semibold text-ink underline-offset-4 decoration-accent/60 hover:underline">
+      <div className="flex min-w-0 flex-col gap-[3px]">
+        <p className="t-reason">
+          <button type="button" onClick={() => onSelectNode(pick.imdbId)} className="entity-link">
             {pick.name}
           </button>
           {pick.kind === "continue" ? ", " : ". "}
           <ReasonLine text={pick.reason.text} onSelectNode={onSelectNode} />
         </p>
-        <p className="font-mono text-[11px] text-ink-faint">{meta}</p>
+        <span className="t-meta">{meta}</span>
       </div>
-      <div className="flex basis-full items-center gap-4 pl-[68px] lg:basis-auto lg:pl-0">
-        {pick.playUrl && pick.playLabel ? (
-          <a href={pick.playUrl} target="_blank" rel="noopener" className="flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black">
-            {pick.playLabel}
-          </a>
-        ) : (
-          <span className="font-mono text-[11px] text-ink-faint">not streaming</span>
+      <div className="col-span-2 flex items-center gap-[14px] sm:col-span-1">
+        {play}
+        {onLater && (
+          <button type="button" onClick={onLater} className="t-link shrink-0 sm:hidden">
+            later
+          </button>
         )}
-        <button type="button" onClick={onLater} className="shrink-0 font-mono text-[11px] text-ink-faint hover:text-ink">
-          later
-        </button>
       </div>
     </div>
   );
@@ -189,12 +232,7 @@ export function ReasonLine({ text, onSelectNode }: { text: string; onSelectNode:
     <>
       {parts.map((part, i) =>
         part.startsWith("**") ? (
-          <button
-            key={i}
-            type="button"
-            className="font-medium text-ink underline-offset-4 decoration-accent/50 hover:underline"
-            onClick={() => void lookupName(part.slice(2, -2)).then((id) => id && onSelectNode(id))}
-          >
+          <button key={i} type="button" className="entity-link" onClick={() => void lookupName(part.slice(2, -2)).then((id) => id && onSelectNode(id))}>
             {part.slice(2, -2)}
           </button>
         ) : (
