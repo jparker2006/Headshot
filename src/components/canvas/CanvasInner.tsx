@@ -5,10 +5,14 @@ import { EdgeRectangleProgram } from "sigma/rendering";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { BrainStore, COLORS, type NodeAttrs, type EdgeAttrs } from "./brainStore";
+import { buildEgoGraph } from "./egoLayout";
+import type { EgoNetwork } from "@/lib/graph/ego";
 
 export interface CanvasProps {
   store: BrainStore;
   selected: string | null;
+  /** When set, the canvas shows this ego network instead of the whole brain. */
+  ego: EgoNetwork | null;
   onClickNode: (imdbId: string) => void;
   onDoubleClickNode: (imdbId: string) => void;
   onClickEdge: (personImdbId: string, titleImdbId: string) => void;
@@ -20,17 +24,19 @@ const DIM = "#23262e";
 const DIM_EDGE = "#14161c";
 const ALT = "#7a5f24";
 
-export default function CanvasInner({ store, selected, onClickNode, onDoubleClickNode, onClickEdge, onClickStage }: CanvasProps) {
+export default function CanvasInner({ store, selected, ego, onClickNode, onDoubleClickNode, onClickEdge, onClickStage }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma<NodeAttrs, EdgeAttrs> | null>(null);
   const layoutRef = useRef<FA2Layout | null>(null);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const stateRef = useRef(state);
   const selectedRef = useRef(selected);
+  const egoRef = useRef(ego);
   useEffect(() => {
     stateRef.current = state;
     selectedRef.current = selected;
-  }, [state, selected]);
+    egoRef.current = ego;
+  }, [state, selected, ego]);
 
   // Mount sigma once.
   useEffect(() => {
@@ -55,6 +61,17 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
       stagePadding: 60,
       enableEdgeEvents: true,
       nodeReducer: (node, data) => {
+        if (egoRef.current) {
+          const ring = (data as NodeAttrs & { ring?: number }).ring ?? 2;
+          const isSelected = selectedRef.current === node;
+          return {
+            ...data,
+            color: ring === 0 ? COLORS.accent : data.color,
+            forceLabel: ring <= 1,
+            zIndex: ring === 0 ? 3 : ring === 1 ? 2 : 1,
+            highlighted: isSelected && ring !== 0,
+          };
+        }
         const s = stateRef.current;
         const hl = s.highlight;
         const active = hl.pathNodes.size > 0 || hl.altNodes.size > 0 || hl.candidates.size > 0;
@@ -95,6 +112,7 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
         return { ...data, color, size, zIndex, forceLabel, highlighted: isSelected };
       },
       edgeReducer: (edge, data) => {
+        if (egoRef.current) return data;
         const hl = stateRef.current.highlight;
         const active = hl.pathEdges.size > 0 || hl.altEdges.size > 0;
         if (!active) return data;
@@ -151,11 +169,29 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store]);
 
+  // Ego mode swaps the rendered graph for a radial one; leaving it restores the brain.
+  useEffect(() => {
+    const sigma = sigmaRef.current;
+    const layout = layoutRef.current;
+    if (!sigma || !layout) return;
+    if (ego) {
+      layout.stop();
+      sigma.setGraph(buildEgoGraph(ego));
+      // The page drawer sits on the right, so park the network in the left two thirds.
+      sigma.getCamera().animate({ x: 0.66, y: 0.5, ratio: 1.15, angle: 0 }, { duration: 500 });
+    } else if (sigma.getGraph() !== store.graph) {
+      sigma.setGraph(store.graph);
+      sigma.getCamera().animatedReset({ duration: 500 });
+    }
+    sigma.refresh();
+  }, [ego, store]);
+
   // Whenever the store changes: refresh, and let the layout settle for a moment.
   useEffect(() => {
     const sigma = sigmaRef.current;
     const layout = layoutRef.current;
     if (!sigma || !layout) return;
+    if (egoRef.current) return;
     sigma.refresh({ skipIndexation: false });
     if (store.graph.order > 1) {
       layout.start();
@@ -170,7 +206,7 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
   const focus = state.highlight.focus;
   useEffect(() => {
     const sigma = sigmaRef.current;
-    if (!sigma || focus.length === 0) return;
+    if (!sigma || focus.length === 0 || egoRef.current) return;
     const t1 = setTimeout(() => focusOn(sigma, focus), 300);
     const t2 = setTimeout(() => focusOn(sigma, focus), 2600);
     return () => {

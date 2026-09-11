@@ -36,6 +36,27 @@ function useImages(ids: string[]): ImageMap {
   return images;
 }
 
+const roleCache = new Map<string, Record<string, string>>();
+function useRoles(ids: string[]): Record<string, string> {
+  const key = ids.join(",");
+  const [roles, setRoles] = useState<Record<string, string>>(() => roleCache.get(key) ?? {});
+  useEffect(() => {
+    if (!key || roleCache.has(key)) return;
+    let alive = true;
+    fetch(`/api/roles?path=${key}`)
+      .then((r) => r.json())
+      .then((d: { roles: Record<string, string> }) => {
+        roleCache.set(key, d.roles);
+        if (alive) setRoles(d.roles);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [key]);
+  return roles;
+}
+
 export function PathGraphic({ paths, chosen, onSelectNode }: Props) {
   const shortest = paths.full?.paths[0];
   const lit = chosen?.path ?? shortest;
@@ -45,6 +66,7 @@ export function PathGraphic({ paths, chosen, onSelectNode }: Props) {
     .slice(0, 4);
   const ids = lit ? lit.imdbIds : [];
   const images = useImages(ids);
+  const roles = useRoles(ids);
 
   if (!lit) {
     return <p className="text-[13px] text-ink-dim">No connection found in the graph.</p>;
@@ -63,12 +85,17 @@ export function PathGraphic({ paths, chosen, onSelectNode }: Props) {
 
       <div className="scrollbar-thin overflow-x-auto">
         <div className="flex items-stretch gap-1.5 pb-1">
-          {lit.imdbIds.map((id, i) => (
-            <div key={id + i} className="flex items-center gap-1.5">
-              {i > 0 && <Arrow />}
-              <Card id={id} name={lit.names[i]} image={images[id]?.url} onClick={() => onSelectNode(id)} />
-            </div>
-          ))}
+          {lit.imdbIds.map((id, i) => {
+            const prev = lit.imdbIds[i - 1];
+            // The role label belongs to the person→title pair on either side of this arrow.
+            const pairKey = prev ? (prev.startsWith("nm") ? `${prev}|${id}` : `${id}|${prev}`) : "";
+            return (
+              <div key={id + i} className="flex items-center gap-1.5">
+                {i > 0 && <Arrow label={roles[pairKey]} />}
+                <Card id={id} name={lit.names[i]} image={images[id]?.url} onClick={() => onSelectNode(id)} />
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -112,11 +139,14 @@ function Card({ id, name, image, onClick }: { id: string; name: string; image?: 
   );
 }
 
-function Arrow() {
+function Arrow({ label }: { label?: string }) {
   return (
-    <svg width="18" height="14" viewBox="0 0 18 14" className="shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 7h14M10 2l5 5-5 5" />
-    </svg>
+    <div className="flex w-[64px] shrink-0 flex-col items-center gap-1">
+      <svg width="18" height="14" viewBox="0 0 18 14" className="text-accent" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 7h14M10 2l5 5-5 5" />
+      </svg>
+      {label && <span className="line-clamp-2 text-center text-[10.5px] leading-tight text-ink-dim">{label}</span>}
+    </div>
   );
 }
 

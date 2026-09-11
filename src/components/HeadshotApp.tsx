@@ -6,6 +6,7 @@ import { BrainPanel } from "./BrainPanel";
 import { Sidebar } from "./Sidebar";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 import type { RenderedBrain } from "@/lib/brain/render";
+import type { EgoNetwork } from "@/lib/graph/ego";
 
 export function HeadshotApp() {
   const store = useMemo(() => new BrainStore(), []);
@@ -18,6 +19,7 @@ export function HeadshotApp() {
   const [brainFull, setBrainFull] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"chat" | "brain">("chat");
+  const [ego, setEgo] = useState<EgoNetwork | null>(null);
 
   const refreshBrain = useCallback(async () => {
     const r = await fetch("/api/brain", { cache: "no-store" });
@@ -37,11 +39,25 @@ export function HeadshotApp() {
   const select = useCallback(
     (id: string) => {
       setSelected(id);
-      store.setFocus([id]);
       setMobileView("brain");
+      fetch(`/api/ego/${id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((e: EgoNetwork | null) => {
+          if (e) setEgo(e);
+          else store.setFocus([id]);
+        })
+        .catch(() => store.setFocus([id]));
     },
     [store],
   );
+
+  // A new answer lighting a path takes over the panel: leave ego mode so the brain shows it.
+  const litCount = state.highlight.altNodes.size;
+  const [seenLit, setSeenLit] = useState(litCount);
+  if (litCount !== seenLit) {
+    setSeenLit(litCount);
+    if (litCount > 0 && ego) setEgo(null);
+  }
 
   const expand = useCallback(
     async (imdbId: string) => {
@@ -78,6 +94,11 @@ export function HeadshotApp() {
       onPick={(id) => (store.graph.hasNode(id) ? select(id) : expand(id))}
       full={brainFull}
       onToggleFull={() => setBrainFull((f) => !f)}
+      ego={ego}
+      onExitEgo={() => {
+        setEgo(null);
+        setSelected(null);
+      }}
       onBackToChat={mobileView === "brain" ? () => setMobileView("chat") : undefined}
     />
   );
