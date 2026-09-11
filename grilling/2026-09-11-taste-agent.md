@@ -75,3 +75,8 @@ Jake: "Rec is good for all of them, I think." Each rec below is a decision.
 **Q10. Play.** Rec: JustWatch deep links from TMDB; on none of your services, show rent/buy price instead of hiding. → **Accepted.**
 **Q11. Taste map.** Rec: private ego graph, you at the center, rated people and titles as rings colored by rating, industry graph faint behind; same sigma canvas. Second tab, timing per build order. → **Accepted.**
 **Q12. Build order.** Rec: design system doc first; A) auth + taste store + Letterboxd + services; B) pick engine + home with Play; C) swipe deck + nightly cron; D) taste map + design pass. → **Accepted.**
+
+## Design direction (mood set, 2026-09-11)
+
+Three boards shown (A Chrome restraint, B Typographic, C Poster study). Jake: "B's reason lines inside A's frame."
+Jake: "Do we need a tonight? We could have like a watch later? Not sure." Claude's rec, adopted pending objection: Tonight stays the home surface and the name (the decision is the hook); Later is a chip on it holding dismissed picks ("not tonight" = later) and the imported Letterboxd watchlist; the pick engine draws from Later first so the list drains.

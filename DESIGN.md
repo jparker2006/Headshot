@@ -48,7 +48,9 @@ Rules: the accent never fills large areas except the Play button. Semantic state
 ## The three core layouts
 
 ### Home (the 9pm moment, also the chat)
-Laptop: three columns. Left rail (threads, taste map tab, account) 240px, collapsible. Center: the chat. The agent's opening message is already there: three pick cards in a row (poster 3:4, name, one reason line, a Play button in accent, a dismiss action in ink-faint), then the deck of eight as a compact poster strip beneath. Composer pinned at the bottom of the center column. Right: the brain or the taste map (46%).
+Direction chosen from the mood set (2026-09-11): board A's frame with board B's reason lines.
+Laptop: three columns. Left rail (Tonight, taste map, brain, threads, account) 232px, collapsible. Center: the chat. The agent's opening message is already there: three picks as hairline-separated rows, each a small 48×64 poster, the reason line set large (22px, name bold, the rest ink-dim, people and titles as bold links), a mono metadata line (service, year, runtime), a Play pill in accent, and "later" in ink-faint. Beneath, the deck of eight as a compact poster strip with a "later · N" chip beside its label. Composer pinned at the bottom of the center column. Right: the taste map or the brain (520px).
+Tonight is the surface and the name. Later is a chip, not a tab: dismissed picks and the imported watchlist land there, and the pick engine draws from it first.
 Phone: one column. Picks as a full-width horizontal strip, reason under each, composer pinned at the bottom, brain and map behind header buttons.
 
 ### Title
