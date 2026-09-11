@@ -208,7 +208,7 @@ export class BrainStore {
         }
         this.bump({
           highlight: { ...emptyHighlight(), altNodes, altEdges, focus: [...altNodes] },
-          status: d.baconNumber === null ? "No connection found" : `${d.full?.paths.length ?? 0} tied paths at Bacon number ${d.baconNumber}`,
+          status: d.baconNumber === null ? "No connection found" : `${d.full?.paths.length ?? 0} tied routes, ${d.baconNumber} ${d.baconNumber === 1 ? "degree" : "degrees"} apart`,
         });
         return;
       }
@@ -235,7 +235,9 @@ export class BrainStore {
         return;
       }
       case "chosen": {
-        return; // the chat renders this; the canvas already animates the hops
+        this.clearHopTimers();
+        this.bump({ highlight: { ...this.state.highlight, pathNodes: new Set(), pathEdges: new Set() } });
+        return;
       }
       case "page": {
         this.bump({ status: "Wrote a page" });

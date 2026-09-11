@@ -38,7 +38,7 @@ function plan(graph: IndustryGraph, options: LanguageModelV4CallOptions): Langua
   const a = m ? graph.searchByName(m[1].trim(), 1, "person")[0] : undefined;
   const b = m ? graph.searchByName(m[2].trim(), 1, "person")[0] : undefined;
 
-  if (!a || !b) return text(`I only understand "connect A to B" in mock mode. Try "Connect Kevin Bacon to Gary Sinise".`);
+  if (!a || !b) return text(`I only understand "connect A to B" in mock mode. Try "Connect Tom Hanks to Gary Sinise".`);
   if (step === 0) return toolCall("find_entities", { query: a.name, kind: "person" });
   if (step === 1) return toolCall("shortest_path", { from: a.imdbId, to: b.imdbId });
   if (step === 2) return toolCall("highlight_path", { from: a.imdbId, to: b.imdbId, tier: "full", index: 0, reason: "First tied path (mock)." });
@@ -47,7 +47,7 @@ function plan(graph: IndustryGraph, options: LanguageModelV4CallOptions): Langua
   const chain = r.full?.paths[0].map((id) => graph.node(id).name).join(" → ");
   return text(
     r.full
-      ? `**${a.name} → ${b.name}**: Bacon number ${r.full.baconNumber}.\n\n${chain}\n\n*(mock agent: no model was called)*`
+      ? `**${a.name} → ${b.name}**: ${r.full.baconNumber} degrees apart.\n\n${chain}\n\n*(mock agent: no model was called)*`
       : `No connection between ${a.name} and ${b.name} in the graph.`,
   );
 }

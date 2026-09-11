@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runAgent } from "@/lib/agent";
 import { MemoryBrain } from "@/lib/brain";
-import { collect, fixtureGraph, ofType, scriptedModel, userMessage } from "./helpers";
+import { collect, currentHops, fixtureGraph, ofType, scriptedModel, userMessage } from "./helpers";
 
 const BACON = "nm0000001";
 const SINISE = "nm0000004";
@@ -43,10 +43,11 @@ describe("agent loop (mocked model seam)", () => {
     // The tool output the model received is the same object, unmodified.
     const outputs = ofType(chunks, "tool-output-available");
     const pathOutput = outputs.find((o) => (o as { toolCallId: string }).toolCallId === "call-1")!;
-    expect(pathOutput.output).toEqual(found);
+    expect(pathOutput.output).toMatchObject(found);
 
-    // Path hops stepped in order.
-    const hops = ofType(chunks, "data-path-hop").map((h) => h.data as { from: string; to: string; via: string | null; index: number; total: number });
+    // shortest_path auto-lit the strong route, then highlight_path re-lit the full one; count the latest.
+    expect(ofType(chunks, "data-chosen")).toHaveLength(2);
+    const hops = currentHops(chunks).map((h) => h.data as { from: string; to: string; via: string | null; index: number; total: number });
     expect(hops.map((h) => h.index)).toEqual([0, 1]);
     expect(hops[0]).toMatchObject({ from: BACON, to: "tt0000001", via: "Apollo 13", total: 2 });
     expect(hops[1]).toMatchObject({ from: "tt0000001", to: SINISE, via: null });
@@ -91,7 +92,7 @@ describe("agent loop (mocked model seam)", () => {
     expect(found.strong.baconNumber).toBe(2);
     expect(found.strong.paths[0].names).toEqual(["Jane Doe", "Good Series", "Bill Paxton", "Apollo 13", "Kevin Bacon"]);
     expect(found.differ).toBe(true);
-    const hops = ofType(chunks, "data-path-hop").map((h) => h.data as { tier: string; total: number });
+    const hops = currentHops(chunks).map((h) => h.data as { tier: string; total: number });
     expect(hops).toHaveLength(4);
     expect(hops.every((h) => h.tier === "strong" && h.total === 4)).toBe(true);
   });

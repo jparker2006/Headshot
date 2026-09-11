@@ -179,6 +179,18 @@ export class TmdbClient {
     };
   }
 
+  /** Lightweight image + id lookup for one IMDb id: 2 small calls, no credits. */
+  async imageFor(imdbId: string): Promise<{ tmdbId: number; mediaType: "person" | "movie" | "tv"; imageUrl?: string; knownAs?: string } | null> {
+    const found = await this.findByImdbId(imdbId);
+    if (!found) return null;
+    if (found.mediaType === "person") {
+      const d = await this.get<Record<string, unknown>>(`/person/${found.tmdbId}`);
+      return { ...found, imageUrl: imageUrl(String(d?.profile_path ?? "")), knownAs: d?.known_for_department ? String(d.known_for_department) : undefined };
+    }
+    const d = await this.get<Record<string, unknown>>(`/${found.mediaType}/${found.tmdbId}`);
+    return { ...found, imageUrl: imageUrl(String(d?.poster_path ?? "")), knownAs: d?.tagline ? String(d.tagline) : undefined };
+  }
+
   /** IMDb id for a TMDB person (one extra call). */
   async personImdbId(tmdbId: number): Promise<string | undefined> {
     const data = await this.get<{ imdb_id?: string }>(`/person/${tmdbId}/external_ids`);

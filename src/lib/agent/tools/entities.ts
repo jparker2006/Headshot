@@ -12,7 +12,7 @@ export function entityTools(ctx: AgentContext) {
   return {
     find_entities: tool({
       description:
-        "Resolve a name or short description to graph entities (people or titles) with IMDb ids. Try the plainest name first ('Kevin Bacon', 'Severance'). Returns candidates ranked by prominence; if several look plausible, show them to the user rather than guessing. If nothing matches, fall back to tmdb_search.",
+        "Resolve a name or short description to graph entities (people or titles) with IMDb ids. Try the plainest name first ('Tom Hanks', 'Severance'). Returns candidates ranked by prominence; if several look plausible, show them to the user rather than guessing. If nothing matches, fall back to tmdb_search.",
       inputSchema: z.object({
         query: z.string().min(1),
         kind: z.enum(["person", "title"]).optional(),

@@ -17,6 +17,7 @@ import type { Brain } from "@/lib/brain/types";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { headshotTools } from "./tools";
 import { SYSTEM_PROMPT } from "./system";
+import { prehint, formatHints } from "./prehint";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
 
@@ -71,9 +72,10 @@ export function runAgent(opts: RunAgentOptions) {
         question,
       };
       const tools = headshotTools(ctx);
+      const hints = formatHints(prehint(opts.graph, question));
       const result = streamText({
         model: opts.model,
-        system: SYSTEM_PROMPT,
+        system: hints ? `${SYSTEM_PROMPT}\n\n${hints}` : SYSTEM_PROMPT,
         messages: await convertToModelMessages(opts.messages),
         tools,
         stopWhen: isStepCount(opts.maxSteps ?? 12),

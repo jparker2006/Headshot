@@ -2,9 +2,10 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HeadshotUIMessage, HeadshotDataParts, PathsFound } from "@/lib/agent/events";
+import type { HeadshotUIMessage, HeadshotDataParts } from "@/lib/agent/events";
 import type { BrainStore } from "@/components/canvas/brainStore";
 import { Markdown } from "./Markdown";
+import { PathGraphic } from "./PathGraphic";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 
 interface Props {
@@ -31,10 +32,11 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const EXAMPLES = [
-  "How is Timothée Chalamet connected to Kevin Bacon?",
+  "How is Timothée Chalamet connected to Meryl Streep?",
   "Have Pedro Pascal and Oscar Isaac worked together?",
   "Who was in both Severance and Succession?",
   "The bald guy from the Apple show who was also in Parks and Rec",
+  "Connect Zendaya to Al Pacino",
 ];
 
 export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
@@ -214,7 +216,7 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
       {m.parts.map((part, i) => {
         if (part.type === "text") return <Markdown key={i} text={part.text} />;
         if (part.type === "data-paths")
-          return <PathCard key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
+          return <PathGraphic key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
         if (part.type.startsWith("tool-")) {
           const name = part.type.slice(5);
           const state = "state" in part ? String(part.state) : "";
@@ -227,61 +229,6 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
           );
         }
         return null;
-      })}
-    </div>
-  );
-}
-
-function PathCard({
-  paths,
-  chosen,
-  onSelectNode,
-}: {
-  paths: PathsFound;
-  chosen: HeadshotDataParts["chosen"] | null;
-  onSelectNode: (id: string) => void;
-}) {
-  const shortest = paths.full?.paths[0];
-  if (!shortest) return <p className="text-[13px] text-ink-dim">No connection found in the graph.</p>;
-  // Show what the agent lit up; fall back to the first tied path while it decides.
-  const lit = chosen?.path ?? shortest;
-  const litIsShortest = lit.imdbIds.length === shortest.imdbIds.length;
-  const tied = paths.full?.paths.length ?? 0;
-  return (
-    <div className="rounded-xl border border-line bg-white/[0.03] p-3">
-      <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider text-ink-dim">
-        <span>Bacon number {paths.baconNumber}</span>
-        <span>
-          {tied} tied {tied === 1 ? "path" : "paths"}
-          {chosen ? ` · lit #${chosen.index + 1}` : ""}
-        </span>
-      </div>
-      <Chain path={lit} onSelectNode={onSelectNode} />
-      {!litIsShortest && (
-        <div className="mt-3 border-t border-line pt-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-ink-dim">True shortest · {paths.baconNumber} hops</div>
-          <Chain path={shortest} onSelectNode={onSelectNode} />
-        </div>
-      )}
-      {chosen?.reason && <p className="mt-2 text-[12px] text-ink-dim">{chosen.reason}</p>}
-    </div>
-  );
-}
-
-function Chain({ path, onSelectNode }: { path: { imdbIds: string[]; names: string[] }; onSelectNode: (id: string) => void }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13.5px]">
-      {path.names.map((n, i) => {
-        const id = path.imdbIds[i];
-        const isTitle = id.startsWith("tt");
-        return (
-          <span key={id + i} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-ink-faint">→</span>}
-            <button onClick={() => onSelectNode(id)} className={`hover:underline ${isTitle ? "text-title" : "text-ink"}`}>
-              {n}
-            </button>
-          </span>
-        );
       })}
     </div>
   );
@@ -300,6 +247,8 @@ function followUps(messages: HeadshotUIMessage[]): string[] {
   const people = p.names.filter((_, i) => p.imdbIds[i].startsWith("nm"));
   if (titles[0]) chips.push(`Who else was in ${titles[0]}?`);
   if (people.length >= 2) chips.push(`What else have ${people[0]} and ${people[people.length - 1]} done?`);
-  if (people[people.length - 1] !== "Kevin Bacon") chips.push(`Connect ${people[people.length - 1]} to Kevin Bacon`);
+  // A middle person on the path is a natural next hop: "who is this?"
+  const middle = people.slice(1, -1)[0];
+  if (middle) chips.push(`What is ${middle} best known for?`);
   return chips.slice(0, 3);
 }

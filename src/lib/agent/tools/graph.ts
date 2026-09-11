@@ -18,6 +18,18 @@ export function graphTools(ctx: AgentContext) {
     return n;
   };
 
+  /** Announce a chosen path: `chosen` first (resets any previous lighting), then hops, then focus. */
+  const emitChosen = (tier: "strong" | "full", index: number, path: number[], reason: string) => {
+    const ids = path.map((id) => graph.node(id).imdbId);
+    ctx.emit("chosen", { from: ids[0], to: ids[ids.length - 1], tier, index, reason, path: { imdbIds: ids, names: path.map((id) => graph.node(id).name) } });
+    const total = path.length - 1;
+    for (let i = 0; i < total; i++) {
+      const y = graph.node(path[i + 1]);
+      ctx.emit("path-hop", { from: ids[i], to: ids[i + 1], via: y.kind === "title" ? y.name : null, index: i, total, tier });
+    }
+    ctx.emit("focus", { imdbIds: ids });
+  };
+
   const namePaths = (set: PathSet | null) =>
     set
       ? {
@@ -33,7 +45,7 @@ export function graphTools(ctx: AgentContext) {
   return {
     shortest_path: tool({
       description:
-        "Shortest chain of shared credits between two people (or titles). Runs the strong tier first (movies, miniseries, short series; no talk shows), then the full graph. The Bacon number is the full-graph result and is exact. Returns up to 20 tied shortest paths per tier so you can pick the most interesting one with highlight_path.",
+        "Shortest chain of shared credits between two people (or titles). Runs the strong tier first (movies, miniseries, short series; no talk shows), then the full graph. baconNumber is simply the exact number of titles on the shortest full-graph path (degrees apart). Returns up to 20 tied shortest paths per tier so you can pick the most interesting one with highlight_path.",
       inputSchema: z.object({ from: imdbId, to: imdbId }),
       execute: async ({ from, to }) => {
         const a = resolve(from);
@@ -63,6 +75,14 @@ export function graphTools(ctx: AgentContext) {
           }
         }
         ctx.emit("paths", found);
+        // Light the best route immediately so the answer is visible before the model narrates.
+        // Prefer the strong tier (real collaborations); the model may override with highlight_path.
+        const autoTier: "strong" | "full" = r.strong ? "strong" : "full";
+        const autoSet = autoTier === "strong" ? r.strong : r.full;
+        if (autoSet?.paths[0]) {
+          emitChosen(autoTier, 0, autoSet.paths[0], "Auto-selected: shortest route through real collaborations.");
+          return { ...found, autoHighlighted: { tier: autoTier, index: 0 }, hint: "A path is already lit. Call highlight_path only if a different tied path is more interesting." };
+        }
         return found;
       },
     }),
@@ -82,28 +102,7 @@ export function graphTools(ctx: AgentContext) {
         const set = tier === "strong" ? r.strong : r.full;
         const path = set?.paths[index];
         if (!path) throw new Error(`No ${tier} path at index ${index}`);
-        const total = path.length - 1;
-        for (let i = 0; i < total; i++) {
-          const x = graph.node(path[i]);
-          const y = graph.node(path[i + 1]);
-          ctx.emit("path-hop", {
-            from: x.imdbId,
-            to: y.imdbId,
-            via: y.kind === "title" ? y.name : null,
-            index: i,
-            total,
-            tier,
-          });
-        }
-        ctx.emit("chosen", {
-          from,
-          to,
-          tier,
-          index,
-          reason,
-          path: { imdbIds: path.map((id) => graph.node(id).imdbId), names: path.map((id) => graph.node(id).name) },
-        });
-        ctx.emit("focus", { imdbIds: path.map((id) => graph.node(id).imdbId) });
+        emitChosen(tier, index, path, reason);
         return { highlighted: path.map((id) => describe(graph.node(id))), reason };
       },
     }),

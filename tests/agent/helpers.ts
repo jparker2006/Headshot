@@ -69,6 +69,12 @@ export async function collect(stream: ReadableStream<Chunk>): Promise<Chunk[]> {
   return out;
 }
 
+/** Path hops belonging to the most recent `chosen` event (an override resets earlier hops). */
+export function currentHops(chunks: Chunk[]) {
+  const lastChosen = chunks.map((c) => c.type).lastIndexOf("data-chosen");
+  return chunks.slice(lastChosen).filter((c): c is Extract<Chunk, { type: "data-path-hop" }> => c.type === "data-path-hop");
+}
+
 export function ofType<T extends Chunk["type"]>(chunks: Chunk[], type: T) {
   return chunks.filter((c): c is Extract<Chunk, { type: T }> => c.type === type);
 }
