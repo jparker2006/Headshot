@@ -1,6 +1,9 @@
 import { getIndustryGraph } from "@/lib/graph";
 import { getBrain } from "@/lib/brain";
 import { tmdbFromEnv } from "@/lib/tmdb/client";
+import { currentUserId } from "@/lib/auth/server";
+import { getTasteStore } from "@/lib/taste";
+import { tasteForPage, type PageTaste } from "@/lib/page/taste";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +17,17 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/page/[imdbId]">
   const brainNode = await brain.getNode(imdbId);
   if (!node && !brainNode) return Response.json({ error: "not found" }, { status: 404 });
   const page = await brain.readPage(imdbId);
+  // castOf rather than neighborhood: same order (votes first) plus the character
+  // name from the packed v2 table, so the face row needs no /api/roles round-trip.
   const neighbors = node
-    ? graph.neighborhood(node.id, 40).map((h) => ({
+    ? graph.castOf(node.id).slice(0, 40).map((h) => ({
         imdbId: h.node.imdbId,
         name: h.node.name,
         kind: h.node.kind,
         titleType: h.node.titleType,
         year: h.node.year,
         tier: h.tier,
+        character: h.character,
       }))
     : [];
   // Cinema Daddy extras: trailer, where to watch, rating, bio. Best effort, never blocks the page.
@@ -52,8 +58,30 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/page/[imdbId]">
       console.warn("[page] tmdb extras failed:", err instanceof Error ? err.message : err);
     }
   }
+  // The private half: why this is on your screen, for a signed-in reader only.
+  // A taste-store failure degrades to "signed out"; it never breaks the page.
+  const kind: "person" | "title" = (node?.kind ?? brainNode?.kind) === "person" ? "person" : "title";
+  let taste: PageTaste | null = null;
+  try {
+    const userId = await currentUserId();
+    if (userId && graph) {
+      const store = await getTasteStore();
+      taste = await tasteForPage({
+        graph,
+        store,
+        userId,
+        node: { imdbId, kind },
+        extras: extras as { providers?: { flatrate?: { id?: number; name: string }[] } | null } | null,
+      });
+    }
+  } catch (err) {
+    console.warn("[page] taste failed:", err instanceof Error ? err.message : err);
+    taste = null;
+  }
+
   return Response.json({
     extras,
+    taste,
     node: {
       imdbId,
       name: node?.name ?? brainNode?.name,

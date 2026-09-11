@@ -31,7 +31,7 @@ export function buildEgoGraph(ego: EgoNetwork): Graph<EgoNodeAttrs, EdgeAttrs> {
       x,
       y,
       size,
-      color: n.kind === "person" ? COLORS.person : COLORS.title,
+      color: n.tone === "liked" ? COLORS.accent : n.tone === "meh" ? "#8b909e" : n.kind === "person" ? COLORS.person : COLORS.title,
     });
 
   add(center, 0, 0, 16);
@@ -39,7 +39,7 @@ export function buildEgoGraph(ego: EgoNetwork): Graph<EgoNodeAttrs, EdgeAttrs> {
   ring1.forEach((n, i) => {
     const a = (i / ring1.length) * Math.PI * 2 - Math.PI / 2;
     angleOf.set(n.imdbId, a);
-    const size = 5 + Math.min(6, Math.log10(Math.max(n.votes, 10)) - 2) * 1.2;
+    const size = n.count ? 5 + Math.min(8, n.count) * 1.1 : 5 + Math.min(6, Math.log10(Math.max(n.votes, 10)) - 2) * 1.2;
     add(n, Math.cos(a) * R1, Math.sin(a) * R1, size);
   });
   const perParent = new Map<string, EgoNetwork["nodes"]>();

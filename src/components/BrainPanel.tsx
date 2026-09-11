@@ -21,10 +21,13 @@ interface Props {
   onExitEgo: () => void;
   /** Narrow-screen mode: show a back-to-chat button. */
   onBackToChat?: () => void;
+  /** Set while the ego view is the user's own taste map. */
+  taste?: { facts: { people: { name: string; count: number }[]; avgRuntimeFinished: number | null; tvShare: number | null; eras: Record<string, number> }; rated: number; later: number } | null;
 }
 
-export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, full, onToggleFull, ego, egoImages, onExitEgo, onBackToChat }: Props) {
-  const centerName = ego ? ego.nodes.find((n) => n.ring === 0)?.name : null;
+export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, full, onToggleFull, ego, egoImages, onExitEgo, onBackToChat, taste }: Props) {
+  const centerName = taste ? "your taste" : ego ? ego.nodes.find((n) => n.ring === 0)?.name : null;
+  const topDecade = taste ? Object.entries(taste.facts.eras).sort((a, b) => b[1] - a[1])[0]?.[0] : null;
   return (
     <section className="field relative h-full w-full overflow-hidden" aria-label="The brain">
       <BrainCanvas
@@ -65,7 +68,20 @@ export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExp
 
       {/* Stats + status */}
       <div className="pointer-events-none absolute bottom-3 left-3 space-y-0.5 font-mono text-[11px] text-ink-faint">
-        {ego ? (
+        {ego && taste ? (
+          <div className="space-y-0.5">
+            <div>
+              <span className="text-accent">●</span> liked &nbsp;<span className="text-ink-dim">●</span> meh &nbsp;<span className="text-title">●</span> title
+            </div>
+            <div>
+              {taste.rated} rated · {taste.later} later
+              {taste.facts.avgRuntimeFinished ? ` · finishes ~${taste.facts.avgRuntimeFinished} min` : ""}
+              {taste.facts.tvShare !== null ? ` · tv ${Math.round(taste.facts.tvShare * 100)}%` : ""}
+              {topDecade ? ` · strongest ${topDecade}` : ""}
+            </div>
+            {taste.facts.people.length > 0 && <div>you keep watching {taste.facts.people.slice(0, 3).map((p) => `${p.name} (${p.count})`).join(", ")}</div>}
+          </div>
+        ) : ego ? (
           <div>
             {centerName}: {ego.nodes.filter((n) => n.ring === 1).length} direct · {ego.nodes.filter((n) => n.ring === 2).length} once removed · click a node to re-center
           </div>

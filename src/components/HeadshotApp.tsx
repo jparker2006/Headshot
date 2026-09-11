@@ -21,6 +21,7 @@ export function HeadshotApp() {
   const [mobileView, setMobileView] = useState<"chat" | "brain">("chat");
   const [ego, setEgo] = useState<EgoNetwork | null>(null);
   const [egoImages, setEgoImages] = useState<Record<string, string | null>>({});
+  const [taste, setTaste] = useState<{ facts: { people: { name: string; count: number }[]; avgRuntimeFinished: number | null; tvShare: number | null; eras: Record<string, number> }; rated: number; later: number } | null>(null);
 
   const refreshBrain = useCallback(async () => {
     const r = await fetch("/api/brain", { cache: "no-store" });
@@ -51,7 +52,9 @@ export function HeadshotApp() {
 
   const select = useCallback(
     (id: string, reveal = true) => {
+      if (id === "me") return;
       setSelected(id);
+      setTaste(null);
       // Phone: only an explicit tap or "show me" brings the brain forward; the ego-by-default
       // after an answer stays behind the header button so the answer comes first.
       if (reveal) setMobileView("brain");
@@ -77,6 +80,34 @@ export function HeadshotApp() {
     [store],
   );
 
+  // The taste map: the user's own ego graph on the right panel, faces for ring 1.
+  const showTasteMap = useCallback(async () => {
+    setMobileView("brain");
+    setBrainFull(false);
+    setSelected(null);
+    const r = await fetch("/api/taste/map", { cache: "no-store" });
+    if (r.status === 401) {
+      window.location.assign("/auth/sign-in?next=/");
+      return;
+    }
+    if (!r.ok) {
+      store.setStatus("Could not load your taste map");
+      return;
+    }
+    const d = (await r.json()) as { network: EgoNetwork; facts: NonNullable<typeof taste>["facts"]; rated: number; later: number };
+    if (d.network.nodes.length <= 1) {
+      store.setStatus("Rate a few things first and your map appears here");
+      return;
+    }
+    setEgo(d.network);
+    setTaste({ facts: d.facts, rated: d.rated, later: d.later });
+    const ids = d.network.nodes.filter((n) => n.ring === 1 && n.imdbId !== "me").map((n) => n.imdbId).slice(0, 40);
+    fetch(`/api/enrich?ids=${ids.join(",")}`)
+      .then((r) => r.json())
+      .then((x: { images: Record<string, { url: string | null }> }) => setEgoImages((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(x.images).map(([k, v]) => [k, v.url])) })))
+      .catch(() => {});
+  }, [store]);
+
   // "Show me X on the brain": the agent asked for an ego view (derived-state pattern, no effect).
   const egoReq = state.egoRequest;
   const [seenEgoReq, setSeenEgoReq] = useState<number | null>(null);
@@ -97,7 +128,10 @@ export function HeadshotApp() {
   const [seenLit, setSeenLit] = useState(litCount);
   if (litCount !== seenLit) {
     setSeenLit(litCount);
-    if (litCount > 0 && ego) setEgo(null);
+    if (litCount > 0 && ego) {
+      setEgo(null);
+      setTaste(null);
+    }
   }
 
   const expand = useCallback(
@@ -137,8 +171,10 @@ export function HeadshotApp() {
       onToggleFull={() => setBrainFull((f) => !f)}
       ego={ego}
       egoImages={egoImages}
+      taste={taste}
       onExitEgo={() => {
         setEgo(null);
+        setTaste(null);
         setSelected(null);
       }}
       onBackToChat={mobileView === "brain" ? () => setMobileView("chat") : undefined}
@@ -156,6 +192,9 @@ export function HeadshotApp() {
           onDelete={(id) => deleteThread(id)}
           stats={stats}
           onShowBrain={() => setBrainFull(true)}
+          onHome={newThread}
+          onShowTaste={() => void showTasteMap()}
+          surface={taste ? "taste" : brainFull ? "brain" : "tonight"}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((c) => !c)}
         />

@@ -10,11 +10,17 @@ interface Props {
   onDelete: (id: string) => void;
   stats: { nodes: number; edges: number; mine: number };
   onShowBrain: () => void;
+  /** Home: Tonight (a fresh thread with the picks on top). */
+  onHome: () => void;
+  /** The private taste map on the right panel. */
+  onShowTaste: () => void;
+  /** Which surface is up, for the nav highlight. */
+  surface: "tonight" | "taste" | "brain";
   collapsed: boolean;
   onToggle: () => void;
 }
 
-export function Sidebar({ threads, activeId, onSelect, onNew, onDelete, stats, onShowBrain, collapsed, onToggle }: Props) {
+export function Sidebar({ threads, activeId, onSelect, onNew, onDelete, stats, onShowBrain, onHome, onShowTaste, surface, collapsed, onToggle }: Props) {
   if (collapsed) {
     return (
       <aside className="flex h-full w-12 flex-col items-center gap-2 border-r border-line bg-elev/60 py-3">
@@ -44,6 +50,23 @@ export function Sidebar({ threads, activeId, onSelect, onNew, onDelete, stats, o
           New thread
         </button>
       </div>
+      <nav className="mt-3 px-3" aria-label="Surfaces">
+        {(
+          [
+            ["tonight", "Tonight", onHome],
+            ["taste", "Taste map", onShowTaste],
+            ["brain", "Brain", onShowBrain],
+          ] as const
+        ).map(([key, label, fn]) => (
+          <button
+            key={key}
+            onClick={fn}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[13px] ${surface === key ? "bg-white/[0.05] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       <div className="mt-3 px-4 text-[10.5px] uppercase tracking-wider text-ink-faint">Threads</div>
       <nav className="scrollbar-thin mt-1 flex-1 overflow-y-auto px-2">
         {threads.map((t) => (

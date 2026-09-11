@@ -1,7 +1,38 @@
 "use client";
+/**
+ * The title (and person) drawer, built against design/boards/Title.dc.html and
+ * DESIGN.md's "Title" layout: poster and headline, one mono facts line, the
+ * reason set large with names as links, the actions row (Play, later, seen it,
+ * trailer), the cast as a face row with the people you already like ringed in
+ * accent, then the brain page. No cards; sections separate by space and one
+ * hairline.
+ *
+ * Everything per-user arrives on `taste` from /api/page/[imdbId]; `taste: null`
+ * means signed out, which is the only signed-out check this panel makes.
+ */
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
 import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
+import { useImages } from "@/components/chat/useImages";
+import { lookupName } from "@/components/chat/lookup";
+import { requireSignIn } from "@/components/auth/SignInGate";
+
+interface Neighbor {
+  imdbId: string;
+  name: string;
+  kind: string;
+  titleType: string;
+  year: number;
+  tier: number;
+  character?: string | null;
+}
+
+interface PageTaste {
+  reason: { text: string; viaImdbIds: string[] } | null;
+  likedPeople: string[];
+  rating: "liked" | "meh" | "unseen" | "want" | null;
+  onYourServices: string[];
+}
 
 interface PageData {
   node: {
@@ -19,7 +50,8 @@ interface PageData {
     degree: number;
   };
   page: { body: string; updatedAt: string; revisions: { at: string; question: string }[] } | null;
-  neighbors: { imdbId: string; name: string; kind: string; titleType: string; year: number; tier: number }[];
+  neighbors: Neighbor[];
+  taste: PageTaste | null;
   extras:
     | null
     | {
@@ -48,6 +80,7 @@ interface PageData {
       };
 }
 interface Provider {
+  id?: number;
   name: string;
   logoUrl?: string;
 }
@@ -60,9 +93,15 @@ interface Props {
   onExpand: (imdbId: string) => void;
 }
 
+const BUCKET_LABEL: Record<string, string> = { liked: "you liked this", meh: "you called it meh", unseen: "marked unseen", want: "in later" };
+
 export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Props) {
   const [data, setData] = useState<PageData | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [showTrailer, setShowTrailer] = useState(false);
+  /** Optimistic bucket after the user taps a chip; falls back to the server's. */
+  const [bucket, setBucket] = useState<PageTaste["rating"] | undefined>(undefined);
+
   // Names on the page that link: the subject and its neighbors.
   const pageEntities = useMemo<EntityIndex>(
     () =>
@@ -89,169 +128,240 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
     };
   }, [imdbId]);
 
+  const extras = data?.extras ?? null;
+  const title = extras?.kind === "title" ? extras : null;
+  const person = extras?.kind === "person" ? extras : null;
+  const providers = title?.providers ?? null;
+  const isPerson = data?.node.kind === "person";
+  const signedOut = data ? data.taste === null : false;
+  const onService = data?.taste?.onYourServices[0] ?? null;
+  const poster = title?.posterUrl ?? person?.profileUrl ?? data?.node.posterUrl;
+
+  // The face row: the cast for a title, the credits for a person.
+  const faces = useMemo(() => (data ? data.neighbors.filter((n) => (isPerson ? n.kind === "title" : n.kind === "person")).slice(0, 16) : []), [data, isPerson]);
+  const faceImages = useImages(faces.map((f) => f.imdbId));
+  const ringed = useMemo(() => new Set(data?.taste?.likedPeople ?? []), [data]);
+  // Ids the reason can cite, so its names become links without a lookup round-trip.
+  const nameIds = useMemo(() => {
+    const m = new Map<string, string>();
+    if (data) {
+      m.set(data.node.name.toLowerCase(), data.node.imdbId);
+      for (const n of data.neighbors) m.set(n.name.toLowerCase(), n.imdbId);
+    }
+    return m;
+  }, [data]);
+
+  const currentBucket = bucket !== undefined ? bucket : (data?.taste?.rating ?? null);
+  const rate = (rating: "liked" | "want") => {
+    if (signedOut) return requireSignIn(`/?open=${imdbId}`);
+    setBucket(rating);
+    const req =
+      rating === "want"
+        ? fetch("/api/taste/later", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) })
+        : fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating: "liked" }] }) });
+    void req.catch(() => setBucket(data?.taste?.rating ?? null));
+  };
+
+  const facts = data ? factsLine(data, title, person, onService, providers) : "";
+  const reason = data ? reasonParts(data, nameIds) : null;
+
   return (
     <aside className="panel pointer-events-auto flex h-full w-[min(380px,calc(100vw-32px))] flex-col overflow-hidden" aria-label="Page">
-      <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wider text-ink-dim">
-            {data ? (data.node.kind === "person" ? "Person" : data.node.titleType || "Title") : "Loading"}
-            {data?.node.year ? ` · ${data.node.year}` : ""}
-          </div>
-          <h2 className="truncate text-[17px] font-semibold text-ink">{data?.node.name ?? "…"}</h2>
-        </div>
-        <button onClick={onClose} className="rounded-md px-2 py-1 text-[12px] text-ink-dim hover:bg-white/5 hover:text-ink" aria-label="Close">
-          Close
+      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
+          {data ? (isPerson ? "person" : data.node.titleType || "title") : "loading"}
+        </span>
+        <button onClick={onClose} className="rounded-full px-2 py-1 font-mono text-[10.5px] text-ink-dim transition-colors duration-[120ms] hover:text-ink" aria-label="Close">
+          close
         </button>
       </header>
 
-      <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="scrollbar-thin flex-1 overflow-y-auto px-4 py-5">
         {err && <p className="text-[13px] text-danger">{err}</p>}
         {data && (
           <>
-            <div className="flex gap-3">
-              {(data.extras?.kind === "title" ? data.extras.posterUrl : data.extras?.kind === "person" ? data.extras.profileUrl : data.node.posterUrl) && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={data.extras?.kind === "title" ? data.extras.posterUrl : data.extras?.kind === "person" ? data.extras.profileUrl : data.node.posterUrl}
-                  alt=""
-                  className="h-32 w-[86px] rounded-md object-cover ring-1 ring-line"
-                />
+            {/* 1 — poster, name, the one mono facts line */}
+            <div className="flex gap-4">
+              <div className="aspect-[3/4] w-[96px] shrink-0 overflow-hidden rounded-[14px] bg-white/[0.04] ring-1 ring-line">
+                {poster && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={poster} alt="" className="h-full w-full object-cover" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <h2 className="text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink text-balance">
+                  {data.node.name}
+                  {!isPerson && data.node.year ? <span className="ml-1.5 font-normal text-ink-faint tabular-nums">{data.node.year}</span> : null}
+                </h2>
+                {facts && <p className="font-mono text-[11px] leading-[1.5] text-ink-dim">{facts}</p>}
+              </div>
+            </div>
+
+            {/* 2 — the reason, set large */}
+            {reason && (
+              <p className="mt-5 text-[18px] leading-[1.3] tracking-[-0.01em] text-ink-dim">
+                {reason.map((part, i) =>
+                  part.id === null ? (
+                    <span key={i}>{part.text}</span>
+                  ) : (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => (part.id ? onSelectNode(part.id) : void lookupName(part.text).then((id) => id && onSelectNode(id)))}
+                      className="font-medium text-ink underline-offset-4 decoration-accent/50 transition-colors duration-[120ms] hover:underline"
+                    >
+                      {part.text}
+                    </button>
+                  ),
+                )}
+              </p>
+            )}
+
+            {/* 3 — actions */}
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              {providers?.link && (
+                <a
+                  href={providers.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-9 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black transition-[filter] duration-[120ms] hover:brightness-110"
+                >
+                  {onService ? `Play on ${onService}` : "Where to watch"}
+                </a>
               )}
-              <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12.5px]">
-                {data.extras?.kind === "title" && data.extras.rating > 0 && (
-                  <>
-                    <dt className="text-ink-dim">Rating</dt>
-                    <dd className="text-ink">
-                      <span className="text-accent">★</span> {data.extras.rating.toFixed(1)} <span className="text-ink-faint">/ 10 · TMDB</span>
-                    </dd>
-                  </>
-                )}
-                {data.extras?.kind === "title" && (data.extras.runtime || data.extras.seasons) && (
-                  <>
-                    <dt className="text-ink-dim">{data.extras.seasons ? "Seasons" : "Runtime"}</dt>
-                    <dd className="text-ink">{data.extras.seasons ? data.extras.seasons : `${data.extras.runtime} min`}</dd>
-                  </>
-                )}
-                {data.extras?.kind === "person" && data.extras.birthday && (
-                  <>
-                    <dt className="text-ink-dim">Born</dt>
-                    <dd className="text-ink">
-                      {data.extras.birthday}
-                      {data.extras.placeOfBirth ? ` · ${data.extras.placeOfBirth}` : ""}
-                    </dd>
-                  </>
-                )}
-                <dt className="text-ink-dim">Credits</dt>
-                <dd className="text-ink">{data.node.degree}</dd>
-                {data.node.votes > 0 && (
-                  <>
-                    <dt className="text-ink-dim">IMDb votes</dt>
-                    <dd className="text-ink">{data.node.votes.toLocaleString()}</dd>
-                  </>
-                )}
-                {data.node.genres && (
-                  <>
-                    <dt className="text-ink-dim">Genres</dt>
-                    <dd className="text-ink">{data.node.genres.split(",").join(", ")}</dd>
-                  </>
-                )}
-                <dt className="text-ink-dim">Source</dt>
-                <dd className="text-ink">{data.node.inIndustryGraph ? "Industry graph" : "Live (TMDB)"}</dd>
-              </dl>
+              {!isPerson && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => rate("want")}
+                    className="rounded-full border border-line px-3 py-1.5 font-mono text-[11px] text-ink-dim transition-colors duration-[120ms] hover:border-accent/40 hover:text-ink"
+                  >
+                    later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rate("liked")}
+                    className="rounded-full border border-line px-3 py-1.5 font-mono text-[11px] text-ink-dim transition-colors duration-[120ms] hover:border-accent/40 hover:text-ink"
+                  >
+                    seen it
+                  </button>
+                </>
+              )}
+              {title?.trailer && (
+                <button type="button" onClick={() => setShowTrailer((v) => !v)} className="font-mono text-[11px] text-ink-faint transition-colors duration-[120ms] hover:text-ink">
+                  {showTrailer ? "hide trailer" : "trailer"}
+                </button>
+              )}
+              {currentBucket && <span className="font-mono text-[11px] text-ink-faint">{BUCKET_LABEL[currentBucket]}</span>}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => onAsk(`Tell me about ${data.node.name} and who they're most connected to.`)}
-                className="rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-black"
-              >
-                Ask about this
-              </button>
-              <button onClick={() => onExpand(imdbId)} className="rounded-lg px-3 py-1.5 text-[12.5px] text-ink ring-1 ring-line hover:bg-white/5">
-                Expand
-              </button>
-            </div>
-
-            {data.extras?.kind === "title" && (data.extras.tagline || data.extras.overview) && (
-              <section>
-                {data.extras.tagline && <p className="mb-1 text-[13px] italic text-ink-dim">{data.extras.tagline}</p>}
-                <p className="text-[13px] leading-relaxed text-ink">{data.extras.overview}</p>
-              </section>
-            )}
-            {data.extras?.kind === "person" && data.extras.biography && (
-              <section>
-                <p className="text-[13px] leading-relaxed text-ink">{data.extras.biography}</p>
-              </section>
+            {showTrailer && title?.trailer && (
+              <div className="mt-3 overflow-hidden rounded-[14px] ring-1 ring-line" style={{ aspectRatio: "16 / 9" }}>
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${title.trailer.youtubeKey}`}
+                  title={title.trailer.name}
+                  loading="lazy"
+                  allow="accelerometer; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                  className="h-full w-full"
+                />
+              </div>
             )}
 
-            {data.extras?.kind === "title" && data.extras.trailer && (
-              <section>
-                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Trailer</h3>
-                <div className="overflow-hidden rounded-lg ring-1 ring-line" style={{ aspectRatio: "16 / 9" }}>
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${data.extras.trailer.youtubeKey}`}
-                    title={data.extras.trailer.name}
-                    loading="lazy"
-                    allow="accelerometer; encrypted-media; picture-in-picture"
-                    allowFullScreen
-                    className="h-full w-full"
-                  />
+            {/* 4 — the face row */}
+            {faces.length > 0 && (
+              <section className="mt-6 border-t border-line pt-5">
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
+                  {isPerson ? "credits" : "cast"}
+                  {ringed.size > 0 ? " · the ones you know are lit" : ""}
+                </p>
+                <div className="scrollbar-thin -mx-4 mt-2.5 flex gap-3 overflow-x-auto px-4 pb-2">
+                  {faces.map((f) => (
+                    <button key={f.imdbId} type="button" onClick={() => onSelectNode(f.imdbId)} className="w-[84px] shrink-0 text-left">
+                      <div
+                        className={`h-[112px] w-[84px] overflow-hidden rounded-[10px] bg-white/[0.05] ${ringed.has(f.imdbId) ? "ring-1 ring-accent" : "ring-1 ring-line"}`}
+                      >
+                        {faceImages[f.imdbId]?.url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={faceImages[f.imdbId]!.url!} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-[12px] font-semibold leading-[1.2] text-ink">{f.name}</p>
+                      <p className="font-mono text-[10.5px] leading-[1.3] text-ink-faint">{f.character ?? (f.year ? String(f.year) : "")}</p>
+                    </button>
+                  ))}
+                  {data.node.degree > faces.length && (
+                    <span className="flex h-[112px] w-[84px] shrink-0 items-center justify-center font-mono text-[11px] text-ink-faint">+ {data.node.degree - faces.length}</span>
+                  )}
                 </div>
               </section>
             )}
 
-            {data.extras?.kind === "title" && data.extras.providers && (data.extras.providers.flatrate.length > 0 || data.extras.providers.ads.length > 0 || data.extras.providers.rent.length > 0) && (
-              <section>
-                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Where to watch · {data.extras.region}</h3>
-                <ProviderRow label="Stream" items={[...data.extras.providers.flatrate, ...data.extras.providers.ads]} />
-                <ProviderRow label="Rent or buy" items={dedupe([...data.extras.providers.rent, ...data.extras.providers.buy])} />
-                {data.extras.providers.link && (
-                  <a href={data.extras.providers.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11.5px] text-ink-faint hover:text-ink-dim">
-                    Availability via JustWatch on TMDB
-                  </a>
-                )}
+            {/* the TMDB blurb, quiet beneath the reason */}
+            {(title?.overview || person?.biography) && (
+              <section className="mt-6 border-t border-line pt-5">
+                {title?.tagline && <p className="mb-1 text-[13px] italic text-ink-dim">{title.tagline}</p>}
+                <p className="max-w-[62ch] text-[14.5px] leading-[1.55] text-ink-dim">{title?.overview ?? person?.biography}</p>
               </section>
             )}
 
-            <section>
-              <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Brain page</h3>
+            {/* 5 — the brain page, then the page's own actions */}
+            <section className="mt-6 border-t border-line pt-5">
+              <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
+                brain page{data.page ? ` · written after ${data.page.revisions.length} question${data.page.revisions.length === 1 ? "" : "s"}` : ""}
+              </p>
               {data.page ? (
-                <Markdown text={data.page.body} entities={pageEntities} onSelectNode={onSelectNode} />
+                <div className="max-w-[62ch] text-[14.5px] leading-[1.55]">
+                  <Markdown text={data.page.body} entities={pageEntities} onSelectNode={onSelectNode} />
+                </div>
               ) : (
                 <p className="text-[13px] text-ink-faint">Nothing written yet. Ask a question that touches this and the agent will start a page.</p>
               )}
             </section>
 
-            {data.page && data.page.revisions.length > 0 && (
-              <section>
-                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Learned from</h3>
-                <ul className="space-y-1">
-                  {[...data.page.revisions].reverse().slice(0, 6).map((r, i) => (
-                    <li key={i} className="text-[12px] text-ink-dim">
-                      <span className="text-ink-faint">{new Date(r.at).toLocaleDateString()}</span> · “{r.question}”
-                    </li>
-                  ))}
-                </ul>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => onAsk(`Tell me about ${data.node.name} and who they're most connected to.`)}
+                className="font-mono text-[11px] text-accent transition-colors duration-[120ms] hover:brightness-110"
+              >
+                ask about this
+              </button>
+              <button onClick={() => onExpand(imdbId)} className="font-mono text-[11px] text-ink-faint transition-colors duration-[120ms] hover:text-ink">
+                expand on the brain
+              </button>
+            </div>
+
+            {providers && (providers.flatrate.length > 0 || providers.ads.length > 0 || providers.rent.length > 0 || providers.buy.length > 0) && (
+              <section className="mt-6 border-t border-line pt-5">
+                <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">where to watch · {title?.region}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {dedupe([...providers.flatrate, ...providers.ads, ...providers.rent, ...providers.buy])
+                    .slice(0, 10)
+                    .map((p) => (
+                      <span key={p.name} title={p.name} className="flex items-center gap-1.5 font-mono text-[10.5px] text-ink-dim">
+                        {p.logoUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.logoUrl} alt="" className="size-4 rounded-[4px]" />
+                        )}
+                        {p.name.replace(/ Amazon Channel| Apple TV Channel/, "")}
+                      </span>
+                    ))}
+                </div>
               </section>
             )}
 
-            {data.neighbors.length > 0 && (
-              <section>
-                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">
-                  {data.node.kind === "person" ? "Credits" : "Cast & crew"}
-                </h3>
-                <ul className="space-y-0.5">
-                  {data.neighbors.map((n) => (
-                    <li key={n.imdbId}>
-                      <button onClick={() => onSelectNode(n.imdbId)} className="flex w-full items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left text-[13px] hover:bg-white/5">
-                        <span className={n.kind === "title" ? "text-title" : "text-ink"}>{n.name}</span>
-                        <span className="shrink-0 text-[11px] text-ink-faint">
-                          {n.year || ""}
-                          {n.tier === 0 ? " · weak" : ""}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+            {data.page && data.page.revisions.length > 0 && (
+              <section className="mt-6 border-t border-line pt-5">
+                <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">learned from</p>
+                <ul className="space-y-1">
+                  {[...data.page.revisions]
+                    .reverse()
+                    .slice(0, 6)
+                    .map((r, i) => (
+                      <li key={i} className="text-[12.5px] text-ink-dim">
+                        <span className="font-mono text-[11px] text-ink-faint tabular-nums">{new Date(r.at).toLocaleDateString()}</span> · “{r.question}”
+                      </li>
+                    ))}
                 </ul>
               </section>
             )}
@@ -262,24 +372,76 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   );
 }
 
-function ProviderRow({ label, items }: { label: string; items: Provider[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="mb-1.5 flex items-center gap-2">
-      <span className="w-[74px] shrink-0 text-[11.5px] text-ink-dim">{label}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {items.slice(0, 8).map((p) => (
-          <span key={p.name} title={p.name} className="flex items-center gap-1 rounded-md bg-white/[0.04] px-1.5 py-1 text-[11.5px] text-ink ring-1 ring-line">
-            {p.logoUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.logoUrl} alt="" className="size-4 rounded-sm" />
-            )}
-            {p.name.replace(/ Amazon Channel| Apple TV Channel/, "")}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
+/** "2h 50 · 8.3 · crime, drama · on max" — one line, mono, never wrapped twice. */
+function factsLine(
+  data: PageData,
+  title: Extract<PageData["extras"], { kind: "title" }> | null,
+  person: Extract<PageData["extras"], { kind: "person" }> | null,
+  onService: string | null,
+  providers: { rent: Provider[]; buy: Provider[] } | null,
+): string {
+  const bits: string[] = [];
+  if (data.node.kind === "person") {
+    if (person?.birthday) bits.push(`born ${person.birthday.slice(0, 4)}${person.placeOfBirth ? ` · ${person.placeOfBirth}` : ""}`);
+    if (person?.deathday) bits.push(`died ${person.deathday.slice(0, 4)}`);
+    if (data.node.degree) bits.push(`${data.node.degree} credits`);
+    return bits.join(" · ");
+  }
+  if (title?.seasons) bits.push(`${title.seasons} season${title.seasons === 1 ? "" : "s"}`);
+  else if (title?.runtime) bits.push(title.runtime >= 60 ? `${Math.floor(title.runtime / 60)}h ${title.runtime % 60}` : `${title.runtime}m`);
+  if (title && title.rating > 0) bits.push(title.rating.toFixed(1));
+  const genres = title?.genres?.length ? title.genres : data.node.genres.split(",").filter(Boolean);
+  if (genres.length) bits.push(genres.slice(0, 2).join(", ").toLowerCase());
+  if (onService) bits.push(`on ${onService.toLowerCase()}`);
+  else if (providers?.rent.length) bits.push("rent");
+  else if (providers?.buy.length) bits.push("buy");
+  return bits.join(" · ");
+}
+
+interface ReasonPart {
+  text: string;
+  /** An id to open, "" to resolve the name lazily, null for plain prose. */
+  id: string | null;
+}
+
+/**
+ * The reason line, split into prose and linkable names. The signed-in line is
+ * the taste reason; signed out it falls back to the neighborhood ("known for").
+ */
+function reasonParts(data: PageData, nameIds: Map<string, string>): ReasonPart[] | null {
+  const taste = data.taste?.reason;
+  if (taste) {
+    const cited = taste.viaImdbIds.map((id) => data.neighbors.find((n) => n.imdbId === id)?.name).filter((n): n is string => !!n);
+    return split(taste.text, cited.length ? cited : [...nameIds.keys()], nameIds);
+  }
+  const isPerson = data.node.kind === "person";
+  const top = data.neighbors.filter((n) => (isPerson ? n.kind === "title" : n.kind === "person")).slice(0, 3);
+  if (top.length === 0) return null;
+  const parts: ReasonPart[] = [{ text: isPerson ? "known for " : "with ", id: null }];
+  top.forEach((n, i) => {
+    if (i > 0) parts.push({ text: i === top.length - 1 ? " and " : ", ", id: null });
+    parts.push({ text: n.name, id: n.imdbId });
+  });
+  parts.push({ text: ".", id: null });
+  return parts;
+}
+
+/** Split a sentence around the names it cites, longest first so "Tom Hanks" wins over "Tom". */
+function split(text: string, names: string[], nameIds: Map<string, string>): ReasonPart[] {
+  const wanted = [...new Set(names)].filter(Boolean).sort((a, b) => b.length - a.length);
+  if (wanted.length === 0) return [{ text, id: null }];
+  const re = new RegExp(`(${wanted.map(escapeRe).join("|")})`, "gi");
+  return text
+    .split(re)
+    .filter(Boolean)
+    .map((chunk) => {
+      const id = nameIds.get(chunk.toLowerCase());
+      return id ? { text: chunk, id } : wanted.some((w) => w.toLowerCase() === chunk.toLowerCase()) ? { text: chunk, id: "" } : { text: chunk, id: null };
+    });
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function dedupe(items: Provider[]): Provider[] {

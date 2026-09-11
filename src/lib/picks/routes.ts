@@ -9,6 +9,9 @@ import type { TasteStore } from "@/lib/taste/types";
 import type { Filters } from "./engine";
 import { computeTonight, loadTonight } from "./service";
 import { onboardingDeck } from "./onboarding";
+import { tasteMap } from "@/lib/taste/map";
+import { tasteFacts } from "./engine";
+import { toEngineRows } from "./service";
 
 export interface TonightRouteDeps {
   userId: (req: Request) => Promise<string | null>;
@@ -60,6 +63,17 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
       const rated = (await store.listWatched(userId)).map((r) => r.titleImdbId);
       return Response.json({ cards: onboardingDeck(graph, { size: 50, exclude: rated }) });
+    },
+
+    /** GET /api/taste/map — the user's private ego graph plus the derived facts for the rail. */
+    async map(req: Request): Promise<Response> {
+      const userId = await deps.userId(req);
+      if (!userId) return unauthorized();
+      const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
+      const watched = await store.listWatched(userId);
+      const stored = await store.getTaste(userId);
+      const facts = stored?.facts ?? tasteFacts(graph, toEngineRows(watched));
+      return Response.json({ network: tasteMap(graph, watched), facts, rated: watched.filter((w) => w.rating === "liked" || w.rating === "meh").length, later: watched.filter((w) => w.rating === "want").length });
     },
 
     /** POST /api/taste/later { imdbId } — "not tonight": the title joins Later (bucket `want`). */

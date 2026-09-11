@@ -8,6 +8,10 @@ export interface EgoNode extends NodeInfo {
   ring: 0 | 1 | 2;
   /** Ring-2 nodes hang off this ring-1 node. */
   parent?: string;
+  /** Taste map only: how the user rated (a person: the majority of their rated titles). */
+  tone?: "liked" | "meh";
+  /** Taste map only: how many rated titles this person touches. */
+  count?: number;
 }
 
 export interface EgoEdge {
