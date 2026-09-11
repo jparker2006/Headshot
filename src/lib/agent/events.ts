@@ -57,6 +57,8 @@ export type HeadshotDataParts = {
   page: { imdbId: string; question: string; revision: number };
   /** The canvas should center on these nodes. */
   focus: { imdbIds: string[] };
+  /** Model-suggested follow-up questions, sent after the answer. */
+  followups: { questions: string[] };
   /** Transient status line ("Searching TMDB for…"). */
   status: { text: string };
 };

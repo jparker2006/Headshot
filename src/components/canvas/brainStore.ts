@@ -239,6 +239,9 @@ export class BrainStore {
         this.bump({ highlight: { ...this.state.highlight, pathNodes: new Set(), pathEdges: new Set() } });
         return;
       }
+      case "followups": {
+        return;
+      }
       case "page": {
         this.bump({ status: "Wrote a page" });
         return;

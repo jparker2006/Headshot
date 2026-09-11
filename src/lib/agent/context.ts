@@ -12,6 +12,8 @@ export interface AgentContext {
   sessionId?: string;
   /** The user's latest question, for page-revision provenance. */
   question: string;
+  /** Every node touched this turn, for automatic page writing. */
+  touched: CanvasNode[];
 }
 
 export function toCanvasNode(n: NodeInfo, extra: Partial<CanvasNode> = {}): CanvasNode {
@@ -45,7 +47,10 @@ export function toBrainInput(n: CanvasNode): BrainNodeInput {
 /** Mark nodes as part of the brain and tell the canvas about them. */
 export async function touch(ctx: AgentContext, nodes: CanvasNode[]): Promise<void> {
   await ctx.brain.touchNodes(nodes.map(toBrainInput), ctx.sessionId);
-  for (const n of nodes) ctx.emit("node", n);
+  for (const n of nodes) {
+    ctx.emit("node", n);
+    ctx.touched.push(n);
+  }
 }
 
 /** Compact description of a node for the model. */

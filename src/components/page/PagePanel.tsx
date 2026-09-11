@@ -19,6 +19,36 @@ interface PageData {
   };
   page: { body: string; updatedAt: string; revisions: { at: string; question: string }[] } | null;
   neighbors: { imdbId: string; name: string; kind: string; titleType: string; year: number; tier: number }[];
+  extras:
+    | null
+    | {
+        kind: "title";
+        rating: number;
+        voteCount: number;
+        runtime?: number;
+        seasons?: number;
+        tagline?: string;
+        overview: string;
+        posterUrl?: string;
+        backdropUrl?: string;
+        genres: string[];
+        trailer: { youtubeKey: string; name: string } | null;
+        providers: { link?: string; flatrate: Provider[]; rent: Provider[]; buy: Provider[]; ads: Provider[] } | null;
+        region: string;
+      }
+    | {
+        kind: "person";
+        biography: string;
+        birthday?: string;
+        deathday?: string;
+        placeOfBirth?: string;
+        knownForDepartment?: string;
+        profileUrl?: string;
+      };
+}
+interface Provider {
+  name: string;
+  logoUrl?: string;
 }
 
 interface Props {
@@ -65,11 +95,38 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
         {data && (
           <>
             <div className="flex gap-3">
-              {data.node.posterUrl && (
+              {(data.extras?.kind === "title" ? data.extras.posterUrl : data.extras?.kind === "person" ? data.extras.profileUrl : data.node.posterUrl) && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={data.node.posterUrl} alt="" className="h-28 w-20 rounded-md object-cover ring-1 ring-line" />
+                <img
+                  src={data.extras?.kind === "title" ? data.extras.posterUrl : data.extras?.kind === "person" ? data.extras.profileUrl : data.node.posterUrl}
+                  alt=""
+                  className="h-32 w-[86px] rounded-md object-cover ring-1 ring-line"
+                />
               )}
               <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12.5px]">
+                {data.extras?.kind === "title" && data.extras.rating > 0 && (
+                  <>
+                    <dt className="text-ink-dim">Rating</dt>
+                    <dd className="text-ink">
+                      <span className="text-accent">★</span> {data.extras.rating.toFixed(1)} <span className="text-ink-faint">/ 10 · TMDB</span>
+                    </dd>
+                  </>
+                )}
+                {data.extras?.kind === "title" && (data.extras.runtime || data.extras.seasons) && (
+                  <>
+                    <dt className="text-ink-dim">{data.extras.seasons ? "Seasons" : "Runtime"}</dt>
+                    <dd className="text-ink">{data.extras.seasons ? data.extras.seasons : `${data.extras.runtime} min`}</dd>
+                  </>
+                )}
+                {data.extras?.kind === "person" && data.extras.birthday && (
+                  <>
+                    <dt className="text-ink-dim">Born</dt>
+                    <dd className="text-ink">
+                      {data.extras.birthday}
+                      {data.extras.placeOfBirth ? ` · ${data.extras.placeOfBirth}` : ""}
+                    </dd>
+                  </>
+                )}
                 <dt className="text-ink-dim">Credits</dt>
                 <dd className="text-ink">{data.node.degree}</dd>
                 {data.node.votes > 0 && (
@@ -100,6 +157,47 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                 Expand
               </button>
             </div>
+
+            {data.extras?.kind === "title" && (data.extras.tagline || data.extras.overview) && (
+              <section>
+                {data.extras.tagline && <p className="mb-1 text-[13px] italic text-ink-dim">{data.extras.tagline}</p>}
+                <p className="text-[13px] leading-relaxed text-ink">{data.extras.overview}</p>
+              </section>
+            )}
+            {data.extras?.kind === "person" && data.extras.biography && (
+              <section>
+                <p className="text-[13px] leading-relaxed text-ink">{data.extras.biography}</p>
+              </section>
+            )}
+
+            {data.extras?.kind === "title" && data.extras.trailer && (
+              <section>
+                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Trailer</h3>
+                <div className="overflow-hidden rounded-lg ring-1 ring-line" style={{ aspectRatio: "16 / 9" }}>
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${data.extras.trailer.youtubeKey}`}
+                    title={data.extras.trailer.name}
+                    loading="lazy"
+                    allow="accelerometer; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                </div>
+              </section>
+            )}
+
+            {data.extras?.kind === "title" && data.extras.providers && (data.extras.providers.flatrate.length > 0 || data.extras.providers.ads.length > 0 || data.extras.providers.rent.length > 0) && (
+              <section>
+                <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Where to watch · {data.extras.region}</h3>
+                <ProviderRow label="Stream" items={[...data.extras.providers.flatrate, ...data.extras.providers.ads]} />
+                <ProviderRow label="Rent or buy" items={dedupe([...data.extras.providers.rent, ...data.extras.providers.buy])} />
+                {data.extras.providers.link && (
+                  <a href={data.extras.providers.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11.5px] text-ink-faint hover:text-ink-dim">
+                    Availability via JustWatch on TMDB
+                  </a>
+                )}
+              </section>
+            )}
 
             <section>
               <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-dim">Brain page</h3>
@@ -148,4 +246,29 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
       </div>
     </aside>
   );
+}
+
+function ProviderRow({ label, items }: { label: string; items: Provider[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-1.5 flex items-center gap-2">
+      <span className="w-[74px] shrink-0 text-[11.5px] text-ink-dim">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {items.slice(0, 8).map((p) => (
+          <span key={p.name} title={p.name} className="flex items-center gap-1 rounded-md bg-white/[0.04] px-1.5 py-1 text-[11.5px] text-ink ring-1 ring-line">
+            {p.logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.logoUrl} alt="" className="size-4 rounded-sm" />
+            )}
+            {p.name.replace(/ Amazon Channel| Apple TV Channel/, "")}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function dedupe(items: Provider[]): Provider[] {
+  const seen = new Set<string>();
+  return items.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)));
 }

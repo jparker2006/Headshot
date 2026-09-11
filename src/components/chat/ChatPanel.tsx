@@ -234,10 +234,12 @@ function Message({ m, onSelectNode }: { m: HeadshotUIMessage; onSelectNode: (id:
   );
 }
 
-/** Deterministic follow-ups from the last answer's path, so chips need no extra model call. */
+/** Model-suggested follow-ups when present; deterministic ones from the path otherwise. */
 function followUps(messages: HeadshotUIMessage[]): string[] {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
   if (!last) return [];
+  const suggested = last.parts.find((p) => p.type === "data-followups");
+  if (suggested && suggested.type === "data-followups" && suggested.data.questions.length) return suggested.data.questions;
   const paths = last.parts.find((p) => p.type === "data-paths");
   if (!paths || paths.type !== "data-paths") return [];
   const p = paths.data.full?.paths[0];

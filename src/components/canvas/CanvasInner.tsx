@@ -2,6 +2,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import Sigma from "sigma";
 import { EdgeRectangleProgram } from "sigma/rendering";
+import { createNodeImageProgram } from "@sigma/node-image";
 import FA2Layout from "graphology-layout-forceatlas2/worker";
 import { inferSettings } from "graphology-layout-forceatlas2";
 import { BrainStore, COLORS, type NodeAttrs, type EdgeAttrs } from "./brainStore";
@@ -13,6 +14,8 @@ export interface CanvasProps {
   selected: string | null;
   /** When set, the canvas shows this ego network instead of the whole brain. */
   ego: EgoNetwork | null;
+  /** Headshots and posters for ego nodes, by IMDb id. */
+  egoImages: Record<string, string | null>;
   onClickNode: (imdbId: string) => void;
   onDoubleClickNode: (imdbId: string) => void;
   onClickEdge: (personImdbId: string, titleImdbId: string) => void;
@@ -24,7 +27,7 @@ const DIM = "#23262e";
 const DIM_EDGE = "#14161c";
 const ALT = "#7a5f24";
 
-export default function CanvasInner({ store, selected, ego, onClickNode, onDoubleClickNode, onClickEdge, onClickStage }: CanvasProps) {
+export default function CanvasInner({ store, selected, ego, egoImages, onClickNode, onDoubleClickNode, onClickEdge, onClickStage }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma<NodeAttrs, EdgeAttrs> | null>(null);
   const layoutRef = useRef<FA2Layout | null>(null);
@@ -55,6 +58,9 @@ export default function CanvasInner({ store, selected, ego, onClickNode, onDoubl
       labelGridCellSize: 90,
       defaultEdgeType: "rectangle",
       edgeProgramClasses: { rectangle: EdgeRectangleProgram },
+      nodeProgramClasses: {
+        image: createNodeImageProgram({ keepWithinCircle: true, drawingMode: "background", padding: 0.05, correctCentering: true, objectFit: "cover" }),
+      },
       minCameraRatio: 0.03,
       maxCameraRatio: 40,
       zIndex: true,
@@ -64,9 +70,11 @@ export default function CanvasInner({ store, selected, ego, onClickNode, onDoubl
         if (egoRef.current) {
           const ring = (data as NodeAttrs & { ring?: number }).ring ?? 2;
           const isSelected = selectedRef.current === node;
+          const hasImage = "image" in data && !!(data as { image?: string }).image;
           return {
             ...data,
             color: ring === 0 ? COLORS.accent : data.color,
+            size: hasImage ? (ring === 0 ? 22 : ring === 1 ? data.size + 5 : data.size + 2) : data.size,
             forceLabel: ring <= 1,
             zIndex: ring === 0 ? 3 : ring === 1 ? 2 : 1,
             highlighted: isSelected && ring !== 0,
@@ -185,6 +193,18 @@ export default function CanvasInner({ store, selected, ego, onClickNode, onDoubl
     }
     sigma.refresh();
   }, [ego, store]);
+
+  // Faces arrive after the ego graph is drawn: switch those nodes to the image program.
+  useEffect(() => {
+    const sigma = sigmaRef.current;
+    if (!sigma || !ego) return;
+    const g = sigma.getGraph();
+    for (const [id, url] of Object.entries(egoImages)) {
+      if (!url || !g.hasNode(id)) continue;
+      g.mergeNodeAttributes(id, { type: "image", image: url } as Partial<NodeAttrs>);
+    }
+    sigma.refresh({ skipIndexation: true });
+  }, [egoImages, ego]);
 
   // Whenever the store changes: refresh, and let the layout settle for a moment.
   useEffect(() => {

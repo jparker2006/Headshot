@@ -53,6 +53,36 @@ export interface TmdbTitle {
   crew: { tmdbId: number; name: string; job: string; imdbId?: string }[];
 }
 
+export interface Provider {
+  name: string;
+  logoUrl?: string;
+}
+
+export interface TitleFacts {
+  tmdbId: number;
+  mediaType: "movie" | "tv";
+  rating: number;
+  voteCount: number;
+  runtime?: number;
+  seasons?: number;
+  tagline?: string;
+  overview: string;
+  posterUrl?: string;
+  backdropUrl?: string;
+  year?: number;
+  genres: string[];
+}
+
+export interface PersonFacts {
+  tmdbId: number;
+  biography: string;
+  birthday?: string;
+  deathday?: string;
+  placeOfBirth?: string;
+  knownForDepartment?: string;
+  profileUrl?: string;
+}
+
 export interface TmdbClientOptions {
   bearerToken: string;
   fetch?: typeof fetch;
@@ -189,6 +219,61 @@ export class TmdbClient {
     }
     const d = await this.get<Record<string, unknown>>(`/${found.mediaType}/${found.tmdbId}`);
     return { ...found, imageUrl: imageUrl(String(d?.poster_path ?? "")), knownAs: d?.tagline ? String(d.tagline) : undefined };
+  }
+
+  /** Official trailer (YouTube key) for a title, preferring official trailers, then any trailer, then a teaser. */
+  async trailer(mediaType: "movie" | "tv", tmdbId: number): Promise<{ youtubeKey: string; name: string } | null> {
+    const d = await this.get<{ results: { site: string; type: string; official: boolean; key: string; name: string }[] }>(`/${mediaType}/${tmdbId}/videos`);
+    const yt = (d?.results ?? []).filter((v) => v.site === "YouTube");
+    const pick =
+      yt.find((v) => v.type === "Trailer" && v.official) ?? yt.find((v) => v.type === "Trailer") ?? yt.find((v) => v.type === "Teaser") ?? null;
+    return pick ? { youtubeKey: pick.key, name: pick.name } : null;
+  }
+
+  /** Where to watch in a region: subscription, rent, buy, free-with-ads. */
+  async watchProviders(mediaType: "movie" | "tv", tmdbId: number, region = "US"): Promise<{ link?: string; flatrate: Provider[]; rent: Provider[]; buy: Provider[]; ads: Provider[] } | null> {
+    const d = await this.get<{ results: Record<string, Record<string, unknown>> }>(`/${mediaType}/${tmdbId}/watch/providers`);
+    const r = d?.results?.[region];
+    if (!r) return null;
+    const list = (k: string): Provider[] =>
+      Array.isArray(r[k]) ? (r[k] as Record<string, unknown>[]).map((p) => ({ name: String(p.provider_name), logoUrl: imageUrl(String(p.logo_path ?? ""), "w92") })) : [];
+    return { link: r.link ? String(r.link) : undefined, flatrate: list("flatrate"), rent: list("rent"), buy: list("buy"), ads: list("ads") };
+  }
+
+  /** Title facts for a page: rating, runtime, tagline, overview, poster. Lighter than title(). */
+  async titleFacts(mediaType: "movie" | "tv", tmdbId: number): Promise<TitleFacts | null> {
+    const d = await this.get<Record<string, unknown>>(`/${mediaType}/${tmdbId}`);
+    if (!d) return null;
+    const date = String(d.release_date ?? d.first_air_date ?? "");
+    return {
+      tmdbId,
+      mediaType,
+      rating: Number(d.vote_average ?? 0),
+      voteCount: Number(d.vote_count ?? 0),
+      runtime: d.runtime ? Number(d.runtime) : Array.isArray(d.episode_run_time) && d.episode_run_time.length ? Number((d.episode_run_time as number[])[0]) : undefined,
+      seasons: d.number_of_seasons ? Number(d.number_of_seasons) : undefined,
+      tagline: d.tagline ? String(d.tagline) : undefined,
+      overview: String(d.overview ?? ""),
+      posterUrl: imageUrl(String(d.poster_path ?? "")),
+      backdropUrl: imageUrl(String(d.backdrop_path ?? ""), "w780"),
+      year: date ? Number(date.slice(0, 4)) : undefined,
+      genres: Array.isArray(d.genres) ? (d.genres as { name: string }[]).map((g) => g.name) : [],
+    };
+  }
+
+  /** Person facts for a page: bio, birthday, department, headshot. */
+  async personFacts(tmdbId: number): Promise<PersonFacts | null> {
+    const d = await this.get<Record<string, unknown>>(`/person/${tmdbId}`);
+    if (!d) return null;
+    return {
+      tmdbId,
+      biography: String(d.biography ?? ""),
+      birthday: d.birthday ? String(d.birthday) : undefined,
+      deathday: d.deathday ? String(d.deathday) : undefined,
+      placeOfBirth: d.place_of_birth ? String(d.place_of_birth) : undefined,
+      knownForDepartment: d.known_for_department ? String(d.known_for_department) : undefined,
+      profileUrl: imageUrl(String(d.profile_path ?? "")),
+    };
   }
 
   /** IMDb id for a TMDB person (one extra call). */

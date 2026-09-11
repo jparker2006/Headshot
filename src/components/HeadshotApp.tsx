@@ -20,6 +20,7 @@ export function HeadshotApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"chat" | "brain">("chat");
   const [ego, setEgo] = useState<EgoNetwork | null>(null);
+  const [egoImages, setEgoImages] = useState<Record<string, string | null>>({});
 
   const refreshBrain = useCallback(async () => {
     const r = await fetch("/api/brain", { cache: "no-store" });
@@ -43,8 +44,19 @@ export function HeadshotApp() {
       fetch(`/api/ego/${id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((e: EgoNetwork | null) => {
-          if (e) setEgo(e);
-          else store.setFocus([id]);
+          if (!e) {
+            store.setFocus([id]);
+            return;
+          }
+          setEgo(e);
+          // Faces for the center and first ring; the second ring stays as dots.
+          const ids = e.nodes.filter((n) => n.ring <= 1).map((n) => n.imdbId).slice(0, 40);
+          fetch(`/api/enrich?ids=${ids.join(",")}`)
+            .then((r) => r.json())
+            .then((d: { images: Record<string, { url: string | null }> }) =>
+              setEgoImages((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(d.images).map(([k, v]) => [k, v.url])) })),
+            )
+            .catch(() => {});
         })
         .catch(() => store.setFocus([id]));
     },
@@ -95,6 +107,7 @@ export function HeadshotApp() {
       full={brainFull}
       onToggleFull={() => setBrainFull((f) => !f)}
       ego={ego}
+      egoImages={egoImages}
       onExitEgo={() => {
         setEgo(null);
         setSelected(null);

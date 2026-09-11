@@ -19,6 +19,7 @@
     "@ai-sdk/react": "^4.0.100",
     "@neondatabase/serverless": "^1.1.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@sigma/node-image": "^3.0.0",
     "@vercel/blob": "^2.8.0",
     "ai": "^7.0.97",
     "drizzle-orm": "^0.45.2",

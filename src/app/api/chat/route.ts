@@ -1,5 +1,6 @@
 import { createUIMessageStreamResponse, type LanguageModel } from "ai";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { getIndustryGraph, type IndustryGraph } from "@/lib/graph";
 import { getBrain, type Brain } from "@/lib/brain";
 import { tmdbFromEnv, type TmdbClient } from "@/lib/tmdb/client";
@@ -17,6 +18,8 @@ export interface ChatDeps {
   tmdb: () => TmdbClient | null;
   /** Resolve the session id for this request; may mint one. */
   session: (req: Request) => Promise<{ id: string; setCookie: boolean }>;
+  followups?: boolean;
+  schedule?: (work: () => Promise<void>) => void;
 }
 
 /** Route handler factory so tests can inject a mock model, a fixture graph, and a memory brain. */
@@ -40,7 +43,16 @@ export function createChatHandler(deps: ChatDeps) {
     if (!limit.ok) return Response.json({ error: limit.reason, resting: true }, { status: 429 });
     await brain.recordQuestion({ sessionId: session.id, text: lastUserText(messages) });
 
-    const stream = runAgent({ model: deps.model(graph), graph, brain, tmdb: deps.tmdb(), messages, sessionId: session.id });
+    const stream = runAgent({
+      model: deps.model(graph),
+      graph,
+      brain,
+      tmdb: deps.tmdb(),
+      messages,
+      sessionId: session.id,
+      followups: deps.followups ?? true,
+      schedule: deps.schedule ?? ((work) => after(work)),
+    });
     const res = createUIMessageStreamResponse({ stream });
     if (session.setCookie) {
       res.headers.append("Set-Cookie", `${SESSION_COOKIE}=${session.id}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`);

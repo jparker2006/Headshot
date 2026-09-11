@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
 
   graph.setOverlay(await brain.getOverlay());
   const emitter = new ArrayEmitter();
-  const ctx = { graph, brain, tmdb: tmdbFromEnv(), emit: emitter.emit.bind(emitter), sessionId, question: `expand ${imdbId}` };
+  const ctx = { graph, brain, tmdb: tmdbFromEnv(), emit: emitter.emit.bind(emitter), sessionId, question: `expand ${imdbId}`, touched: [] };
   const node = graph.nodeByImdbId(imdbId);
 
   if (node && !node.overlay && !live) {

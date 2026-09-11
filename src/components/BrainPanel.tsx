@@ -17,12 +17,13 @@ interface Props {
   full: boolean;
   onToggleFull: () => void;
   ego: EgoNetwork | null;
+  egoImages: Record<string, string | null>;
   onExitEgo: () => void;
   /** Narrow-screen mode: show a back-to-chat button. */
   onBackToChat?: () => void;
 }
 
-export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, full, onToggleFull, ego, onExitEgo, onBackToChat }: Props) {
+export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExpand, onAsk, onPick, full, onToggleFull, ego, egoImages, onExitEgo, onBackToChat }: Props) {
   const centerName = ego ? ego.nodes.find((n) => n.ring === 0)?.name : null;
   return (
     <section className="field relative h-full w-full overflow-hidden" aria-label="The brain">
@@ -30,6 +31,7 @@ export function BrainPanel({ store, state, selected, onSelect, onDeselect, onExp
         store={store}
         selected={selected}
         ego={ego}
+        egoImages={egoImages}
         onClickNode={onSelect}
         onDoubleClickNode={onExpand}
         onClickEdge={(person, title) =>

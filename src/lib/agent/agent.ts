@@ -18,6 +18,9 @@ import type { TmdbClient } from "@/lib/tmdb/client";
 import { headshotTools } from "./tools";
 import { SYSTEM_PROMPT } from "./system";
 import { prehint, formatHints } from "./prehint";
+import { generateFollowups } from "./followups";
+import { writePagesForTurn } from "./pages";
+import type { CanvasNode } from "./events";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
 
@@ -29,6 +32,15 @@ export interface RunAgentOptions {
   messages: HeadshotUIMessage[];
   sessionId?: string;
   maxSteps?: number;
+  /** Cheap model for follow-ups and page writing; defaults to `model`. */
+  sideModel?: LanguageModel;
+  /** Generate follow-up chips after the answer (default true). */
+  followups?: boolean;
+  /**
+   * Called after the answer with the work that should outlive the response
+   * (page writing). The route runs it with Next's `after()`; tests await it.
+   */
+  schedule?: (work: () => Promise<void>) => void;
 }
 
 /** Adapts the UI stream writer to the tools' emitter interface. */
@@ -70,6 +82,7 @@ export function runAgent(opts: RunAgentOptions) {
         emit: emitterFn(new WriterEmitter(writer)),
         sessionId: opts.sessionId,
         question,
+        touched: [] as CanvasNode[],
       };
       const tools = headshotTools(ctx);
       const hints = formatHints(prehint(opts.graph, question));
@@ -88,10 +101,30 @@ export function runAgent(opts: RunAgentOptions) {
         toUIMessageStream({
           stream: result.stream,
           tools,
+          sendFinish: false,
           // Tool errors are our own messages ("X is not in the graph"); the client may see them.
           onError: (err) => (err instanceof Error ? err.message : String(err)),
         }),
       );
+
+      // After the answer: follow-up chips into the stream, pages after the response.
+      const answer = await Promise.resolve(result.text).catch(() => "");
+      const side = opts.sideModel ?? opts.model;
+      if (opts.followups !== false && answer) {
+        try {
+          const questions = await generateFollowups(side, question, answer);
+          if (questions.length) writer.write({ type: "data-followups", data: { questions } });
+        } catch (err) {
+          console.warn("[followups] failed:", err instanceof Error ? err.message : err);
+        }
+      }
+      writer.write({ type: "finish" });
+      if (answer && ctx.touched.length) {
+        const work = () =>
+          writePagesForTurn({ model: side, brain: opts.brain, question, answer, touched: ctx.touched, log: (m) => console.log(m) }).then(() => undefined);
+        if (opts.schedule) opts.schedule(work);
+        else await work();
+      }
     },
     onError: (err) => (err instanceof Error ? err.message : "Something went wrong"),
   });
