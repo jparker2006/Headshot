@@ -17,8 +17,9 @@ export function getBrain(): Promise<Brain> {
         const { PostgresBrain } = await import("./postgres");
         return new PostgresBrain(process.env.DATABASE_URL);
       }
-      console.log("[brain] DATABASE_URL unset; using in-memory brain");
-      return new MemoryBrain();
+      const file = process.env.HEADSHOT_BRAIN_FILE ?? (process.env.NODE_ENV === "test" ? undefined : "data/brain.json");
+      console.log(`[brain] DATABASE_URL unset; using in-memory brain${file ? ` persisted to ${file}` : ""}`);
+      return new MemoryBrain({ file });
     })();
   }
   return g.__headshotBrain;

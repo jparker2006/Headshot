@@ -161,7 +161,7 @@ export class BrainStore {
   private resize() {
     this.graph.forEachNode((node) => {
       const d = this.graph.degree(node);
-      this.graph.setNodeAttribute(node, "size", 2.5 + Math.log2(d + 1) * 1.6);
+      this.graph.setNodeAttribute(node, "size", 3.5 + Math.log2(d + 1) * 1.8);
     });
   }
 

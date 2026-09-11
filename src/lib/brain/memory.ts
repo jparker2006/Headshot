@@ -1,7 +1,20 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { Overlay, OverlayEdge } from "@/lib/graph/engine";
 import type { Brain, BrainEdge, BrainNode, BrainNodeInput, BrainSnapshot, Page } from "./types";
 
-/** In-memory brain. Used by tests and by `pnpm dev` when DATABASE_URL is unset. */
+interface Persisted {
+  nodes: BrainNode[];
+  edges: BrainEdge[];
+  pages: Page[];
+  sessions: Record<string, string[]>;
+  questions: { at: string; sessionId?: string; text: string }[];
+}
+
+/**
+ * In-memory brain. Used by tests and by `pnpm dev` when DATABASE_URL is unset.
+ * Pass `file` to persist to a JSON file (debounced) so dev restarts keep the brain.
+ */
 export class MemoryBrain implements Brain {
   private nodes = new Map<string, BrainNode>();
   private edges = new Map<string, BrainEdge>();
@@ -9,9 +22,49 @@ export class MemoryBrain implements Brain {
   private sessions = new Map<string, Set<string>>();
   private questions: { at: string; sessionId?: string; text: string }[] = [];
   private now: () => Date;
+  private file?: string;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(opts: { now?: () => Date } = {}) {
+  constructor(opts: { now?: () => Date; file?: string } = {}) {
     this.now = opts.now ?? (() => new Date());
+    this.file = opts.file;
+    if (this.file && existsSync(this.file)) this.loadFile(this.file);
+  }
+
+  private loadFile(file: string) {
+    try {
+      const p = JSON.parse(readFileSync(file, "utf8")) as Persisted;
+      for (const n of p.nodes ?? []) this.nodes.set(n.imdbId, n);
+      for (const e of p.edges ?? []) this.edges.set(`${e.personImdbId}|${e.titleImdbId}`, e);
+      for (const pg of p.pages ?? []) this.pages.set(pg.imdbId, pg);
+      for (const [sid, ids] of Object.entries(p.sessions ?? {})) this.sessions.set(sid, new Set(ids));
+      this.questions = p.questions ?? [];
+      console.log(`[brain] loaded ${this.nodes.size} nodes, ${this.edges.size} overlay edges, ${this.pages.size} pages from ${file}`);
+    } catch (err) {
+      console.warn(`[brain] could not read ${file}:`, err);
+    }
+  }
+
+  /** Debounced write; `flush()` forces it. */
+  private dirty() {
+    if (!this.file) return;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.flush(), 500);
+  }
+
+  flush(): void {
+    if (!this.file) return;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const data: Persisted = {
+      nodes: [...this.nodes.values()],
+      edges: [...this.edges.values()],
+      pages: [...this.pages.values()],
+      sessions: Object.fromEntries([...this.sessions].map(([k, v]) => [k, [...v]])),
+      questions: this.questions,
+    };
+    mkdirSync(path.dirname(this.file), { recursive: true });
+    writeFileSync(this.file, JSON.stringify(data));
   }
 
   async getOverlay(): Promise<Overlay> {
@@ -27,6 +80,7 @@ export class MemoryBrain implements Brain {
     for (const n of nodes) {
       if (this.nodes.has(n.imdbId)) continue;
       this.nodes.set(n.imdbId, { ...n, firstSeenAt: n.firstSeenAt ?? this.now().toISOString() });
+      this.dirty();
       if (sessionId) {
         let set = this.sessions.get(sessionId);
         if (!set) this.sessions.set(sessionId, (set = new Set()));
@@ -37,6 +91,7 @@ export class MemoryBrain implements Brain {
 
   async addEdges(edges: OverlayEdge[]): Promise<void> {
     for (const e of edges) this.edges.set(`${e.personImdbId}|${e.titleImdbId}`, { ...e, source: "overlay" });
+    this.dirty();
   }
 
   async getNode(imdbId: string): Promise<BrainNode | null> {
@@ -45,7 +100,10 @@ export class MemoryBrain implements Brain {
 
   async updateNode(imdbId: string, patch: Partial<Pick<BrainNode, "tmdbId" | "posterUrl" | "knownAs">>): Promise<void> {
     const n = this.nodes.get(imdbId);
-    if (n) Object.assign(n, patch);
+    if (n) {
+      Object.assign(n, patch);
+      this.dirty();
+    }
   }
 
   async readPage(imdbId: string): Promise<Page | null> {
@@ -62,6 +120,7 @@ export class MemoryBrain implements Brain {
       updatedAt: at,
     };
     this.pages.set(imdbId, page);
+    this.dirty();
     return page;
   }
 
@@ -80,6 +139,7 @@ export class MemoryBrain implements Brain {
 
   async recordQuestion(input: { sessionId?: string; text: string }): Promise<void> {
     this.questions.push({ at: this.now().toISOString(), ...input });
+    this.dirty();
   }
 
   /** No-op: embeddings need pgvector, which only the Postgres brain has. */
