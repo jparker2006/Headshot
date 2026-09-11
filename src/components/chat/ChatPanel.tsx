@@ -20,6 +20,8 @@ interface Props {
   /** A question another panel wants asked (e.g. "Ask about this"). */
   prefill: { text: string; nonce: number } | null;
   onSelectNode: (imdbId: string) => void;
+  /** Told whenever the thread has messages, so the shell can mark it as a chat rather than Tonight. */
+  onHasMessages?: (has: boolean) => void;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -47,7 +49,7 @@ const EXAMPLES = [
   "Connect Zendaya to Al Pacino",
 ];
 
-export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
+export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessages }: Props) {
   const initial = useMemo(() => loadMessages(threadId), [threadId]);
   const [input, setInput] = useState("");
   const [dismissedError, setDismissedError] = useState<Error | null>(null);
@@ -76,6 +78,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
   // Persist, and name the thread after its first question.
   useEffect(() => {
     if (messages.length === 0) return;
+    onHasMessages?.(true);
     saveMessages(threadId, messages);
     const first = messages.find((m) => m.role === "user");
     const text = first?.parts.find((p) => p.type === "text");

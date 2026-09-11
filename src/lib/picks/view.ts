@@ -5,6 +5,7 @@
  */
 import type { Pick } from "./engine";
 import type { CandidateMeta } from "./candidates";
+import { serviceDeepLink } from "./deeplink";
 
 export interface PickView {
   imdbId: string;
@@ -23,7 +24,11 @@ export interface PickView {
   progress?: { season: number; episodesWatched: number };
 }
 
+/** Bump when the stored shape changes so old rows recompute on the next read. */
+export const TONIGHT_VERSION = 2;
+
 export interface TonightData {
+  version?: number;
   picks: PickView[];
   deck: PickView[];
   generatedAt: string;
@@ -34,6 +39,7 @@ export interface TonightData {
 export function toPickView(pick: Pick, meta: CandidateMeta | undefined, services: number[]): PickView {
   const mine = (meta?.providers ?? []).filter((p) => p.id !== undefined && services.includes(p.id));
   const first = mine[0]?.name ?? null;
+  const deep = pick.onYourServices && mine[0]?.id !== undefined ? serviceDeepLink(mine[0].id, pick.name, pick.year) : null;
   const playLabel = pick.onYourServices && first ? `Play on ${first}` : pick.rentPrice ? `Rent${pick.rentPrice === "rent" ? "" : ` ${pick.rentPrice}`}` : meta?.link ? "Where to watch" : null;
   return {
     imdbId: pick.imdbId,
@@ -43,7 +49,7 @@ export function toPickView(pick: Pick, meta: CandidateMeta | undefined, services
     kind: pick.kind,
     reason: { text: pick.reason.text, viaImdbIds: pick.reason.viaImdbIds },
     playLabel,
-    playUrl: meta?.link ?? null,
+    playUrl: deep ?? meta?.link ?? null,
     onYourServices: pick.onYourServices,
     providerNames: (meta?.providers ?? []).map((p) => p.name),
     posterUrl: meta?.posterUrl ?? null,

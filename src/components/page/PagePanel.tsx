@@ -15,6 +15,7 @@ import { Markdown } from "@/components/chat/Markdown";
 import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
 import { useImages } from "@/components/chat/useImages";
 import { lookupName } from "@/components/chat/lookup";
+import { serviceDeepLink } from "@/lib/picks/deeplink";
 import { requireSignIn } from "@/components/auth/SignInGate";
 
 interface Neighbor {
@@ -135,6 +136,8 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const isPerson = data?.node.kind === "person";
   const signedOut = data ? data.taste === null : false;
   const onService = data?.taste?.onYourServices[0] ?? null;
+  const mineProvider = data?.extras?.kind === "title" ? data.extras.providers?.flatrate.find((p) => p.name === onService) : undefined;
+  const playHref = (mineProvider?.id !== undefined && data ? serviceDeepLink(mineProvider.id, data.node.name, data.node.year) : null) ?? (data?.extras?.kind === "title" ? data.extras.providers?.link ?? null : null);
   const poster = title?.posterUrl ?? person?.profileUrl ?? data?.node.posterUrl;
 
   // The face row: the cast for a title, the credits for a person.
@@ -166,7 +169,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const reason = data ? reasonParts(data, nameIds) : null;
 
   return (
-    <aside className="panel pointer-events-auto flex h-full w-[min(380px,calc(100vw-32px))] flex-col overflow-hidden" aria-label="Page">
+    <aside className="panel pointer-events-auto flex h-full w-full flex-col overflow-hidden" aria-label="Page">
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <span className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-faint">
           {data ? (isPerson ? "person" : data.node.titleType || "title") : "loading"}
@@ -228,9 +231,9 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
 
             {/* 3 — actions */}
             <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-3">
-              {providers?.link && (
+              {playHref && (
                 <a
-                  href={providers.link}
+                  href={playHref}
                   target="_blank"
                   rel="noreferrer"
                   className="flex h-9 items-center rounded-full bg-accent px-4 text-[13px] font-semibold text-black transition-[filter] duration-[120ms] hover:brightness-110"

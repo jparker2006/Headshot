@@ -11,7 +11,7 @@ import type { TasteStore } from "@/lib/taste/types";
 import { buildCandidates } from "./candidates";
 import { pickTonight, tasteFacts, type Filters, type WatchedRow } from "./engine";
 import { narrateReasons } from "./narrate";
-import { toPickView, type TonightData } from "./view";
+import { toPickView, TONIGHT_VERSION, type TonightData } from "./view";
 
 export interface TonightDeps {
   graph: IndustryGraph;
@@ -61,6 +61,7 @@ export async function computeTonight(deps: TonightDeps, userId: string, filters:
   await store.setTaste(userId, { vector: taste?.vector ?? null, facts });
 
   const data: TonightData = {
+    version: TONIGHT_VERSION,
     picks: result.picks.map((p) => toPickView(p, pool.meta.get(p.imdbId), services)),
     deck: result.deck.map((p) => toPickView(p, pool.meta.get(p.imdbId), services)),
     generatedAt: new Date().toISOString(),
@@ -74,6 +75,6 @@ export async function computeTonight(deps: TonightDeps, userId: string, filters:
 /** What /api/tonight returns: the stored result, computed once if there is none yet. */
 export async function loadTonight(deps: TonightDeps, userId: string): Promise<TonightData | null> {
   const stored = await deps.store.getTonight(userId);
-  if (stored) return stored.data as unknown as TonightData;
+  if (stored && (stored.data as { version?: number }).version === TONIGHT_VERSION) return stored.data as unknown as TonightData;
   return computeTonight(deps, userId);
 }

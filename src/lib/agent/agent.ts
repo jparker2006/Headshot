@@ -178,6 +178,9 @@ export function runAgent(opts: RunAgentOptions) {
         system,
         messages: await convertToModelMessages(opts.messages),
         tools,
+        // The chat model is a thinking model whose reasoning arrives interleaved with text on some
+        // providers ("The user asks… Let me call my_taste." leaking into the answer). Off for chat.
+        providerOptions: { openrouter: { reasoning: { enabled: false } } },
         stopWhen: isStepCount(opts.maxSteps ?? 12),
         onStepFinish: (step) => {
           const tools = step.toolCalls.map((c) => c.toolName).join(",") || "text";
