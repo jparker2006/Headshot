@@ -1,8 +1,10 @@
 import type { Brain } from "./types";
 import { MemoryBrain } from "./memory";
+import { resilientBrain } from "./retry";
 
 export * from "./types";
 export { MemoryBrain } from "./memory";
+export { resilientBrain, withRetry, isTransient } from "./retry";
 
 const g = globalThis as unknown as { __headshotBrain?: Promise<Brain> };
 
@@ -15,7 +17,7 @@ export function getBrain(): Promise<Brain> {
     g.__headshotBrain = (async () => {
       if (process.env.DATABASE_URL) {
         const { PostgresBrain } = await import("./postgres");
-        return new PostgresBrain(process.env.DATABASE_URL);
+        return resilientBrain(new PostgresBrain(process.env.DATABASE_URL));
       }
       const file = process.env.HEADSHOT_BRAIN_FILE ?? (process.env.NODE_ENV === "test" ? undefined : "data/brain.json");
       console.log(`[brain] DATABASE_URL unset; using in-memory brain${file ? ` persisted to ${file}` : ""}`);

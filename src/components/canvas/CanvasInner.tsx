@@ -42,8 +42,8 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
       labelSize: 12,
       labelWeight: "500",
       labelColor: { color: "#cfd0d6" },
-      labelRenderedSizeThreshold: 4,
-      labelDensity: 0.6,
+      labelRenderedSizeThreshold: 5,
+      labelDensity: 0.45,
       labelGridCellSize: 90,
       defaultEdgeType: "line",
       minCameraRatio: 0.03,
@@ -118,7 +118,17 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
     sigma.on("clickStage", () => onClickStage());
 
     const layout = new FA2Layout(graph, {
-      settings: { ...inferSettings(graph), gravity: 0.6, scalingRatio: 6, slowDown: 8, adjustSizes: true },
+      settings: {
+        ...inferSettings(graph),
+        // LinLog pulls real communities apart instead of one round blob.
+        linLogMode: true,
+        gravity: 0.35,
+        scalingRatio: 10,
+        slowDown: 6,
+        adjustSizes: true,
+        edgeWeightInfluence: 0.6,
+      },
+      getEdgeWeight: (_e, attrs) => (attrs.source === "overlay" ? 1 : attrs.tier === 1 ? 1 : 0.4),
     });
     layoutRef.current = layout;
 
@@ -146,7 +156,8 @@ export default function CanvasInner({ store, selected, onClickNode, onDoubleClic
     sigma.refresh({ skipIndexation: false });
     if (store.graph.order > 1) {
       layout.start();
-      const t = setTimeout(() => layout.stop(), state.loaded && state.version < 3 ? 4500 : 2200);
+      const big = store.graph.order > 400;
+      const t = setTimeout(() => layout.stop(), state.loaded && state.version < 3 ? (big ? 9000 : 4500) : 2200);
       return () => clearTimeout(t);
     }
   }, [state.version, state.loaded, store]);

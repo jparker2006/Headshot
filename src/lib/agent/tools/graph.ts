@@ -111,9 +111,10 @@ export function graphTools(ctx: AgentContext) {
     common_neighbors: tool({
       description:
         "Nodes adjacent to both inputs. Two titles → the people in both. Two people → the titles they share (same as shared_credits). Use this for 'who was in both X and Y?'.",
-      inputSchema: z.object({ a: imdbId, b: imdbId }),
-      execute: async ({ a, b }) => {
-        const nodes = graph.commonNeighbors(resolve(a), resolve(b));
+      inputSchema: z.object({ a: imdbId, b: imdbId, limit: z.number().int().min(1).max(60).default(40) }),
+      execute: async ({ a, b, limit }) => {
+        const all = graph.commonNeighbors(resolve(a), resolve(b));
+        const nodes = all.slice(0, limit);
         await touch(ctx, [graph.node(resolve(a)), graph.node(resolve(b)), ...nodes].map((n) => toCanvasNode(n)));
         for (const n of nodes) {
           for (const end of [a, b]) {
@@ -123,7 +124,7 @@ export function graphTools(ctx: AgentContext) {
           }
         }
         ctx.emit("focus", { imdbIds: [a, b, ...nodes.map((n) => n.imdbId)] });
-        return { common: nodes.map(describe) };
+        return { common: nodes.map(describe), total: all.length, truncated: all.length > nodes.length };
       },
     }),
 

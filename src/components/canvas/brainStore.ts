@@ -54,9 +54,9 @@ export const COLORS = {
   title: "#7d8cc4",
   accent: "#f4b63f",
   session: "#62e6b4",
-  edge: "rgba(255,255,255,0.10)",
-  edgeWeak: "rgba(255,255,255,0.05)",
-  edgeOverlay: "rgba(98,230,180,0.28)",
+  edge: "rgba(255,255,255,0.055)",
+  edgeWeak: "rgba(255,255,255,0.03)",
+  edgeOverlay: "rgba(98,230,180,0.18)",
 };
 
 export const edgeKey = (personImdbId: string, titleImdbId: string) => `${personImdbId}|${titleImdbId}`;
@@ -140,7 +140,7 @@ export class BrainStore {
     this.graph.addEdgeWithKey(edgeKey(person, title), person, title, {
       tier,
       source,
-      size: source === "overlay" ? 1.2 : tier === 1 ? 0.8 : 0.5,
+      size: source === "overlay" ? 0.9 : tier === 1 ? 0.6 : 0.4,
       color: source === "overlay" ? COLORS.edgeOverlay : tier === 1 ? COLORS.edge : COLORS.edgeWeak,
     });
   }
@@ -158,10 +158,12 @@ export class BrainStore {
     return { x: Math.cos(a) * r, y: Math.sin(a) * r };
   }
 
+  /** Node size grows with degree but shrinks a little as the brain gets crowded. */
   private resize() {
+    const crowd = Math.max(0.55, 1 - Math.log10(Math.max(this.graph.order, 10)) * 0.15);
     this.graph.forEachNode((node) => {
       const d = this.graph.degree(node);
-      this.graph.setNodeAttribute(node, "size", 3.5 + Math.log2(d + 1) * 1.8);
+      this.graph.setNodeAttribute(node, "size", (2.5 + Math.log2(d + 1) * 1.9) * crowd);
     });
   }
 
