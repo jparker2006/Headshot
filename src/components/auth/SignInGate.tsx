@@ -7,6 +7,7 @@
  */
 import { useCallback, useSyncExternalStore } from "react";
 import { authClient } from "@/lib/auth/client";
+import { meStore } from "./meStore";
 
 export interface SessionUser {
   id: string;
@@ -40,8 +41,9 @@ export function useSessionUser(): { user: SessionUser | null; loading: boolean }
     isPending?: boolean;
   };
   const raw = session.data?.user;
-  const user = raw?.id ? { id: raw.id, email: raw.email ?? null } : null;
-  return { user, loading: Boolean(session.isPending) && !user };
+  const me = useSyncExternalStore(meStore.subscribe, meStore.getSnapshot, meStore.getServerSnapshot);
+  const user = raw?.id ? { id: raw.id, email: raw.email ?? null } : me.user;
+  return { user, loading: (Boolean(session.isPending) || me.loading) && !user };
 }
 
 /** Sign out and return to the home screen, which works signed out. */
