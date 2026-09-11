@@ -51,6 +51,9 @@ importers:
         specifier: ^4.6.2
         version: 4.6.2
     devDependencies:
+      '@ai-sdk/provider':
+        specifier: 4.0.13
+        version: 4.0.13
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3

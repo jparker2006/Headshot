@@ -1,6 +1,6 @@
 import path from "node:path";
 import { MockLanguageModelV4 } from "ai/test";
-import { simulateReadableStream, type UIMessageChunk } from "ai";
+import { simulateReadableStream, type InferUIMessageChunk } from "ai";
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { buildGraph } from "../../scripts/build-graph/build";
 import { IndustryGraph, type PackedGraph } from "@/lib/graph";
@@ -56,8 +56,10 @@ export function userMessage(text: string): HeadshotUIMessage {
   return { id: "u1", role: "user", parts: [{ type: "text", text }] };
 }
 
-export async function collect(stream: ReadableStream<UIMessageChunk>): Promise<UIMessageChunk[]> {
-  const out: UIMessageChunk[] = [];
+export type Chunk = InferUIMessageChunk<HeadshotUIMessage>;
+
+export async function collect(stream: ReadableStream<Chunk>): Promise<Chunk[]> {
+  const out: Chunk[] = [];
   const reader = stream.getReader();
   for (;;) {
     const { done, value } = await reader.read();
@@ -67,6 +69,6 @@ export async function collect(stream: ReadableStream<UIMessageChunk>): Promise<U
   return out;
 }
 
-export function ofType<T extends UIMessageChunk["type"]>(chunks: UIMessageChunk[], type: T) {
-  return chunks.filter((c): c is Extract<UIMessageChunk, { type: T }> => c.type === type);
+export function ofType<T extends Chunk["type"]>(chunks: Chunk[], type: T) {
+  return chunks.filter((c): c is Extract<Chunk, { type: T }> => c.type === type);
 }
