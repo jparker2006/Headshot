@@ -1,0 +1,12 @@
+tconst	titleType	primaryTitle	originalTitle	isAdult	startYear	endYear	runtimeMinutes	genres
+tt0000001	movie	Apollo 13	Apollo 13	0	1995	\N	140	Adventure,Drama,History
+tt0000002	movie	Forrest Gump	Forrest Gump	0	1994	\N	142	Drama,Romance
+tt0000003	tvSeries	Late Night Show	Late Night Show	0	2001	\N	60	Comedy,Talk-Show
+tt0000004	tvSeries	Long Runner	Long Runner	0	1990	2015	45	Drama
+tt0000005	movie	Tiny Indie	Tiny Indie	0	2019	\N	80	Drama
+tt0000006	tvMiniSeries	Mini Series	Mini Series	0	2010	2010	55	Drama,War
+tt0000007	tvEpisode	Some Episode	Some Episode	0	2005	\N	22	Comedy
+tt0000008	short	Short Film	Short Film	0	2012	\N	10	Drama
+tt0000009	tvSeries	Good Series	Good Series	0	2018	2022	50	Drama,Thriller
+tt0000010	videoGame	Video Game	Video Game	0	2015	\N	\N	Action
+tt0000011	tvMovie	TV Movie	TV Movie	0	2008	\N	90	Drama

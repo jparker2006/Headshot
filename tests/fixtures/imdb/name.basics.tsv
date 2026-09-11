@@ -1,0 +1,11 @@
+nconst	primaryName	birthYear	deathYear	primaryProfession	knownForTitles
+nm0000001	Kevin Bacon	1958	\N	actor,producer	tt0000001
+nm0000002	Tom Hanks	1956	\N	actor,producer	tt0000002
+nm0000003	Bill Paxton	1955	2017	actor,director	tt0000001
+nm0000004	Gary Sinise	1955	\N	actor,director	tt0000002
+nm0000005	Jane Doe	1980	\N	actress	tt0000009
+nm0000006	Wes Director	1969	\N	director,writer	tt0000001
+nm0000007	Gus Guest	1975	\N	actor	tt0000004
+nm0000008	Ava Writer	1970	\N	writer	tt0000002
+nm0000009	Solo Person	1990	\N	actor	tt0000005
+nm0000010	Pat Producer	1960	\N	producer	tt0000001
