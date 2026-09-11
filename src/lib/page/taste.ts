@@ -20,6 +20,8 @@ export interface PageReason {
   text: string;
   /** People and titles the line cites, in the order it cites them. */
   viaImdbIds: string[];
+  /** Their names, so the client can link every cited name without a lookup. */
+  viaNames: string[];
 }
 
 export interface PageTaste {
@@ -61,12 +63,13 @@ function personReason(titles: NodeInfo[]): PageReason | null {
   if (titles.length === 0) return null;
   const shown = titles.slice(0, 3);
   const names = shown.map((t) => t.name);
-  if (titles.length <= 2) return { text: `you liked ${joinNames(names)}`, viaImdbIds: shown.map((t) => t.imdbId) };
+  if (titles.length <= 2) return { text: `you liked ${joinNames(names)}`, viaImdbIds: shown.map((t) => t.imdbId), viaNames: names };
   const all = titles.length === shown.length;
   const word = COUNT_WORDS[titles.length] ?? String(titles.length);
   return {
     text: all ? `you liked all ${word}: ${names.join(", ")}` : `you liked ${titles.length} of theirs: ${names.join(", ")}`,
     viaImdbIds: shown.map((t) => t.imdbId),
+    viaNames: names,
   };
 }
 
@@ -105,12 +108,17 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
   );
 
   const id = graph.idOf(node.imdbId);
+  // A title you already liked must not explain itself: without this every cast
+  // member "shares" this title with itself and the line becomes circular.
+  if (id !== undefined) likedIds.delete(id);
   let reason: PageReason | null = null;
   let likedPeople: string[] = [];
 
   if (id !== undefined && node.kind === "title") {
     const full = graphReason(graph, id, likedIds);
-    reason = full ? { text: full.text, viaImdbIds: full.viaImdbIds } : null;
+    reason = full
+      ? { text: full.text, viaImdbIds: full.viaImdbIds, viaNames: full.viaImdbIds.map((x) => graph.nodeByImdbId(x)?.name ?? "").filter(Boolean) }
+      : null;
     likedPeople = sharedPeople(graph, id, likedIds).map((p) => p.person.imdbId);
   } else if (id !== undefined && node.kind === "person") {
     // Their titles the user actually liked (not merely saved), most famous first.

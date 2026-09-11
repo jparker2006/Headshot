@@ -28,7 +28,7 @@ interface Neighbor {
 }
 
 interface PageTaste {
-  reason: { text: string; viaImdbIds: string[] } | null;
+  reason: { text: string; viaImdbIds: string[]; viaNames: string[] } | null;
   likedPeople: string[];
   rating: "liked" | "meh" | "unseen" | "want" | null;
   onYourServices: string[];
@@ -162,7 +162,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
     void req.catch(() => setBucket(data?.taste?.rating ?? null));
   };
 
-  const facts = data ? factsLine(data, title, person, onService, providers) : "";
+  const facts = data ? factsLine(data, title, person, onService, providers) : [];
   const reason = data ? reasonParts(data, nameIds) : null;
 
   return (
@@ -182,7 +182,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
           <>
             {/* 1 — poster, name, the one mono facts line */}
             <div className="flex gap-4">
-              <div className="aspect-[3/4] w-[96px] shrink-0 overflow-hidden rounded-[14px] bg-white/[0.04] ring-1 ring-line">
+              <div className="aspect-[3/4] w-[104px] shrink-0 overflow-hidden rounded-[14px] bg-white/[0.04] ring-1 ring-line">
                 {poster && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={poster} alt="" className="h-full w-full object-cover" />
@@ -193,7 +193,16 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                   {data.node.name}
                   {!isPerson && data.node.year ? <span className="ml-1.5 font-normal text-ink-faint tabular-nums">{data.node.year}</span> : null}
                 </h2>
-                {facts && <p className="font-mono text-[11px] leading-[1.5] text-ink-dim">{facts}</p>}
+                {facts.length > 0 && (
+                  <p className="font-mono text-[11px] leading-[1.5] text-ink-dim">
+                    {facts.map((f, i) => (
+                      <span key={i} className={f.strong ? "text-ink" : undefined}>
+                        {i > 0 ? " · " : ""}
+                        {f.text}
+                      </span>
+                    ))}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -218,7 +227,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
             )}
 
             {/* 3 — actions */}
-            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-3">
               {providers?.link && (
                 <a
                   href={providers.link}
@@ -372,30 +381,37 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   );
 }
 
-/** "2h 50 · 8.3 · crime, drama · on max" — one line, mono, never wrapped twice. */
+interface Fact {
+  text: string;
+  /** The one thing on the line that is in ink rather than ink-dim: "on max". */
+  strong: boolean;
+}
+
+/** "2h 50 · 8.3 · crime, drama · on max" — one line, mono, the service in ink. */
 function factsLine(
   data: PageData,
   title: Extract<PageData["extras"], { kind: "title" }> | null,
   person: Extract<PageData["extras"], { kind: "person" }> | null,
   onService: string | null,
   providers: { rent: Provider[]; buy: Provider[] } | null,
-): string {
-  const bits: string[] = [];
+): Fact[] {
+  const bits: Fact[] = [];
+  const plain = (text: string) => bits.push({ text, strong: false });
   if (data.node.kind === "person") {
-    if (person?.birthday) bits.push(`born ${person.birthday.slice(0, 4)}${person.placeOfBirth ? ` · ${person.placeOfBirth}` : ""}`);
-    if (person?.deathday) bits.push(`died ${person.deathday.slice(0, 4)}`);
-    if (data.node.degree) bits.push(`${data.node.degree} credits`);
-    return bits.join(" · ");
+    if (person?.birthday) plain(`born ${person.birthday.slice(0, 4)}${person.placeOfBirth ? ` · ${person.placeOfBirth}` : ""}`);
+    if (person?.deathday) plain(`died ${person.deathday.slice(0, 4)}`);
+    if (data.node.degree) plain(`${data.node.degree} credits`);
+    return bits;
   }
-  if (title?.seasons) bits.push(`${title.seasons} season${title.seasons === 1 ? "" : "s"}`);
-  else if (title?.runtime) bits.push(title.runtime >= 60 ? `${Math.floor(title.runtime / 60)}h ${title.runtime % 60}` : `${title.runtime}m`);
-  if (title && title.rating > 0) bits.push(title.rating.toFixed(1));
+  if (title?.seasons) plain(`${title.seasons} season${title.seasons === 1 ? "" : "s"}`);
+  else if (title?.runtime) plain(title.runtime >= 60 ? `${Math.floor(title.runtime / 60)}h ${title.runtime % 60}` : `${title.runtime}m`);
+  if (title && title.rating > 0) plain(title.rating.toFixed(1));
   const genres = title?.genres?.length ? title.genres : data.node.genres.split(",").filter(Boolean);
-  if (genres.length) bits.push(genres.slice(0, 2).join(", ").toLowerCase());
-  if (onService) bits.push(`on ${onService.toLowerCase()}`);
-  else if (providers?.rent.length) bits.push("rent");
-  else if (providers?.buy.length) bits.push("buy");
-  return bits.join(" · ");
+  if (genres.length) plain(genres.slice(0, 2).join(", ").toLowerCase());
+  if (onService) bits.push({ text: `on ${onService.toLowerCase()}`, strong: true });
+  else if (providers?.rent.length) plain("rent");
+  else if (providers?.buy.length) plain("buy");
+  return bits;
 }
 
 interface ReasonPart {
@@ -411,8 +427,15 @@ interface ReasonPart {
 function reasonParts(data: PageData, nameIds: Map<string, string>): ReasonPart[] | null {
   const taste = data.taste?.reason;
   if (taste) {
-    const cited = taste.viaImdbIds.map((id) => data.neighbors.find((n) => n.imdbId === id)?.name).filter((n): n is string => !!n);
-    return split(taste.text, cited.length ? cited : [...nameIds.keys()], nameIds);
+    // The cited names come back with the reason, and their ids alongside, so
+    // every name in the line links even when it is not on this page.
+    const ids = new Map(nameIds);
+    taste.viaNames.forEach((name, i) => {
+      const id = taste.viaImdbIds[i];
+      if (name && id) ids.set(name.toLowerCase(), id);
+    });
+    const cited = taste.viaNames.filter(Boolean);
+    return split(taste.text, cited.length ? cited : [...ids.keys()], ids);
   }
   const isPerson = data.node.kind === "person";
   const top = data.neighbors.filter((n) => (isPerson ? n.kind === "title" : n.kind === "person")).slice(0, 3);

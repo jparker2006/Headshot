@@ -23,6 +23,14 @@ export function useImages(ids: string[]): ImageMap {
       alive = false;
     };
   }, [key]);
-  return images;
+  // Merge the tab-wide cache at render time: a caller whose ids were all
+  // fetched by some other component never triggers the effect above, so state
+  // alone would stay empty for them.
+  const merged: ImageMap = {};
+  for (const id of ids) {
+    const hit = imageCache.get(id);
+    if (hit) merged[id] = hit;
+  }
+  return { ...merged, ...images };
 }
 

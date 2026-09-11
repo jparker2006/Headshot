@@ -39,6 +39,14 @@ describe("tasteForPage", () => {
     expect(taste!.likedPeople).toContain(SINISE);
   });
 
+  it("never lets a title you already liked explain itself", async () => {
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: APOLLO, kind: "title" } });
+    expect(taste!.rating).toBe("liked");
+    expect(taste!.reason?.text ?? "").not.toContain("Apollo 13");
+    expect(taste!.likedPeople).not.toContain(HANKS);
+  });
+
   it("has no reason when nothing on the title touches your taste", async () => {
     await store.upsertWatched("user-1", [{ titleImdbId: "tt0000005", rating: "liked", source: "swipe" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } });
