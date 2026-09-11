@@ -2,6 +2,8 @@
 
 *The shared brain of who was in what with whom.*
 
+Live: https://headshot-hazel.vercel.app
+
 Ask "how is Timothée Chalamet connected to Kevin Bacon?" or "who's the bald guy from the Apple show who was also in Parks and Rec?" and watch an agent resolve, traverse, and narrate the answer on a living graph that every question grows.
 
 See [SPEC.md](./SPEC.md) for the full design. Successor to [Cinema Daddy](https://github.com/jparker2006/CinemaDaddy).
