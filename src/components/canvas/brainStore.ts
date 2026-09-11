@@ -48,7 +48,9 @@ export interface BrainState {
   status: string | null;
   loaded: boolean;
   /** "Show me X on the brain": the app switches to this node's ego view. Nonce so repeats fire. */
-  egoRequest: { imdbId: string; nonce: number } | null;
+  egoRequest: { imdbId: string; nonce: number; reveal: boolean } | null;
+  /** A question another surface wants placed in the composer (deep link /?q=). */
+  prefillRequest: { text: string; nonce: number } | null;
 }
 
 export const COLORS = {
@@ -85,6 +87,7 @@ export class BrainStore {
     status: null,
     loaded: false,
     egoRequest: null,
+    prefillRequest: null,
   };
   private hopTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -251,7 +254,8 @@ export class BrainStore {
       }
       case "focus-ego": {
         const d = data as HeadshotDataParts["focus-ego"];
-        this.bump({ egoRequest: { imdbId: d.imdbId, nonce: Date.now() + Math.random() }, status: `Showing ${d.name}` });
+        this.requestEgo(d.imdbId);
+        this.bump({ status: `Showing ${d.name}` });
         return;
       }
       case "fast": {
@@ -268,6 +272,16 @@ export class BrainStore {
         return;
       }
     }
+  }
+
+  /** Ask the app to open a node's ego view and drawer. `reveal` also brings the panel forward on a phone. */
+  requestEgo(imdbId: string, opts: { reveal?: boolean } = {}) {
+    this.bump({ egoRequest: { imdbId, nonce: Date.now() + Math.random(), reveal: opts.reveal ?? true } });
+  }
+
+  /** Ask the app to put a question in the composer. */
+  requestPrefill(text: string) {
+    this.bump({ prefillRequest: { text, nonce: Date.now() + Math.random() } });
   }
 
   setFocus(imdbIds: string[]) {

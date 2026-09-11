@@ -8,6 +8,8 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "Headshot",
   description: "The shared brain of who was in what with whom.",
+  // Thread views are personal and not indexable; answer permalinks under /a override this.
+  robots: { index: false, follow: true },
 };
 
 export const viewport: Viewport = { themeColor: "#07080c" };

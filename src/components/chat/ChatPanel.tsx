@@ -8,6 +8,7 @@ import { Markdown } from "./Markdown";
 import { PathGraphic } from "./PathGraphic";
 import { FaceGrid } from "./FaceGrid";
 import { faceTapAction } from "./faceGridRule";
+import { egoDefaultFor, egoDelayMs } from "./egoDefault";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 
@@ -73,7 +74,13 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
       const type = part.type.replace(/^data-/, "") as keyof HeadshotDataParts;
       store.apply(type, part.data as never);
     },
-    onFinish: () => store.setStatus(null),
+    onFinish: ({ message, isAbort }) => {
+      store.setStatus(null);
+      if (isAbort) return;
+      // Ego view by default: after the path animation, center the panel on the first person.
+      const center = egoDefaultFor(message.parts);
+      if (center) setTimeout(() => store.requestEgo(center, { reveal: false }), egoDelayMs(message.parts));
+    },
     onError: () => store.setStatus(null),
   });
 
@@ -152,9 +159,11 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
             )}
             {resting && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-ink">{resting}</p>}
             {!busy && chips.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="scrollbar-thin -mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 pb-1 md:mx-0 md:flex-wrap md:px-0">
                 {chips.map((c) => (
-                  <Chip key={c} onClick={() => ask(c)}>{c}</Chip>
+                  <Chip key={c} onClick={() => ask(c)} scroll>
+                    {c}
+                  </Chip>
                 ))}
               </div>
             )}
@@ -216,11 +225,13 @@ function Thinking() {
   );
 }
 
-function Chip({ children, onClick }: { children: string; onClick: () => void }) {
+function Chip({ children, onClick, scroll = false }: { children: string; onClick: () => void; scroll?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-left text-[12.5px] text-ink transition hover:border-accent/70 hover:bg-accent/25"
+      className={`rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-left text-[12.5px] text-ink transition hover:border-accent/70 hover:bg-accent/25 ${
+        scroll ? "shrink-0 whitespace-nowrap md:shrink md:whitespace-normal" : ""
+      }`}
     >
       {children}
     </button>
@@ -249,6 +260,8 @@ function Message({
     );
   }
   const chosen = m.parts.find((p) => p.type === "data-chosen");
+  const stored = m.parts.find((p) => p.type === "data-answer");
+  const share = stored && stored.type === "data-answer" && stored.data.public ? `/a/${stored.data.slug}-${stored.data.id}` : null;
   return (
     <div className="rise space-y-2">
       {m.parts.map((part, i) => {
@@ -269,6 +282,27 @@ function Message({
         }
         return null;
       })}
+      {share && <ShareLink href={share} />}
+    </div>
+  );
+}
+
+function ShareLink({ href }: { href: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-3 text-[11.5px] text-ink-faint">
+      <a href={href} target="_blank" rel="noopener" className="hover:text-ink">
+        Share this answer ↗
+      </a>
+      <button
+        type="button"
+        className="hover:text-ink"
+        onClick={() => {
+          navigator.clipboard?.writeText(`${window.location.origin}${href}`).then(() => setCopied(true)).catch(() => {});
+        }}
+      >
+        {copied ? "Copied" : "Copy link"}
+      </button>
     </div>
   );
 }

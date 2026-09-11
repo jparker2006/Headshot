@@ -31,6 +31,18 @@ export function HeadshotApp() {
     void refreshBrain();
   }, [refreshBrain]);
 
+  // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer (permalink pages
+  // link here). The URL is an external system, so the effect only hands the request to the store.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    const open = params.get("open");
+    if (!q && !open) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (q) store.requestPrefill(q);
+    if (open && /^(nm|tt)\d+$/.test(open)) store.requestEgo(open);
+  }, [store]);
+
   // Guarantee one thread exists. Reads localStorage directly (client-only in effects)
   // rather than the rendered list, which is still the server snapshot during hydration.
   useEffect(() => {
@@ -38,9 +50,11 @@ export function HeadshotApp() {
   }, [threads]);
 
   const select = useCallback(
-    (id: string) => {
+    (id: string, reveal = true) => {
       setSelected(id);
-      setMobileView("brain");
+      // Phone: only an explicit tap or "show me" brings the brain forward; the ego-by-default
+      // after an answer stays behind the header button so the answer comes first.
+      if (reveal) setMobileView("brain");
       fetch(`/api/ego/${id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((e: EgoNetwork | null) => {
@@ -68,7 +82,14 @@ export function HeadshotApp() {
   const [seenEgoReq, setSeenEgoReq] = useState<number | null>(null);
   if (egoReq && egoReq.nonce !== seenEgoReq) {
     setSeenEgoReq(egoReq.nonce);
-    select(egoReq.imdbId);
+    select(egoReq.imdbId, egoReq.reveal);
+  }
+
+  const prefillReq = state.prefillRequest;
+  const [seenPrefillReq, setSeenPrefillReq] = useState<number | null>(null);
+  if (prefillReq && prefillReq.nonce !== seenPrefillReq) {
+    setSeenPrefillReq(prefillReq.nonce);
+    setPrefill({ text: prefillReq.text, nonce: prefillReq.nonce });
   }
 
   // A new answer lighting a path takes over the panel: leave ego mode so the brain shows it.
