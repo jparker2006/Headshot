@@ -20,7 +20,7 @@ import { ReasonLine, useTonight } from "@/components/tonight/TonightPanel";
 import { Numbers } from "./Numbers";
 import { LogField } from "./LogField";
 import { ServicesChecklist } from "./ServicesChecklist";
-import { LetterboxdImport } from "./LetterboxdImport";
+import { Imports } from "./Imports";
 import { BUCKET_LABEL, recentlyLogged, relativeTime } from "./recent";
 import type { WatchedRow } from "@/lib/taste/types";
 
@@ -66,9 +66,7 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
       </Section>
 
       <Section title="Imports">
-        <LetterboxdImport />
-        <p className="text-[13.5px] text-ink-faint">Netflix viewing activity — coming in the next chunk.</p>
-        <p className="text-[13.5px] text-ink-faint">IMDb ratings — coming in the next chunk.</p>
+        <Imports onDone={() => setLogged((n) => n + 1)} />
       </Section>
 
       <LaterPanel onSelectNode={onSelectNode} />

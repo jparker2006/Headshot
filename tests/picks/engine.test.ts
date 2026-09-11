@@ -105,6 +105,22 @@ describe("pick engine (pure)", () => {
     expect(r.rejected).toContainEqual({ imdbId: LONG_RUNNER, why: "wrong energy" }); // Drama only, light asked
   });
 
+  it("an imported `seen` title is watched: never walked, never picked, never dealt", async () => {
+    const graph = await fixtureGraph();
+    // Netflix import: Forrest Gump was watched, with no opinion attached.
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: GUMP, rating: "seen" }];
+    expect(walkCandidates(graph, watched).map((c) => c.imdbId)).not.toContain(GUMP);
+    const r = pickTonight({
+      graph,
+      watched,
+      services: [HULU],
+      candidates: [cand(GUMP), cand(MINI), cand(LATE_NIGHT)],
+    });
+    expect([...r.picks, ...r.deck].map((p) => p.imdbId)).not.toContain(GUMP);
+    // `seen` is not a like: it never becomes the reason for another pick.
+    expect([...r.picks, ...r.deck].every((p) => !p.reason.viaImdbIds.includes(GUMP))).toBe(true);
+  });
+
   it("the taste vector moves the ranking when candidates carry vectors", async () => {
     const graph = await fixtureGraph();
     const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: GUMP, rating: "liked" }];
@@ -131,5 +147,21 @@ describe("pick engine (pure)", () => {
     expect(f.tvShare).toBeCloseTo(1 / 3, 2);
     expect(f.avgRuntimeFinished).toBe(141);
     expect(f.genresAvoided).toEqual(expect.arrayContaining(["Talk-Show"]));
+  });
+
+  it("`seen` is finished with no opinion: it counts for tv share and runtime, never for people or eras", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [
+      { imdbId: APOLLO, rating: "liked" },
+      { imdbId: GUMP, rating: "liked" },
+      { imdbId: MINI, rating: "seen" }, // a 2010 series, Gary Sinise, imported
+    ];
+    const f = tasteFacts(graph, watched, { runtimes: new Map([[APOLLO, 140], [GUMP, 142], [MINI, 60]]) });
+    // Sinise is in all three, but the seen row is no evidence of taste.
+    expect(f.people[0].count).toBe(2);
+    expect(f.eras).toEqual({ "1990s": 2 });
+    // Finished facts count it: one of three titles is TV, and its runtime is in the average.
+    expect(f.tvShare).toBeCloseTo(1 / 3, 2);
+    expect(f.avgRuntimeFinished).toBe(114);
   });
 });

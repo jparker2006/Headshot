@@ -15,6 +15,13 @@ import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
  */
 export type Bucket = "liked" | "meh" | "unseen" | "want" | "seen";
 
+/**
+ * Buckets that mean "you already watched this": it is never picked and never
+ * dealt again. `seen` (a Netflix/IMDb import or a neutral log) counts here —
+ * finished, no opinion — while "want" stays a candidate so Later drains.
+ */
+const WATCHED_BUCKETS = new Set<Bucket>(["liked", "meh", "seen"]);
+
 export interface WatchedRow {
   imdbId: string;
   rating: Bucket;
@@ -176,7 +183,7 @@ function ordinal(n: number): string {
 export function walkCandidates(graph: IndustryGraph, watched: WatchedRow[], opts: { limit?: number; likedBuckets?: Bucket[] } = {}): { imdbId: string; proximity: number }[] {
   const likedBuckets = new Set(opts.likedBuckets ?? ["liked", "want"]);
   // Only things actually watched are off the table; a Later title ("want") stays a candidate so the list drains.
-  const seen = new Set(watched.filter((w) => w.rating === "liked" || w.rating === "meh").map((w) => w.imdbId));
+  const seen = new Set(watched.filter((w) => WATCHED_BUCKETS.has(w.rating)).map((w) => w.imdbId));
   const liked = watched.filter((w) => likedBuckets.has(w.rating)).map((w) => graph.idOf(w.imdbId)).filter((id): id is number => id !== undefined);
   const scores = new Map<number, number>();
   for (const w of watched) {
@@ -240,7 +247,7 @@ export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: nu
   const { graph, watched, services } = input;
   const likedBuckets = new Set(input.likedBuckets ?? ["liked", "want"]);
   const liked = new Set(watched.filter((w) => likedBuckets.has(w.rating)).map((w) => graph.idOf(w.imdbId)).filter((id): id is number => id !== undefined));
-  const seen = new Set(watched.filter((w) => w.rating === "liked" || w.rating === "meh").map((w) => w.imdbId));
+  const seen = new Set(watched.filter((w) => WATCHED_BUCKETS.has(w.rating)).map((w) => w.imdbId));
   const dismissed = new Set(input.dismissed ?? []);
   const filters = input.filters ?? {};
   const vector = input.taste?.vector ?? null;
@@ -324,21 +331,26 @@ export function tasteFacts(graph: IndustryGraph, watched: WatchedRow[], opts: { 
   let titles = 0;
   let runtimeSum = 0;
   let runtimeN = 0;
-  for (const w of liked) {
+  // People and decades come from likes only — a taste signal. Finished-style
+  // facts (film vs TV, runtime) also count `seen`: watched, no opinion.
+  for (const w of watched) {
+    const like = w.rating === "liked";
+    if (!like && w.rating !== "seen") continue;
     const id = graph.idOf(w.imdbId);
     if (id === undefined) continue;
     const node = graph.node(id);
     if (node.kind !== "title") continue;
     titles++;
     if (node.titleType !== "movie") tv++;
-    if (node.year) {
-      const decade = `${Math.floor(node.year / 10) * 10}s`;
-      eras[decade] = (eras[decade] ?? 0) + 1;
-    }
     const rt = opts.runtimes?.get(w.imdbId);
     if (rt) {
       runtimeSum += rt;
       runtimeN++;
+    }
+    if (!like) continue;
+    if (node.year) {
+      const decade = `${Math.floor(node.year / 10) * 10}s`;
+      eras[decade] = (eras[decade] ?? 0) + 1;
     }
     for (const c of graph.castOf(id)) if (c.node.kind === "person") counts.set(c.node.id, (counts.get(c.node.id) ?? 0) + 1);
   }

@@ -16,9 +16,18 @@ import {
   type MatchedRow,
   type TitleSearch,
 } from "./letterboxd";
+import { matchImdb, parseImdb, toImdbInputs, type ImdbRow } from "./imdb";
+import {
+  matchNetflix,
+  parseNetflix,
+  toNetflixInputs,
+  worstNetflixMatches,
+  type NetflixMatch,
+  type NetflixRow,
+} from "./netflix";
 import { computeNumbers, roleFromDepartment, type NumbersGraph, type NumbersPerson } from "./numbers";
 import { normalizeProviderIds, PROVIDERS } from "./providers";
-import type { TasteStore, WatchedRating, WatchedRow } from "./types";
+import type { ImportSource, TasteStore, WatchedRating, WatchedRow } from "./types";
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
@@ -70,12 +79,29 @@ function kindOf(node: NodeInfo | undefined): "movie" | "series" {
   return node && (node.titleType === "tvSeries" || node.titleType === "tvMiniSeries") ? "series" : "movie";
 }
 
+/** The three imports, and the label each one shows up as in an episode. */
+const IMPORT_SOURCES: Record<ImportSource, string> = {
+  letterboxd: "Letterboxd",
+  netflix: "Netflix",
+  imdb: "IMDb",
+};
+
+function isImportSource(value: unknown): value is ImportSource {
+  return typeof value === "string" && value in IMPORT_SOURCES;
+}
+
 /** One correction from the worst-matches review screen. */
 export interface ImportFix {
   name: string;
   year: number | null;
   /** The right title, or null to drop the row entirely ("that isn't it"). */
   imdbId: string | null;
+  /**
+   * The id the import actually wrote, when the client knows it. Cheaper and
+   * safer than re-deriving the wrong match from (name, year), which is the
+   * fallback for a client that does not send it.
+   */
+  from?: string | null;
   /**
    * Optional bucket for a row that had no match to inherit from. Rows that are
    * being re-pointed keep the bucket they already had.
@@ -86,29 +112,58 @@ export interface ImportFix {
 const unauthorized = () => Response.json({ error: "sign_in_required" }, { status: 401 });
 const badRequest = (message: string) => Response.json({ error: message }, { status: 400 });
 
-/** The three CSVs, from multipart form fields or from a JSON body of texts. */
-async function readFiles(req: Request): Promise<LetterboxdFiles | null> {
+/** What one upload turned out to be: Letterboxd's several CSVs, or one file. */
+type ImportPayload =
+  | { source: "letterboxd"; files: LetterboxdFiles }
+  | { source: "netflix" | "imdb"; text: string };
+
+const FILE_FIELDS = ["ratings", "watched", "watchlist", "diary", "file", "text", "netflix", "imdb"] as const;
+
+/** Every text-ish field of the upload, whether it arrived as multipart or JSON. */
+async function readFields(req: Request): Promise<Record<string, string> | null> {
+  const fields: Record<string, string> = {};
   const type = req.headers.get("content-type") ?? "";
   if (type.includes("multipart/form-data")) {
     const form = await req.formData();
-    const files: LetterboxdFiles = {};
-    for (const key of ["ratings", "watched", "watchlist", "diary"] as const) {
+    for (const key of [...FILE_FIELDS, "source"] as const) {
       const value = form.get(key);
-      if (typeof value === "string") files[key] = value;
-      else if (value && typeof (value as File).text === "function") files[key] = await (value as File).text();
+      if (typeof value === "string") fields[key] = value;
+      else if (value && typeof (value as File).text === "function") fields[key] = await (value as File).text();
     }
-    return files;
+    return fields;
   }
   try {
     const body = (await req.json()) as Record<string, unknown>;
-    const files: LetterboxdFiles = {};
-    for (const key of ["ratings", "watched", "watchlist", "diary"] as const) {
-      if (typeof body[key] === "string") files[key] = body[key] as string;
+    for (const key of [...FILE_FIELDS, "source"] as const) {
+      if (typeof body[key] === "string") fields[key] = body[key] as string;
     }
-    return files;
+    return fields;
   } catch {
     return null;
   }
+}
+
+/**
+ * Which import this upload is. `source` decides when the client says so, and
+ * Letterboxd is the default because its export has no such field and its file
+ * names are the ones the original upload form posts. IMDb's export is also
+ * called `ratings.csv`, which is exactly why `source` exists.
+ */
+async function readImport(req: Request): Promise<ImportPayload | "invalid" | "empty"> {
+  const fields = await readFields(req);
+  if (!fields) return "invalid";
+  const source: ImportSource = isImportSource(fields.source) ? fields.source : "letterboxd";
+
+  if (source === "letterboxd") {
+    const files: LetterboxdFiles = {};
+    for (const key of ["ratings", "watched", "watchlist", "diary"] as const) {
+      if (fields[key]) files[key] = fields[key];
+    }
+    return Object.keys(files).length === 0 ? "empty" : { source, files };
+  }
+
+  const text = fields[source] ?? fields.file ?? fields.text ?? fields.ratings ?? "";
+  return text.trim() ? { source, text } : "empty";
 }
 
 /** The review payload: enough for a human to say yes or fix it. */
@@ -122,6 +177,22 @@ function reviewItem(m: MatchedRow) {
     matchedName: m.name,
     matchedYear: m.year,
     confidence: m.confidence,
+  };
+}
+
+/** The same shape for a Netflix row, which has no year and no rating. */
+function netflixReviewItem(m: NetflixMatch) {
+  return {
+    name: m.row.title,
+    year: null,
+    rating: null,
+    list: "watched" as const,
+    imdbId: m.imdbId,
+    matchedName: m.name,
+    matchedYear: m.year,
+    confidence: m.confidence,
+    episodes: m.row.episodes,
+    season: m.row.season,
   };
 }
 
@@ -227,30 +298,70 @@ export function createTasteHandlers(deps: TasteDeps) {
     },
 
     /**
-     * POST /api/taste/import — parse, match, and store. Re-upload replaces:
-     * every previous `letterboxd` row is dropped first, so the import is the
-     * whole truth of what Letterboxd knows and nothing accumulates.
+     * POST /api/taste/import — parse, match, and store, for all three imports
+     * (SPEC v4). Re-upload replaces per source: every previous row of *this*
+     * source is dropped first, so an import is the whole truth of what that
+     * service knows and a Netflix upload never disturbs Letterboxd.
+     *
+     * The body is either Letterboxd's CSVs (`ratings` / `watched` /
+     * `watchlist` / `diary`) or `{ source, file }` — multipart or JSON, the
+     * same fields either way.
      */
-    async importLetterboxd(req: Request): Promise<Response> {
+    async importCsv(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      const files = await readFiles(req);
-      if (!files) return badRequest("Invalid JSON");
-      if (!files.ratings && !files.watched && !files.watchlist && !files.diary) {
-        return badRequest("no CSV files in the upload");
-      }
+      const payload = await readImport(req);
+      if (payload === "invalid") return badRequest("Invalid JSON");
+      if (payload === "empty") return badRequest("no CSV files in the upload");
 
       const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
-      const rows = parseLetterboxd(files);
-      const { matched, unmatched } = matchToGraph(graph, rows);
-      await store.replaceImport(who.userId, "letterboxd", toWatchedInputs(matched));
-      warmTitles(matched.map((m) => m.imdbId), graph);
+
+      let parsed = 0;
+      let ids: string[] = [];
+      let unmatched: { name: string; year: number | null; rating?: number | null; list?: string; imdbId?: string }[] = [];
+      let review: ReturnType<typeof reviewItem>[] | ReturnType<typeof netflixReviewItem>[] = [];
+
+      if (payload.source === "letterboxd") {
+        const rows = parseLetterboxd(payload.files);
+        const result = matchToGraph(graph, rows);
+        parsed = rows.length;
+        ids = result.matched.map((m) => m.imdbId);
+        unmatched = result.unmatched.map((r: LetterboxdRow) => ({ name: r.name, year: r.year, rating: r.rating, list: r.list }));
+        review = worstMatches(result.matched).map(reviewItem);
+        await store.replaceImport(who.userId, "letterboxd", toWatchedInputs(result.matched));
+      } else if (payload.source === "netflix") {
+        const rows = parseNetflix(payload.text);
+        const result = matchNetflix(graph, rows);
+        parsed = rows.length;
+        ids = result.matched.map((m) => m.imdbId);
+        unmatched = result.unmatched.map((r: NetflixRow) => ({ name: r.title, year: null }));
+        review = worstNetflixMatches(result.matched).map(netflixReviewItem);
+        await store.replaceImport(who.userId, "netflix", toNetflixInputs(result.matched));
+      } else {
+        const rows = parseImdb(payload.text);
+        const result = matchImdb(graph, rows);
+        parsed = rows.length;
+        ids = result.matched.map((m) => m.imdbId);
+        // Matched by id, so there is nothing for a human to second-guess; the
+        // ids the graph lacks are reported and dropped, never guessed by name.
+        unmatched = result.skipped.map((r: ImdbRow) => ({ name: r.name, year: r.year, imdbId: r.imdbId }));
+        await store.replaceImport(who.userId, "imdb", toImdbInputs(result.matched));
+      }
+
+      warmTitles(ids, graph);
+      await store.addEpisodes(who.userId, [
+        { kind: "log", titleImdbId: null, text: `imported ${ids.length} titles from ${IMPORT_SOURCES[payload.source]}` },
+      ]);
+      // New evidence: the memory is rewritten after the response has gone out.
+      rewriteMemory(who.userId);
 
       return Response.json({
-        parsed: rows.length,
-        imported: matched.length,
-        unmatched: unmatched.map((r: LetterboxdRow) => ({ name: r.name, year: r.year, rating: r.rating, list: r.list })),
-        review: worstMatches(matched).map(reviewItem),
+        source: payload.source,
+        parsed,
+        imported: ids.length,
+        skipped: unmatched.length,
+        unmatched,
+        review,
       });
     },
 
@@ -338,7 +449,7 @@ export function createTasteHandlers(deps: TasteDeps) {
     async confirmImport(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      let body: { fixes?: unknown };
+      let body: { fixes?: unknown; source?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {
@@ -346,6 +457,7 @@ export function createTasteHandlers(deps: TasteDeps) {
       }
       const fixes = Array.isArray(body.fixes) ? (body.fixes as ImportFix[]) : null;
       if (!fixes) return badRequest("fixes required");
+      const source: ImportSource = isImportSource(body.source) ? body.source : "letterboxd";
 
       const [store, graph] = await Promise.all([deps.store(), deps.graph()]);
       const existing = new Map((await store.listWatched(who.userId)).map((r) => [r.titleImdbId, r]));
@@ -361,7 +473,11 @@ export function createTasteHandlers(deps: TasteDeps) {
           watchedAt: null,
           list: "watched",
         };
-        const wrongId = matchToGraph(graph, [probe]).matched[0]?.imdbId ?? null;
+        const wrongId =
+          (typeof fix.from === "string" ? fix.from : null) ??
+          (source === "netflix"
+            ? (matchNetflix(graph, [{ title: fix.name, date: null, series: false, episodes: 0, season: null }]).matched[0]?.imdbId ?? null)
+            : (matchToGraph(graph, [probe]).matched[0]?.imdbId ?? null));
         const prev = wrongId ? existing.get(wrongId) : undefined;
 
         if (wrongId && wrongId !== fix.imdbId) {
@@ -375,9 +491,11 @@ export function createTasteHandlers(deps: TasteDeps) {
             titleImdbId: fix.imdbId,
             // The corrected row keeps the bucket it already had; only a row
             // that never matched needs the client to say which bucket it is.
-            rating: prev?.rating ?? fix.rating ?? "meh",
-            source: "letterboxd",
+            rating: prev?.rating ?? fix.rating ?? (source === "netflix" ? "seen" : "meh"),
+            source,
             watchedAt: prev?.watchedAt ?? null,
+            season: prev?.season ?? null,
+            episodesWatched: prev?.episodesWatched ?? 0,
           },
         ]);
         corrected++;

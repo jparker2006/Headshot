@@ -101,7 +101,7 @@ export function parseCsv(text: string): string[][] {
 }
 
 /** CSV text → objects keyed by the header row, with headers trimmed. */
-function parseTable(text: string): Record<string, string>[] {
+export function parseTable(text: string): Record<string, string>[] {
   const rows = parseCsv(text);
   if (rows.length === 0) return [];
   const header = rows[0].map((h) => h.trim());

@@ -2,21 +2,20 @@
 /**
  * The shell: a collapsible ChatGPT-shaped sidebar, one reading column, and a
  * title drawer that slides in from the right when a name or poster is tapped.
- * Surfaces in the column: You (home, SPEC v4), a thread, Later, and Your
- * taste. The graph canvas is not part of the product surface; /brain keeps it
- * for the curious.
+ * Two surfaces only (SPEC v4): You (home — the log, the memory, tonight, the
+ * numbers, later) and a thread. The graph canvas is not part of the product
+ * surface and nothing links to it; /brain keeps it for the curious.
  *
- * One way in: the You page carries a composer, and anything typed there (or
- * asked from the drawer, or arriving on /?q=) opens a thread with the question
- * already sent.
+ * One way in: You carries a composer, and anything typed there (or asked from
+ * the drawer, or arriving on /?q=) opens a thread with the question already
+ * sent. Threads are created lazily, so History never lists an empty one.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { PagePanel } from "./page/PagePanel";
-import { Sidebar, type Surface } from "./Sidebar";
-import { LaterPanel } from "./tonight/LaterPanel";
-import { TastePanel } from "./tonight/TastePanel";
+import { Sidebar } from "./Sidebar";
+import type { Surface } from "./navModel";
 import { YouPage } from "./you/YouPage";
 import { Composer } from "./you/Composer";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
@@ -32,6 +31,8 @@ export function HeadshotApp() {
   const [surface, setSurface] = useState<Surface>("you");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  // Deleting the open thread drops us home rather than onto an empty column.
+  const shown: Surface = surface === "chat" && threadId ? "chat" : "you";
 
   // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer.
   useEffect(() => {
@@ -43,10 +44,6 @@ export function HeadshotApp() {
     if (q) store.requestPrefill(q);
     if (open && /^(nm|tt)\d+$/.test(open)) store.requestEgo(open);
   }, [store]);
-
-  useEffect(() => {
-    if (listThreads().length === 0) createThread();
-  }, [threads]);
 
   /** Open a person or title in the drawer. */
   const select = useCallback((id: string) => {
@@ -62,18 +59,20 @@ export function HeadshotApp() {
     select(egoReq.imdbId);
   }
 
-  /** Open a thread with `text` already asked: the composer, the drawer, /?q=. */
-  const ask = useCallback(
-    (text: string) => {
-      const empty = listThreads().find((t) => t.title === "New thread");
-      const t = empty ?? createThread();
-      setChosenThread(t.id);
-      setPrefill({ text, nonce: Date.now(), send: true });
-      setSurface("chat");
-      setMobileNav(false);
-    },
-    [],
-  );
+  /**
+   * Open a thread with `text` already asked: the composer, the drawer, /?q=.
+   * A thread is only ever created here — there is no "New chat" button — so an
+   * empty "New thread" exists for at most the moment before its first question
+   * names it.
+   */
+  const ask = useCallback((text: string) => {
+    const empty = listThreads().find((t) => t.title === "New thread");
+    const t = empty ?? createThread();
+    setChosenThread(t.id);
+    setPrefill({ text, nonce: Date.now(), send: true });
+    setSurface("chat");
+    setMobileNav(false);
+  }, []);
 
   // A question from /?q= or the agent opens a thread, which writes to storage
   // — a side effect, so it happens in an effect rather than during render. The
@@ -95,15 +94,9 @@ export function HeadshotApp() {
   );
 
   const goYou = () => {
-    // Home is You: the log, the memory, tonight's row, the numbers.
+    // Home is You: the log, the memory, tonight's row, the numbers. No thread
+    // is created on the way back.
     setSurface("you");
-    setMobileNav(false);
-    store.clearHighlight();
-  };
-  const newChat = () => {
-    const t = createThread();
-    setChosenThread(t.id);
-    setSurface("chat");
     setMobileNav(false);
     store.clearHighlight();
   };
@@ -115,21 +108,12 @@ export function HeadshotApp() {
 
   const sidebar = (
     <Sidebar
-      surface={surface}
+      surface={shown}
       threads={threads.filter((t) => t.title !== "New thread")}
       activeId={threadId}
       collapsed={collapsed}
       onToggle={() => setCollapsed((c) => !c)}
-      onNew={newChat}
       onYou={goYou}
-      onLater={() => {
-        setSurface("later");
-        setMobileNav(false);
-      }}
-      onTaste={() => {
-        setSurface("taste");
-        setMobileNav(false);
-      }}
       onSelectThread={openThread}
       onDeleteThread={(id) => deleteThread(id)}
     />
@@ -146,41 +130,25 @@ export function HeadshotApp() {
       )}
 
       <main className="relative flex h-full min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-line px-3 py-2 md:hidden">
+        <div className="flex items-center gap-3 border-b border-line px-3 py-2 md:hidden">
           <button onClick={() => setMobileNav(true)} className="text-[13px] text-ink-dim" aria-label="Menu">
             ☰
           </button>
           <span className="text-[14px] font-semibold text-ink">Headshot</span>
-          <button onClick={newChat} className="text-[13px] text-ink-dim">
-            + New
-          </button>
         </div>
-        {surface === "you" && (
+        {shown === "you" && (
           <>
             <div className="scrollbar-thin flex-1 overflow-y-auto">
               <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
                 <YouPage onSelectNode={select} onAsk={ask} />
               </div>
             </div>
+            {/* The composer is on the landing signed in or out: trivia chat is open to everyone. */}
             <Composer onSubmit={ask} />
           </>
         )}
-        {surface === "chat" && threadId && (
+        {shown === "chat" && threadId && (
           <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} />
-        )}
-        {surface === "later" && (
-          <div className="scrollbar-thin flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
-              <LaterPanel onSelectNode={select} />
-            </div>
-          </div>
-        )}
-        {surface === "taste" && (
-          <div className="scrollbar-thin flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[760px] px-6 py-8 md:px-8">
-              <TastePanel onSelectNode={select} />
-            </div>
-          </div>
         )}
       </main>
 

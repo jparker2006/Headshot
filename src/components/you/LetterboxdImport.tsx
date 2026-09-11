@@ -6,7 +6,7 @@
  */
 import { useCallback, useState } from "react";
 
-interface ReviewItem {
+export interface ReviewItem {
   name: string;
   year: number | null;
   rating: number | null;
@@ -24,7 +24,7 @@ interface ImportResult {
   review: ReviewItem[];
 }
 
-interface SearchHit {
+export interface SearchHit {
   imdbId: string;
   name: string;
   year: number;
@@ -76,14 +76,14 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
     const list = result?.review ?? [];
     const payload = list
       .filter((item) => fixes[item.name] !== undefined && fixes[item.name] !== item.imdbId)
-      .map((item) => ({ name: item.name, year: item.year, imdbId: fixes[item.name] }));
+      .map((item) => ({ name: item.name, year: item.year, from: item.imdbId, imdbId: fixes[item.name] }));
     setBusy(true);
     try {
       if (payload.length > 0) {
         await fetch("/api/taste/import/confirm", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ fixes: payload }),
+          body: JSON.stringify({ source: "letterboxd", fixes: payload }),
         });
       }
       setDone(result?.imported ?? 0);
@@ -185,7 +185,7 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
 }
 
 /** One worst-match row: what we guessed, and a search box to say otherwise. */
-function ReviewRow({
+export function ReviewRow({
   item,
   chosen,
   onChoose,

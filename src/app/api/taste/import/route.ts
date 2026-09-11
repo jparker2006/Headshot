@@ -3,4 +3,4 @@ import { tasteHandlers } from "@/lib/taste/deps";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export const POST = tasteHandlers.importLetterboxd;
+export const POST = tasteHandlers.importCsv;

@@ -1,0 +1,9 @@
+Const,Your Rating,Date Rated,Title,URL,Title Type,IMDb Rating,Runtime (mins),Year,Genres,Num Votes,Release Date,Directors
+tt0000001,9,2026-02-01,Apollo 13,https://www.imdb.com/title/tt0000001/,Movie,7.7,140,1995,"Adventure, Drama, History",300000,1995-06-30,Ron Howard
+tt0000002,6,2026-01-15,Forrest Gump,https://www.imdb.com/title/tt0000002/,Movie,8.8,142,1994,"Drama, Romance",2000000,1994-07-06,Robert Zemeckis
+tt0000003,7,2025-12-20,Late Night Show,https://www.imdb.com/title/tt0000003/,TV Series,6.5,60,2001,"Comedy, Talk-Show",5000,2001-09-10,
+tt0000004,4,2025-11-02,Long Runner,https://www.imdb.com/title/tt0000004/,TV Series,7.0,45,1990,Drama,3000,1990-01-08,
+tt0000009,10,2025-10-30,Good Series,https://www.imdb.com/title/tt0000009/,TV Series,8.2,50,2018,"Drama, Thriller",10000,2018-03-01,
+tt0000006,8,2025-09-14,Mini Series,https://www.imdb.com/title/tt0000006/,TV Mini Series,8.5,55,2010,"Drama, War",20000,2010-04-11,
+tt8888888,3,2025-08-01,A Film The Graph Has Never Heard Of,https://www.imdb.com/title/tt8888888/,Movie,5.2,88,2019,Drama,900,2019-02-17,Someone Else
+tt9999999,9,2025-07-04,"Nowhere, Nebraska",https://www.imdb.com/title/tt9999999/,Movie,7.1,101,2021,Drama,1200,2021-05-05,Nobody At All

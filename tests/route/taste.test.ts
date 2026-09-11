@@ -9,6 +9,8 @@ import { fixtureGraph } from "../agent/helpers";
 
 const DIR = path.join(__dirname, "..", "fixtures", "letterboxd");
 const read = (name: string) => fs.readFileSync(path.join(DIR, name), "utf8");
+const IMPORTS = path.join(__dirname, "..", "fixtures", "imports");
+const readImport = (name: string) => fs.readFileSync(path.join(IMPORTS, name), "utf8");
 
 let store: MemoryTasteStore;
 let titles: MemoryTitlesStore;
@@ -54,7 +56,9 @@ describe("taste routes: sign-in", () => {
       handlers.listWatched(get()),
       handlers.getServices(get()),
       handlers.putServices(json({ providerIds: [8] }, "PUT")),
-      handlers.importLetterboxd(json({ ratings: read("ratings.csv") })),
+      handlers.importCsv(json({ ratings: read("ratings.csv") })),
+      handlers.importCsv(json({ source: "netflix", file: readImport("netflix.csv") })),
+      handlers.importCsv(json({ source: "imdb", file: readImport("imdb.csv") })),
       handlers.confirmImport(json({ fixes: [] })),
       handlers.log(json({ query: "Apollo" })),
       handlers.log(json({ imdbId: "tt0000001", rating: "liked" })),
@@ -98,7 +102,7 @@ describe("taste routes: import", () => {
   const files = { ratings: read("ratings.csv"), watched: read("watched.csv"), watchlist: read("watchlist.csv") };
 
   it("imports the fixture export and reports counts, unmatched rows, and a review list", async () => {
-    const res = await handlers.importLetterboxd(json(files));
+    const res = await handlers.importCsv(json(files));
     expect(res.status).toBe(200);
     const body = await res.json();
 
@@ -124,7 +128,7 @@ describe("taste routes: import", () => {
     const form = new FormData();
     form.set("ratings", new File([files.ratings], "ratings.csv", { type: "text/csv" }));
     form.set("watchlist", new File([files.watchlist], "watchlist.csv", { type: "text/csv" }));
-    const res = await handlers.importLetterboxd(
+    const res = await handlers.importCsv(
       new Request("https://headshot.test/api/taste/import", { method: "POST", body: form }),
     );
     expect(res.status).toBe(200);
@@ -132,14 +136,116 @@ describe("taste routes: import", () => {
   });
 
   it("re-upload replaces the previous import", async () => {
-    await handlers.importLetterboxd(json(files));
-    await handlers.importLetterboxd(json({ ratings: "Date,Name,Year,Letterboxd URI,Rating\n2024-01-05,Apollo 13,1995,u,4.5\n" }));
+    await handlers.importCsv(json(files));
+    await handlers.importCsv(json({ ratings: "Date,Name,Year,Letterboxd URI,Rating\n2024-01-05,Apollo 13,1995,u,4.5\n" }));
     expect((await store.listWatched("user-1")).map((r) => r.titleImdbId)).toEqual(["tt0000001"]);
   });
 
   it("refuses an upload with no CSVs in it", async () => {
-    const res = await handlers.importLetterboxd(json({}));
+    const res = await handlers.importCsv(json({}));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("taste routes: import — Netflix", () => {
+  const body = () => json({ source: "netflix", file: readImport("netflix.csv") });
+
+  it("collapses episodes, writes `seen` rows, and reports what it skipped", async () => {
+    const res = await handlers.importCsv(body());
+    expect(res.status).toBe(200);
+    const out = await res.json();
+
+    expect(out).toMatchObject({ source: "netflix", parsed: 8, imported: 6, skipped: 2 });
+    expect(out.unmatched.map((r: { name: string }) => r.name).sort()).toEqual(["Good Night, and Good Luck.", "Tiny Indie"]);
+
+    const stored = await store.listWatched("user-1");
+    expect(stored).toHaveLength(6);
+    // Netflix never says you liked it.
+    expect(stored.every((r) => r.rating === "seen" && r.source === "netflix")).toBe(true);
+    expect(stored.find((r) => r.titleImdbId === "tt0000009")).toMatchObject({ season: 2, episodesWatched: 3 });
+  });
+
+  it("replaces only the Netflix rows on re-upload", async () => {
+    await handlers.importCsv(json({ ratings: read("ratings.csv"), watched: read("watched.csv"), watchlist: read("watchlist.csv") }));
+    await handlers.importCsv(body());
+    await handlers.importCsv(json({ source: "netflix", file: "Title,Date\nApollo 13,12/25/25\n" }));
+
+    const rows = await store.listWatched("user-1");
+    expect(rows.filter((r) => r.source === "netflix").map((r) => r.titleImdbId)).toEqual(["tt0000001"]);
+    // The one Letterboxd title Netflix never saw is untouched by either upload.
+    expect(rows.filter((r) => r.source === "letterboxd").map((r) => r.titleImdbId)).toEqual(["tt0000004"]);
+  });
+
+  it("accepts a multipart upload and records one episode", async () => {
+    const form = new FormData();
+    form.set("source", "netflix");
+    form.set("file", new File([readImport("netflix.csv")], "NetflixViewingHistory.csv", { type: "text/csv" }));
+    const res = await handlers.importCsv(new Request("https://headshot.test/api/taste/import", { method: "POST", body: form }));
+    expect((await res.json()).imported).toBe(6);
+
+    const episodes = await store.listEpisodes("user-1");
+    expect(episodes).toHaveLength(1);
+    expect(episodes[0]).toMatchObject({ kind: "log", titleImdbId: null, text: "imported 6 titles from Netflix" });
+  });
+
+  it("warms the titles cache for what it matched", async () => {
+    await handlers.importCsv(body());
+    await Promise.all(scheduled);
+    expect((await titles.getMany(["tt0000009"])).get("tt0000009")).toMatchObject({ name: "Good Series" });
+  });
+
+  it("re-points a wrong Netflix match from the review screen", async () => {
+    await handlers.importCsv(body());
+    const res = await handlers.confirmImport(
+      json({ source: "netflix", fixes: [{ name: "TV Movie", year: null, from: "tt0000011", imdbId: null }] }),
+    );
+    expect(await res.json()).toMatchObject({ corrected: 0, dropped: 1 });
+    expect((await store.listWatched("user-1")).some((r) => r.titleImdbId === "tt0000011")).toBe(false);
+  });
+});
+
+describe("taste routes: import — IMDb", () => {
+  const body = () => json({ source: "imdb", file: readImport("imdb.csv") });
+
+  it("maps ids and thresholds, and reports the ids the graph lacks", async () => {
+    const res = await handlers.importCsv(body());
+    expect(res.status).toBe(200);
+    const out = await res.json();
+
+    expect(out).toMatchObject({ source: "imdb", parsed: 8, imported: 6, skipped: 2 });
+    // Matched by id, so there is nothing for a human to check.
+    expect(out.review).toEqual([]);
+    expect(out.unmatched.map((r: { imdbId: string }) => r.imdbId)).toEqual(["tt8888888", "tt9999999"]);
+
+    const rows = new Map((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r]));
+    expect([...rows.values()].every((r) => r.source === "imdb")).toBe(true);
+    expect(rows.get("tt0000001")?.rating).toBe("liked");
+    expect(rows.get("tt0000003")?.rating).toBe("liked");
+    expect(rows.get("tt0000002")?.rating).toBe("meh");
+    expect(rows.get("tt0000004")?.rating).toBe("meh");
+    expect(rows.get("tt0000001")?.watchedAt).toBe("2026-02-01T00:00:00.000Z");
+  });
+
+  it("replaces only the IMDb rows on re-upload, and logs one episode each time", async () => {
+    await handlers.importCsv(json({ source: "netflix", file: readImport("netflix.csv") }));
+    await handlers.importCsv(body());
+    await handlers.importCsv(
+      json({ source: "imdb", file: "Const,Your Rating,Date Rated,Title,Year\ntt0000002,9,2026-04-01,Forrest Gump,1994\n" }),
+    );
+
+    const rows = await store.listWatched("user-1");
+    expect(rows.filter((r) => r.source === "imdb").map((r) => r.titleImdbId)).toEqual(["tt0000002"]);
+    expect(rows.filter((r) => r.source === "netflix").length).toBeGreaterThan(0);
+
+    expect((await store.listEpisodes("user-1")).map((e) => e.text)).toEqual([
+      "imported 1 titles from IMDb",
+      "imported 6 titles from IMDb",
+      "imported 6 titles from Netflix",
+    ]);
+  });
+
+  it("refuses an upload with no CSV in it", async () => {
+    expect((await handlers.importCsv(json({ source: "imdb" }))).status).toBe(400);
   });
 });
 
@@ -147,7 +253,7 @@ describe("taste routes: import confirm", () => {
   const files = { ratings: read("ratings.csv"), watched: read("watched.csv"), watchlist: read("watchlist.csv") };
 
   it("re-points a wrong match and keeps the bucket it already had", async () => {
-    await handlers.importLetterboxd(json(files));
+    await handlers.importCsv(json(files));
     // "Late Night" matched Late Night Show at 0.5; the user says it is Long Runner.
     const res = await handlers.confirmImport(json({ fixes: [{ name: "Late Night", year: 2001, imdbId: "tt0000004" }] }));
     expect(res.status).toBe(200);
@@ -160,14 +266,14 @@ describe("taste routes: import confirm", () => {
   });
 
   it("drops a row when the user says none of the matches are it", async () => {
-    await handlers.importLetterboxd(json(files));
+    await handlers.importCsv(json(files));
     const res = await handlers.confirmImport(json({ fixes: [{ name: "Mini Series", year: 2011, imdbId: null }] }));
     expect(await res.json()).toMatchObject({ corrected: 0, dropped: 1 });
     expect((await store.listWatched("user-1")).some((r) => r.titleImdbId === "tt0000006")).toBe(false);
   });
 
   it("files a previously unmatched row under the bucket the client names", async () => {
-    await handlers.importLetterboxd(json(files));
+    await handlers.importCsv(json(files));
     const res = await handlers.confirmImport(
       json({ fixes: [{ name: "Good Night, and Good Luck.", year: 2005, imdbId: "tt0000011", rating: "liked" }] }),
     );
@@ -263,7 +369,7 @@ describe("taste routes: log", () => {
   });
 
   it("an import warms the titles cache for everything it matched", async () => {
-    await handlers.importLetterboxd(json({ ratings: read("ratings.csv") }));
+    await handlers.importCsv(json({ ratings: read("ratings.csv") }));
     await Promise.all(scheduled);
     const cached = await titles.getMany(["tt0000001", "tt0000002"]);
     expect(cached.get("tt0000001")).toMatchObject({ name: "Apollo 13" });

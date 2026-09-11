@@ -1,15 +1,17 @@
 "use client";
 /**
  * The sidebar, ChatGPT-shaped: collapsible to a 56px strip of icons, expanded
- * to 260px with You (home), New chat, Tonight, Later, then the history list,
- * and the account at the bottom as a menu (never a one-tap sign-out).
- * Chunk B cuts everything but You and History.
+ * to 260px. SPEC v4 cuts it to three things — You (home), History, and the
+ * account row at the bottom as a menu (never a one-tap sign-out).
+ *
+ * The nav itself is decided in `navModel.ts` so the cuts are testable.
  */
 import { useState } from "react";
 import type { ThreadMeta } from "./chat/threads";
 import { requireSignIn, signOut, useSessionUser } from "./auth/SignInGate";
+import { accountModel, navItems, type Surface } from "./navModel";
 
-export type Surface = "you" | "later" | "taste" | "chat";
+export type { Surface };
 
 interface Props {
   surface: Surface;
@@ -17,27 +19,18 @@ interface Props {
   activeId: string | null;
   collapsed: boolean;
   onToggle: () => void;
-  onNew: () => void;
-  /** Home. Tonight points here too until chunk B removes that item. */
+  /** Home. */
   onYou: () => void;
-  onLater: () => void;
-  onTaste: () => void;
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
 }
 
-export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew, onYou, onLater, onTaste, onSelectThread, onDeleteThread }: Props) {
+export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou, onSelectThread, onDeleteThread }: Props) {
   const [menu, setMenu] = useState(false);
   const { user, loading } = useSessionUser();
 
-  const nav = [
-    { key: "you", label: "You", onClick: onYou, icon: <Icon.home />, active: surface === "you" },
-    { key: "new", label: "New chat", onClick: onNew, icon: <Icon.plus />, active: false },
-    { key: "tonight", label: "Tonight", onClick: onYou, icon: <Icon.moon />, active: false },
-    { key: "later", label: "Later", onClick: onLater, icon: <Icon.bookmark />, active: surface === "later" },
-  ] as const;
-
-  const accountLabel = loading ? "…" : user ? (user.email ?? "Signed in") : "Sign in";
+  const nav = navItems(surface);
+  const account = accountModel(user, loading);
 
   if (collapsed) {
     return (
@@ -46,12 +39,12 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew
           <Icon.panel />
         </button>
         {nav.map((n) => (
-          <button key={n.key} onClick={n.onClick} title={n.label} aria-label={n.label} className={`flex size-10 items-center justify-center rounded-lg transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
-            {n.icon}
+          <button key={n.key} onClick={onYou} title={n.label} aria-label={n.label} className={`flex size-10 items-center justify-center rounded-lg transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
+            <Icon.home />
           </button>
         ))}
         <div className="mt-auto">
-          <button onClick={() => (user ? onToggle() : requireSignIn(window.location.pathname))} className="flex size-10 items-center justify-center rounded-lg text-ink-dim hover:bg-white/[0.04] hover:text-ink" title={accountLabel} aria-label={accountLabel}>
+          <button onClick={() => (user ? onToggle() : requireSignIn(window.location.pathname))} className="flex size-10 items-center justify-center rounded-lg text-ink-dim hover:bg-white/[0.04] hover:text-ink" title={account.label} aria-label={account.label}>
             {user ? <Avatar email={user.email} /> : <Icon.user />}
           </button>
         </div>
@@ -73,8 +66,10 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew
 
       <nav className="px-2 pt-1" aria-label="Surfaces">
         {nav.map((n) => (
-          <button key={n.key} onClick={n.onClick} className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13.5px] transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
-            <span className="text-ink-faint">{n.icon}</span>
+          <button key={n.key} onClick={onYou} className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13.5px] transition-colors duration-[120ms] ${n.active ? "bg-white/[0.06] text-ink" : "text-ink-dim hover:bg-white/[0.04] hover:text-ink"}`}>
+            <span className="text-ink-faint">
+              <Icon.home />
+            </span>
             {n.label}
           </button>
         ))}
@@ -99,15 +94,6 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew
         {menu && user && (
           <div className="absolute bottom-full left-2 right-2 mb-2 rounded-xl border border-line bg-elev p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.5)]" role="menu">
             <div className="truncate px-2.5 py-2 text-[12.5px] text-ink-dim">{user.email}</div>
-            <button onClick={() => { setMenu(false); onTaste(); }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/[0.05]">
-              Your taste
-            </button>
-            <button onClick={() => { setMenu(false); onLater(); }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/[0.05]">
-              Later
-            </button>
-            <a href="/onboarding" className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] text-ink hover:bg-white/[0.05]">
-              Services and imports
-            </a>
             <div className="my-1 h-px bg-line" />
             <button onClick={() => void signOut()} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] text-ink-dim hover:bg-white/[0.05] hover:text-ink">
               Sign out
@@ -121,7 +107,7 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNew
           aria-expanded={menu}
         >
           {user ? <Avatar email={user.email} /> : <Icon.user />}
-          <span className="min-w-0 flex-1 truncate">{accountLabel}</span>
+          <span className="min-w-0 flex-1 truncate">{account.label}</span>
           {user && <Icon.dots />}
         </button>
       </div>
@@ -138,21 +124,6 @@ const Icon = {
   home: () => (
     <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
       <path d="M3 9.5 10 3l7 6.5V17h-4.5v-4h-5v4H3z" />
-    </svg>
-  ),
-  moon: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <path d="M16 12.3A6.5 6.5 0 0 1 7.7 4a6.5 6.5 0 1 0 8.3 8.3z" />
-    </svg>
-  ),
-  plus: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <path d="M10 4v12M4 10h12" />
-    </svg>
-  ),
-  bookmark: () => (
-    <svg width="16" height="16" viewBox="0 0 20 20" {...stroke}>
-      <path d="M5 3h10v14l-5-3.5L5 17z" />
     </svg>
   ),
   panel: () => (

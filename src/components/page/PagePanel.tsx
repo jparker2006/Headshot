@@ -15,7 +15,6 @@ import { Markdown } from "@/components/chat/Markdown";
 import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
 import { useImages } from "@/components/chat/useImages";
 import { lookupName } from "@/components/chat/lookup";
-import { serviceDeepLink } from "@/lib/picks/deeplink";
 import { requireSignIn } from "@/components/auth/SignInGate";
 
 interface Neighbor {
@@ -136,8 +135,8 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const isPerson = data?.node.kind === "person";
   const signedOut = data ? data.taste === null : false;
   const onService = data?.taste?.onYourServices[0] ?? null;
-  const mineProvider = data?.extras?.kind === "title" ? data.extras.providers?.flatrate.find((p) => p.name === onService) : undefined;
-  const playHref = (mineProvider?.id !== undefined && data ? serviceDeepLink(mineProvider.id, data.node.name, data.node.year) : null) ?? (data?.extras?.kind === "title" ? data.extras.providers?.link ?? null : null);
+  // Play is TMDB's watch-providers link (the JustWatch page), which forwards to the service.
+  const playHref = providers?.link ?? null;
   const poster = title?.posterUrl ?? person?.profileUrl ?? data?.node.posterUrl;
 
   // The face row: the cast for a title, the credits for a person.

@@ -141,7 +141,7 @@ function DoneStep() {
         href="/"
         className="mt-8 inline-flex h-11 items-center rounded-full bg-accent px-5 text-[13.5px] font-semibold text-bg transition-[filter] duration-[120ms] hover:brightness-110"
       >
-        Go to Tonight
+        Go to your page
       </Link>
     </section>
   );
