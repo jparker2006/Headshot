@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { readTsv, NULL } from "./tsv";
+import type { CachedCredits } from "./tmdb";
 import {
   TIER_STRONG,
   TIER_WEAK,
@@ -16,6 +17,11 @@ export interface BuildOptions {
   /** Minimum IMDb votes for a title to exist in the graph. */
   voteFloor: number;
   buildId: string;
+  /**
+   * Crawled TMDB credits keyed by IMDb title id (stage two). Pure input: the
+   * crawl itself happens in index.ts and is handed in here.
+   */
+  tmdb?: Map<string, CachedCredits>;
   log?: (msg: string) => void;
 }
 
@@ -27,12 +33,30 @@ const KEPT_CATEGORIES = new Set(["actor", "actress", "director", "writer"]);
 const WEAK_GENRES = new Set(["Talk-Show", "Reality-TV", "News", "Game-Show"]);
 /** Series with more episodes than this are weak (guest-star soup). */
 export const MAX_STRONG_EPISODES = 200;
+/** Cast members kept per crawled title (mirrors the crawl's cap). */
+export const TMDB_CAST_CAP = 40;
 
 interface TitleRow {
   type: TitleType;
   name: string;
   year: number;
   genres: string;
+}
+
+/** Everything the IMDb stage produces, before packing. */
+export interface ImdbStage {
+  /** Votes for every title clearing the floor. */
+  votes: Map<string, number>;
+  /** Kept titles (allowed type, above the floor). */
+  titles: Map<string, TitleRow>;
+  /** Tier every IMDb credit on a title gets. */
+  titleTier: Map<string, number>;
+  /** nconst → set of tconsts credited. */
+  edgesByPerson: Map<string, Set<string>>;
+  /** nconst → name.basics row, for people with credits. */
+  personNames: Map<string, { name: string; year: number }>;
+  /** Titles that actually ended up with at least one credit. */
+  usedTitles: Set<string>;
 }
 
 /**
@@ -48,10 +72,10 @@ function datasetPath(inputDir: string, base: string): string {
 }
 
 /**
- * Build the packed industry graph from IMDb datasets. Pure with respect to
- * the filesystem inputs: same TSVs in, same graph out.
+ * Stage one: read the IMDb datasets into the intermediate maps. Pure with
+ * respect to the filesystem inputs: same TSVs in, same stage out.
  */
-export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
+export async function loadImdb(opts: Pick<BuildOptions, "inputDir" | "voteFloor" | "log">): Promise<ImdbStage> {
   const log = opts.log ?? (() => {});
   const { inputDir, voteFloor } = opts;
 
@@ -119,16 +143,120 @@ export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
     personNames.set(nconst, { name: primaryName, year: birthYear === NULL ? 0 : Number(birthYear) });
   }
 
-  // 6. Assign node ids: titles first (sorted by votes desc, then id), then people
-  //    (sorted by name for determinism). Titles that ended up with zero credits
-  //    are dropped so every node in the graph has at least one edge.
+  // Titles with zero credits are dropped so every node in the graph has an edge.
   const usedTitles = new Set<string>();
   for (const set of edgesByPerson.values()) for (const t of set) usedTitles.add(t);
 
+  return { votes, titles, titleTier, edgesByPerson, personNames, usedTitles };
+}
+
+/**
+ * The titles worth crawling for full casts: the top `limit` by IMDb votes
+ * among titles that made the graph, skipping weak-genre formats (talk shows
+ * and the like) whose casts are noise.
+ */
+export function topTitlesForCrawl(stage: ImdbStage, limit: number): { imdbId: string; titleType: string }[] {
+  const eligible: string[] = [];
+  for (const tconst of stage.usedTitles) {
+    const t = stage.titles.get(tconst);
+    if (!t) continue;
+    if (t.genres.split(",").some((g) => WEAK_GENRES.has(g))) continue;
+    eligible.push(tconst);
+  }
+  eligible.sort((a, b) => stage.votes.get(b)! - stage.votes.get(a)! || (a < b ? -1 : 1));
+  return eligible.slice(0, limit).map((tconst) => ({ imdbId: tconst, titleType: stage.titles.get(tconst)!.type }));
+}
+
+/**
+ * Per title, the lowercased names of everyone already adjacent to it in the
+ * IMDb graph. The crawl uses this to resolve those cast members without an
+ * /external_ids call.
+ */
+export function knownPeopleByTitle(stage: ImdbStage): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>();
+  for (const [nconst, set] of stage.edgesByPerson) {
+    const name = (stage.personNames.get(nconst)?.name ?? "").toLowerCase();
+    if (!name) continue;
+    for (const tconst of set) {
+      let m = out.get(tconst);
+      if (!m) {
+        m = new Map();
+        out.set(tconst, m);
+      }
+      if (!m.has(name)) m.set(name, nconst);
+    }
+  }
+  return out;
+}
+
+/**
+ * Stage two: merge the optional TMDB crawl and pack everything into the
+ * binary graph.
+ */
+export function pack(stage: ImdbStage, opts: Pick<BuildOptions, "buildId" | "tmdb" | "log">): PackedGraph {
+  const log = opts.log ?? (() => {});
+  const { votes, titles, titleTier, edgesByPerson, personNames, usedTitles } = stage;
+
+  // Working edge set: nconst → tconst → tier. Starts as the IMDb credits.
+  const edges = new Map<string, Map<string, number>>();
+  for (const [nconst, set] of edgesByPerson) {
+    const m = new Map<string, number>();
+    for (const tconst of set) m.set(tconst, titleTier.get(tconst)!);
+    edges.set(nconst, m);
+  }
+  const names = new Map(personNames);
+
+  // ---- TMDB merge --------------------------------------------------------
+  const useTmdb = !!opts.tmdb;
+  const tmdbIdOf = new Map<string, number>();
+  /** `${nconst}|${tconst}` → character name. */
+  const characterOf = new Map<string, string>();
+  if (opts.tmdb) {
+    let mergedTitles = 0;
+    let addedPeople = 0;
+    let addedEdges = 0;
+    let charactersSet = 0;
+    // Sorted so the merge is deterministic regardless of crawl order.
+    for (const tconst of [...opts.tmdb.keys()].sort()) {
+      if (!usedTitles.has(tconst)) continue;
+      const credits = opts.tmdb.get(tconst)!;
+      mergedTitles++;
+      tmdbIdOf.set(tconst, credits.tmdbId);
+      for (const c of credits.cast.slice(0, TMDB_CAST_CAP)) {
+        // Resolve the person: existing node by IMDb id, a new node with that
+        // IMDb id, or a TMDB-only node when TMDB has no IMDb id for them.
+        const nconst = c.imdbId ?? `tm${c.tmdbId}`;
+        let m = edges.get(nconst);
+        if (!m) {
+          m = new Map();
+          edges.set(nconst, m);
+          names.set(nconst, { name: c.name, year: 0 });
+          addedPeople++;
+        }
+        if (!m.has(tconst)) {
+          // Full casts include guest and recurring credits: weak tier.
+          m.set(tconst, TIER_WEAK);
+          addedEdges++;
+        }
+        tmdbIdOf.set(nconst, c.tmdbId);
+        if (c.character) {
+          characterOf.set(`${nconst}|${tconst}`, c.character);
+          charactersSet++;
+        }
+      }
+    }
+    log(
+      `tmdb merge: ${mergedTitles} titles, ${addedPeople} new people, ${addedEdges} new edges, ${charactersSet} characters`,
+    );
+  }
+
+  // ---- node ids ----------------------------------------------------------
+  // Titles first (votes desc, then id), then people (by name). New people from
+  // the crawl are interleaved into the same name sort, never appended.
   const titleIds = [...usedTitles].sort((a, b) => votes.get(b)! - votes.get(a)! || (a < b ? -1 : 1));
-  const personIds = [...edgesByPerson.keys()].sort((a, b) => {
-    const na = personNames.get(a)?.name ?? a;
-    const nb = personNames.get(b)?.name ?? b;
+  const personIds = [...edges.keys()].sort((a, b) => {
+    const na = names.get(a)?.name ?? a;
+    const nb = names.get(b)?.name ?? b;
     return na < nb ? -1 : na > nb ? 1 : a < b ? -1 : 1;
   });
 
@@ -142,6 +270,7 @@ export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
     votes: [],
     genres: [],
   };
+  if (useTmdb) nodes.tmdbId = [];
   const push = (
     imdbId: string,
     name: string,
@@ -159,38 +288,54 @@ export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
     nodes.year.push(year);
     nodes.votes.push(v);
     nodes.genres.push(genres);
+    nodes.tmdbId?.push(tmdbIdOf.get(imdbId) ?? 0);
   };
   for (const tconst of titleIds) {
     const t = titles.get(tconst)!;
     push(tconst, t.name, "title", t.type, t.year, votes.get(tconst)!, t.genres);
   }
   for (const nconst of personIds) {
-    const p = personNames.get(nconst) ?? { name: nconst, year: 0 };
+    const p = names.get(nconst) ?? { name: nconst, year: 0 };
     let maxVotes = 0;
-    for (const t of edgesByPerson.get(nconst)!) maxVotes = Math.max(maxVotes, votes.get(t)!);
+    for (const t of edges.get(nconst)!.keys()) maxVotes = Math.max(maxVotes, votes.get(t)!);
     push(nconst, p.name, "person", "", p.year, maxVotes, "");
   }
 
-  // 7. CSR with both directions. Neighbor lists sorted by node id for determinism.
+  // ---- CSR with both directions, neighbor lists sorted by node id --------
   const nodeCount = nodes.imdbId.length;
   const adj: number[][] = Array.from({ length: nodeCount }, () => []);
   const adjTier: number[][] = Array.from({ length: nodeCount }, () => []);
+  const adjChar: number[][] = Array.from({ length: nodeCount }, () => []);
+  const characters: string[] = [""];
+  const charIndex = new Map<string, number>([["", 0]]);
   let edgeCount = 0;
-  for (const [nconst, set] of edgesByPerson) {
+  for (const [nconst, m] of edges) {
     const p = nodeIndex.get(nconst)!;
-    for (const tconst of set) {
+    for (const [tconst, tier] of m) {
       const t = nodeIndex.get(tconst)!;
-      const tier = titleTier.get(tconst)!;
+      let ci = 0;
+      if (useTmdb) {
+        const character = characterOf.get(`${nconst}|${tconst}`) ?? "";
+        ci = charIndex.get(character) ?? -1;
+        if (ci < 0) {
+          ci = characters.length;
+          characters.push(character);
+          charIndex.set(character, ci);
+        }
+      }
       adj[p].push(t);
       adjTier[p].push(tier);
+      adjChar[p].push(ci);
       adj[t].push(p);
       adjTier[t].push(tier);
+      adjChar[t].push(ci);
       edgeCount++;
     }
   }
   const offsets = new Uint32Array(nodeCount + 1);
   const neighbors = new Uint32Array(edgeCount * 2);
   const tiers = new Uint8Array(edgeCount * 2);
+  const chars = useTmdb ? new Uint32Array(edgeCount * 2) : undefined;
   let cursor = 0;
   for (let i = 0; i < nodeCount; i++) {
     offsets[i] = cursor;
@@ -198,18 +343,28 @@ export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
     for (const k of order) {
       neighbors[cursor] = adj[i][k];
       tiers[cursor] = adjTier[i][k];
+      if (chars) chars[cursor] = adjChar[i][k];
       cursor++;
     }
   }
   offsets[nodeCount] = cursor;
-  log(`packed: ${nodeCount} nodes, ${edgeCount} edges`);
+  log(`packed: ${nodeCount} nodes, ${edgeCount} edges${useTmdb ? `, ${characters.length - 1} character names` : ""}`);
 
-  return {
-    header: { buildId: opts.buildId, nodeCount, edgeCount, nodes },
-    offsets,
-    neighbors,
-    tiers,
-  };
+  const header: GraphHeader = { buildId: opts.buildId, nodeCount, edgeCount, nodes };
+  if (useTmdb) {
+    header.characters = characters;
+    header.tmdb = { titlesCrawled: opts.tmdb!.size, castCap: TMDB_CAST_CAP };
+  }
+  return { header, offsets, neighbors, tiers, ...(chars ? { chars } : {}) };
+}
+
+/**
+ * Build the packed industry graph from IMDb datasets, optionally merging a
+ * crawled TMDB cast map. Pure with respect to its inputs.
+ */
+export async function buildGraph(opts: BuildOptions): Promise<PackedGraph> {
+  const stage = await loadImdb(opts);
+  return pack(stage, opts);
 }
 
 function safeDatasetPath(inputDir: string, base: string): string | null {

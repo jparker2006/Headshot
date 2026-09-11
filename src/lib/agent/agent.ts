@@ -28,6 +28,7 @@ import { writePagesForTurn } from "./pages";
 import { classify, runFastPath, type FastResult } from "./fastpath";
 import { CACHEABLE, answerSlug, cacheKey, isPublicSafe, isReplayable, replayAnswer, shortId } from "./answers";
 import { toBrainInput } from "./context";
+import type { EmbedFn } from "./embeddings";
 import type { CanvasNode } from "./events";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
@@ -53,6 +54,8 @@ export interface RunAgentOptions {
   fastPath?: boolean;
   /** "use" replays stored answers (default); "bypass" recomputes but still stores. */
   cache?: "use" | "bypass";
+  /** Query embedder for semantic fallback (find_entities, find_by_constraints). */
+  embed?: EmbedFn;
 }
 
 /** Adapts the UI stream writer to the tools' emitter interface, recording replayable events. */
@@ -109,6 +112,7 @@ export function runAgent(opts: RunAgentOptions) {
         sessionId: opts.sessionId,
         question,
         touched: [] as CanvasNode[],
+        embed: opts.embed,
       };
 
       // ---- v2: classify, then either replay a stored answer or precompute ----

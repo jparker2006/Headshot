@@ -262,6 +262,11 @@ export class BrainStore {
       case "answer": {
         return;
       }
+      case "faces": {
+        const d = data as HeadshotDataParts["faces"];
+        this.bump({ highlight: { ...this.state.highlight, candidates: new Set(d.candidates.map((c) => c.imdbId)), focus: d.candidates.map((c) => c.imdbId) }, status: `${d.candidates.length} faces to choose from` });
+        return;
+      }
     }
   }
 

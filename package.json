@@ -13,7 +13,8 @@
     "build:graph": "tsx scripts/build-graph/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "seed": "tsx scripts/seed/index.ts"
+    "seed": "tsx scripts/seed/index.ts",
+    "embed": "tsx scripts/embed/index.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.100",

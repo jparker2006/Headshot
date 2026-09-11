@@ -188,6 +188,7 @@ export class IndustryGraph {
         votes: n.votes[id],
         genres: n.genres[id],
         overlay: false,
+        tmdbId: n.tmdbId?.[id] || undefined,
       };
     }
     const o = this.overlayNodes[id - this.baseCount];
@@ -232,18 +233,36 @@ export class IndustryGraph {
   /**
    * Character name for a (person, title) credit from the packed character
    * table (format v2), or null when unknown / v1 file / overlay edge.
-   * Stub until the v2 pipeline lands: always null.
+   * Binary search over the person's neighbor list, which the pipeline sorts
+   * by node id, so this is O(log degree).
    */
   character(personId: number, titleId: number): string | null {
-    void personId;
-    void titleId;
+    const { chars, offsets, neighbors, header } = this.packed;
+    const table = header.characters;
+    if (!chars || !table) return null;
+    if (personId >= this.baseCount || titleId >= this.baseCount) return null;
+    let lo = offsets[personId];
+    let hi = offsets[personId + 1] - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const v = neighbors[mid];
+      if (v === titleId) return table[chars[mid]] || null;
+      if (v < titleId) lo = mid + 1;
+      else hi = mid - 1;
+    }
     return null;
   }
 
   /** Everyone credited on a title (or a person's titles), most prominent first, with characters. */
   castOf(id: number): CastEntry[] {
+    const self = this.node(id);
     return this.neighbors(id)
-      .map((n) => ({ node: this.node(n.id), tier: n.tier, character: this.character(this.node(n.id).kind === "person" ? n.id : id, this.node(n.id).kind === "person" ? id : n.id) }))
+      .map((n) => {
+        const node = this.node(n.id);
+        const personId = node.kind === "person" ? n.id : id;
+        const titleId = node.kind === "person" ? id : n.id;
+        return { node, tier: n.tier, character: self.kind === node.kind ? null : this.character(personId, titleId) };
+      })
       .sort((a, b) => b.node.votes - a.node.votes || a.node.id - b.node.id);
   }
 

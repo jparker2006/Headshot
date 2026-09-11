@@ -2,6 +2,7 @@ import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
 import type { Brain, BrainNodeInput } from "@/lib/brain/types";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import type { EmitFn, CanvasNode } from "./events";
+import type { EmbedFn } from "./embeddings";
 
 /** Everything a tool needs. Built once per request. */
 export interface AgentContext {
@@ -14,6 +15,24 @@ export interface AgentContext {
   question: string;
   /** Every node touched this turn, for automatic page writing. */
   touched: CanvasNode[];
+  /** Query embedder for semantic fallback; absent in keyless dev and tests. */
+  embed?: EmbedFn;
+}
+
+/** Nearest graph entities to a description, via the brain's pgvector table. Empty when unavailable. */
+export async function semanticCandidates(ctx: AgentContext, text: string, limit: number, kind?: "person" | "title"): Promise<NodeInfo[]> {
+  if (!ctx.embed || !ctx.brain.semanticSearch) return [];
+  try {
+    const vec = await ctx.embed(text);
+    const hits = await ctx.brain.semanticSearch(vec, limit * 2);
+    return hits
+      .map((h) => ctx.graph.nodeByImdbId(h.imdbId))
+      .filter((n): n is NodeInfo => !!n && (!kind || n.kind === kind))
+      .slice(0, limit);
+  } catch (err) {
+    console.warn("[semantic] failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 export function toCanvasNode(n: NodeInfo, extra: Partial<CanvasNode> = {}): CanvasNode {

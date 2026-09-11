@@ -13,12 +13,15 @@ import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
 import type { AnswerShape, PathsFound } from "./events";
 import type { AgentContext } from "./context";
 import { graphTools } from "./tools/graph";
+import { identifyAndEmit } from "./tools/entities";
 import { describe } from "./context";
 
 export interface Classified {
   shape: AnswerShape;
   /** Resolved entities in question order. */
   entities: NodeInfo[];
+  /** For `identify`: the description span ("the astronaut"). */
+  roleHint?: string;
 }
 
 /** The subject spans a classifier needs, before entity resolution. */
@@ -94,15 +97,19 @@ export function classify(graph: IndustryGraph, question: string): Classified | n
   const m = matchShape(question);
   if (!m) return null;
   const entities: NodeInfo[] = [];
+  let roleHint: string | undefined;
   for (let i = 0; i < m.names.length; i++) {
     const kind = m.wantKinds[i];
-    if (m.shape === "identify" && kind === "person") continue;
+    if (m.shape === "identify" && kind === "person") {
+      roleHint = m.names[i];
+      continue;
+    }
     const node = resolveExact(graph, m.names[i], kind);
     if (!node) return null;
     entities.push(node);
   }
   if (m.shape !== "identify" && new Set(entities.map((e) => e.imdbId)).size !== entities.length) return null;
-  return { shape: m.shape, entities };
+  return { shape: m.shape, entities, roleHint };
 }
 
 export interface FastResult {
@@ -166,14 +173,15 @@ export async function runFastPath(ctx: AgentContext, c: Classified): Promise<Fas
         chosenPath: null,
       };
     }
-    case "identify":
-      // Chunk B adds find_by_constraints; until then the title is only a hint.
+    case "identify": {
+      const r = await identifyAndEmit(ctx, { titles: ids, roleHint: c.roleHint }, c.roleHint ?? ctx.question);
       return {
         shape: "identify",
         imdbIds: ids,
-        context: `The title in the question is ${describe(c.entities[0])}.`,
-        summary: null,
+        context: `find_by_constraints(${JSON.stringify({ titles: ids, roleHint: c.roleHint })}) has already been run for ${describe(c.entities[0])}. Do not call it again with the same input.\nResult: ${JSON.stringify(r)}`,
+        summary: r,
         chosenPath: null,
       };
+    }
   }
 }

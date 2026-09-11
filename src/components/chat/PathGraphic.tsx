@@ -5,35 +5,12 @@
  */
 import { useEffect, useState } from "react";
 import type { HeadshotDataParts, NamedPath, PathsFound } from "@/lib/agent/events";
+import { useImages } from "./useImages";
 
 interface Props {
   paths: PathsFound;
   chosen: HeadshotDataParts["chosen"] | null;
   onSelectNode: (id: string) => void;
-}
-
-type ImageMap = Record<string, { url: string | null }>;
-const imageCache = new Map<string, { url: string | null }>();
-
-function useImages(ids: string[]): ImageMap {
-  const key = ids.join(",");
-  const [images, setImages] = useState<ImageMap>(() => Object.fromEntries(ids.filter((id) => imageCache.has(id)).map((id) => [id, imageCache.get(id)!])));
-  useEffect(() => {
-    const missing = key.split(",").filter((id) => id && !imageCache.has(id));
-    if (missing.length === 0) return;
-    let alive = true;
-    fetch(`/api/enrich?ids=${missing.join(",")}`)
-      .then((r) => r.json())
-      .then((d: { images: ImageMap }) => {
-        for (const [id, v] of Object.entries(d.images)) imageCache.set(id, v);
-        if (alive) setImages((prev) => ({ ...prev, ...d.images }));
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [key]);
-  return images;
 }
 
 const roleCache = new Map<string, Record<string, string>>();

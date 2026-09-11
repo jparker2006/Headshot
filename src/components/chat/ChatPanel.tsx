@@ -6,6 +6,8 @@ import type { HeadshotUIMessage, HeadshotDataParts } from "@/lib/agent/events";
 import type { BrainStore } from "@/components/canvas/brainStore";
 import { Markdown } from "./Markdown";
 import { PathGraphic } from "./PathGraphic";
+import { FaceGrid } from "./FaceGrid";
+import { faceTapAction } from "./faceGridRule";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 
@@ -19,6 +21,7 @@ interface Props {
 
 const TOOL_LABELS: Record<string, string> = {
   find_entities: "Resolving names",
+  find_by_constraints: "Matching the description",
   shortest_path: "Searching the graph",
   highlight_path: "Choosing a path",
   common_neighbors: "Finding who's in both",
@@ -139,7 +142,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode }: Props) {
           )}
           <div className="space-y-6">
             {messages.map((m) => (
-              <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} />
+              <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} onAsk={ask} />
             ))}
             {busy && (
               <div className="flex items-center gap-2 text-[13px] text-ink-dim">
@@ -224,7 +227,19 @@ function Chip({ children, onClick }: { children: string; onClick: () => void }) 
   );
 }
 
-function Message({ m, onSelectNode, entities, onLookup }: { m: HeadshotUIMessage; onSelectNode: (id: string) => void; entities: EntityIndex; onLookup: (name: string) => void }) {
+function Message({
+  m,
+  onSelectNode,
+  entities,
+  onLookup,
+  onAsk,
+}: {
+  m: HeadshotUIMessage;
+  onSelectNode: (id: string) => void;
+  entities: EntityIndex;
+  onLookup: (name: string) => void;
+  onAsk: (text: string) => void;
+}) {
   if (m.role === "user") {
     const text = m.parts.filter((p) => p.type === "text").map((p) => ("text" in p ? p.text : "")).join("");
     return (
@@ -238,6 +253,7 @@ function Message({ m, onSelectNode, entities, onLookup }: { m: HeadshotUIMessage
     <div className="rise space-y-2">
       {m.parts.map((part, i) => {
         if (part.type === "text") return <Markdown key={i} text={part.text} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />;
+        if (part.type === "data-faces") return <FaceGrid key={i} faces={part.data} tap={faceTapAction(m.parts, i)} onSelectNode={onSelectNode} onAsk={onAsk} />;
         if (part.type === "data-paths")
           return <PathGraphic key={i} paths={part.data} chosen={chosen?.type === "data-chosen" ? chosen.data : null} onSelectNode={onSelectNode} />;
         if (part.type.startsWith("tool-")) {

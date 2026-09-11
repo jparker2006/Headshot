@@ -4,7 +4,8 @@ import { waitUntil } from "@vercel/functions";
 import { getIndustryGraph, type IndustryGraph } from "@/lib/graph";
 import { getBrain, type Brain } from "@/lib/brain";
 import { tmdbFromEnv, type TmdbClient } from "@/lib/tmdb/client";
-import { chatModelFromEnv, mockAgentEnabled } from "@/lib/agent/provider";
+import { chatModelFromEnv, embeddingModelFromEnv, mockAgentEnabled } from "@/lib/agent/provider";
+import { embedderFor, type EmbedFn } from "@/lib/agent/embeddings";
 import { runAgent, lastUserText, type HeadshotUIMessage } from "@/lib/agent";
 import { mockModel } from "@/lib/agent/mockModel";
 import { checkLimits, SESSION_COOKIE, newSessionId } from "@/lib/limits";
@@ -20,6 +21,7 @@ export interface ChatDeps {
   session: (req: Request) => Promise<{ id: string; setCookie: boolean }>;
   followups?: boolean;
   schedule?: (work: () => Promise<void>) => void;
+  embed?: () => EmbedFn | undefined;
 }
 
 /** Route handler factory so tests can inject a mock model, a fixture graph, and a memory brain. */
@@ -51,6 +53,7 @@ export function createChatHandler(deps: ChatDeps) {
       messages,
       sessionId: session.id,
       followups: deps.followups ?? true,
+      embed: deps.embed?.(),
       // Page writing outlives the response. waitUntil keeps the function alive on Vercel
       // and simply runs the promise locally.
       schedule: deps.schedule ?? ((work) => waitUntil(work().catch((err) => console.warn("[pages] background failed:", err)))),
@@ -72,6 +75,7 @@ export const POST = createChatHandler({
   graph: getIndustryGraph,
   brain: getBrain,
   tmdb: tmdbFromEnv,
+  embed: () => (process.env.OPENROUTER_API_KEY && !mockAgentEnabled() ? embedderFor(embeddingModelFromEnv()) : undefined),
   session: async () => {
     const jar = await cookies();
     const existing = jar.get(SESSION_COOKIE)?.value;

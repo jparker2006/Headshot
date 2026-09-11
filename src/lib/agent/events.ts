@@ -68,12 +68,27 @@ export type HeadshotDataParts = {
    * path) or replayed a stored answer. `cached` means no model was called.
    */
   fast: { shape: AnswerShape; imdbIds: string[]; cached: boolean; answerId?: string; stale?: boolean };
+  /**
+   * Identification candidates as a face grid. The client resolves images.
+   * Tapping a face opens the page when the answer text after the grid is
+   * empty, otherwise posts "I mean <name>" as the next user turn.
+   */
+  faces: { query: string; candidates: FaceCandidate[]; total: number };
   /** The answer was stored; `public` answers get a permalink at /a/<slug>-<id>. */
   answer: { id: string; slug: string; public: boolean };
 };
 
 /** Question shapes the server can answer deterministically (v2 fast path). */
 export type AnswerShape = "path" | "costar" | "both" | "known-for" | "identify";
+
+export interface FaceCandidate {
+  imdbId: string;
+  name: string;
+  /** "Apollo 13 (1995) as Jim Lovell" */
+  credit: string;
+  character: string | null;
+  score: number;
+}
 
 export type HeadshotUIMessage = UIMessage<never, HeadshotDataParts>;
 

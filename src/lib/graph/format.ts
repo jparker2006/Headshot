@@ -12,10 +12,16 @@
  *   | offsets  u32[nodeCount + 1]
  *   | neighbors u32[edgeCount * 2]
  *   | tiers     u8 [edgeCount * 2]
+ *   | chars     u32[edgeCount * 2]   (v2 only, 4-byte aligned, optional)
+ *
+ * Version 2 adds the TMDB full-cast stage: `nodes.tmdbId`, a `characters`
+ * string table in the header, and the `chars` section — one index into that
+ * table per stored edge, parallel to `neighbors` (0 = no character known).
+ * Version 1 files have none of that and still decode.
  */
 
 export const FORMAT_MAGIC = "HDSH";
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 
 export type NodeKind = "person" | "title";
 export type TitleType = "movie" | "tvSeries" | "tvMiniSeries" | "tvMovie";
@@ -43,7 +49,16 @@ export interface GraphHeader {
     votes: number[];
     /** Comma-separated genres for titles, "" for people. */
     genres: string[];
+    /** TMDB id, 0 when unknown. Absent in v1 files. */
+    tmdbId?: number[];
   };
+  /**
+   * Character-name string table (v2). Index 0 is always "" meaning "none".
+   * The `chars` section indexes into this.
+   */
+  characters?: string[];
+  /** Summary of the TMDB crawl stage that produced `characters` (v2). */
+  tmdb?: { titlesCrawled: number; castCap: number };
 }
 
 export interface PackedGraph {
@@ -51,6 +66,8 @@ export interface PackedGraph {
   offsets: Uint32Array;
   neighbors: Uint32Array;
   tiers: Uint8Array;
+  /** Character-table index per stored edge (v2 with a TMDB stage). */
+  chars?: Uint32Array;
 }
 
 export function encodeGraph(g: PackedGraph): Uint8Array {
@@ -60,7 +77,8 @@ export function encodeGraph(g: PackedGraph): Uint8Array {
   const offsetsStart = align4(headerEnd);
   const neighborsStart = offsetsStart + g.offsets.byteLength;
   const tiersStart = neighborsStart + g.neighbors.byteLength;
-  const total = tiersStart + g.tiers.byteLength;
+  const charsStart = align4(tiersStart + g.tiers.byteLength);
+  const total = g.chars ? charsStart + g.chars.byteLength : tiersStart + g.tiers.byteLength;
 
   const out = new Uint8Array(total);
   const view = new DataView(out.buffer);
@@ -71,6 +89,7 @@ export function encodeGraph(g: PackedGraph): Uint8Array {
   out.set(new Uint8Array(g.offsets.buffer, g.offsets.byteOffset, g.offsets.byteLength), offsetsStart);
   out.set(new Uint8Array(g.neighbors.buffer, g.neighbors.byteOffset, g.neighbors.byteLength), neighborsStart);
   out.set(g.tiers, tiersStart);
+  if (g.chars) out.set(new Uint8Array(g.chars.buffer, g.chars.byteOffset, g.chars.byteLength), charsStart);
   return out;
 }
 
@@ -79,7 +98,7 @@ export function decodeGraph(bytes: Uint8Array): PackedGraph {
   if (magic !== FORMAT_MAGIC) throw new Error(`Not a Headshot graph (magic ${JSON.stringify(magic)})`);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = view.getUint32(4, true);
-  if (version !== FORMAT_VERSION) throw new Error(`Unsupported graph format version ${version}`);
+  if (version !== 1 && version !== 2) throw new Error(`Unsupported graph format version ${version}`);
   const headerLen = view.getUint32(8, true);
   const prefix = 12;
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(prefix, prefix + headerLen))) as GraphHeader;
@@ -97,6 +116,13 @@ export function decodeGraph(bytes: Uint8Array): PackedGraph {
   new Uint8Array(neighbors.buffer).set(bytes.subarray(neighborsStart, neighborsStart + neighborsLen * 4));
   const tiers = bytes.slice(tiersStart, tiersStart + neighborsLen);
 
+  // v2 may carry a character-index section; builds without the TMDB stage omit it.
+  const charsStart = align4(tiersStart + neighborsLen);
+  if (version >= 2 && bytes.byteLength >= charsStart + neighborsLen * 4) {
+    const chars = new Uint32Array(neighborsLen);
+    new Uint8Array(chars.buffer).set(bytes.subarray(charsStart, charsStart + neighborsLen * 4));
+    return { header, offsets, neighbors, tiers, chars };
+  }
   return { header, offsets, neighbors, tiers };
 }
 
