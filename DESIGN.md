@@ -2,6 +2,12 @@
 
 Written before v3 code, per SPEC.md. Every screen is built against this document. Reference set: Cursor's product surfaces (cursor.com and the editor's chrome) and Ryu's work there. Anti-references: streaming poster walls, SaaS card grids, gamified streaks, purple gradients, rounded cards on rounded cards.
 
+## Shell (revised 2026-09-11, after the "brain shouldn't be half the screen" note)
+
+A 56px rail of icons on the left (Tonight, new question, history popover, taste map, brain, account). One reading column, 760px max, centered. No resident panel: the brain, an ego view, the taste map and the title drawer live in a panel that slides in from the right only when summoned (a name or poster tapped, "show me on the brain", the map or brain icon) and closes with one tap. On a phone the panel is a full-screen sheet. The inline chain graphic is the answer's picture; the canvas is exploration, not the default view.
+
+Tokens moved to a Linear-style luminance scale: `--bg #08090a`, `--bg-elev-solid #0f1011`, `--bg-raised #191a1b`, `--ink #f2f1ec`, `--ink-dim #8a8f98`, `--ink-faint #62666d`, borders at 6% and 12% white. The warm accent stays and does one job (Play, the lit path, a link). Chips are quiet (hairline, 2% white) and only the Play pill is filled.
+
 ## Stance
 
 Restraint. The picture (a face, a poster, the chain) is the only loud thing on the screen. Everything else recedes: near-monochrome surfaces, one warm accent used for one purpose, type that is sharp rather than friendly, space instead of borders. Motion only when it carries meaning (a path lighting, a card leaving the deck), never as decoration. The interface stays sparse until more information makes the current decision easier.
