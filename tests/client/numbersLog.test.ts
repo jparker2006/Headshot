@@ -29,6 +29,12 @@ describe("numbers log filter", () => {
     expect(keep(row({ kind: "series" }), "shows")).toBe(true);
   });
 
+  it("finds the rows you wrote a line about", () => {
+    expect(keep(row({ note: "the best hour of television" }), "noted")).toBe(true);
+    expect(keep(row({ note: null }), "noted")).toBe(false);
+    expect(keep(row({ note: "   " }), "noted")).toBe(false);
+  });
+
   it("filters by state, and `rated` means it carries a score", () => {
     const want = row({ state: "want", score: null });
     expect(keep(want, "want")).toBe(true);

@@ -39,7 +39,7 @@ describe("memory route", () => {
   });
 
   it("is empty strings before the first rewrite, then round-trips the pinned block", async () => {
-    expect(await (await handlers.getMemory(get())).json()).toEqual({ markdown: "", pinned: "", dropped: [], updatedAt: null });
+    expect(await (await handlers.getMemory(get())).json()).toEqual({ markdown: "", pinned: "", dropped: [], updatedAt: null, claims: null });
 
     const res = await handlers.putMemory(put({ pinned: "i will never watch a musical." }));
     expect(res.status).toBe(200);
@@ -79,6 +79,40 @@ describe("memory route", () => {
     expect(body.dropped).toEqual([]);
     // Dismissing touches nothing else.
     expect(body.markdown).toBe("prose");
+  });
+
+  it("rejectClaim moves the claim to rejected, clears the rows hash, and schedules a rewrite", async () => {
+    const claims = {
+      sentence: "you like a long fuse",
+      claims: [
+        { id: "c_00000001", text: "crime with a long fuse", evidence: ["tt0000001"], polarity: "love" as const },
+        { id: "c_00000002", text: "musicals, apparently", evidence: ["tt0000002"], polarity: "love" as const },
+      ],
+      rejected: [],
+    };
+    await store.setMemory("user-1", { markdown: "prose", claims, rowsHash: "abc" });
+
+    // GET carries the claims the client renders.
+    expect((await (await handlers.getMemory(get())).json()).claims).toEqual(claims);
+
+    const res = await handlers.putMemory(put({ rejectClaim: "c_00000002" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await Promise.all(scheduled);
+
+    const row = (await store.getMemory("user-1"))!;
+    expect(row.claims!.claims.map((c) => c.id)).toEqual(["c_00000001"]);
+    expect(row.claims!.rejected).toEqual([{ text: "musicals, apparently" }]);
+    // Forced: the rows have not changed, so without this the rewrite no-ops.
+    expect(row.rowsHash).toBe("");
+    expect(row.markdown).toBe("prose");
+    expect(rewrites).toEqual(["user-1"]);
+
+    // Idempotent: an id that is not there is still a 200 and changes nothing.
+    const again = await handlers.putMemory(put({ rejectClaim: "c_00000002" }));
+    expect(again.status).toBe(200);
+    expect((await store.getMemory("user-1"))!.claims!.rejected).toEqual([{ text: "musicals, apparently" }]);
+    expect(rewrites).toEqual(["user-1"]);
   });
 
   it("delete removes the row and its logging episodes, and schedules a rewrite", async () => {

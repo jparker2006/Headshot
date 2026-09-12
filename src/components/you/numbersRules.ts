@@ -10,7 +10,7 @@ import type { NumbersLogRow } from "@/lib/taste/numbers";
  * carries a score of 1-10) or it carries one of the two states a person can
  * say out loud, `want` and `seen`.
  */
-export const LOG_FILTERS = ["all", "rated", "want", "seen", "films", "shows"] as const;
+export const LOG_FILTERS = ["all", "rated", "want", "seen", "noted", "films", "shows"] as const;
 export type LogFilter = (typeof LOG_FILTERS)[number];
 
 /** How many rows the table draws before "show more". */
@@ -19,9 +19,14 @@ export const LOG_PAGE = 100;
 /**
  * Does this row survive the chip and the text box? The text matches the title
  * and its year, so "1999" finds a year and "gump" finds a film; the chip is
- * either a kind or a state, never both.
+ * either a kind or a state, never both — except `noted` (v5.3), which is the
+ * one chip that asks about the line you wrote rather than about the title.
  */
-export function matchesLog(row: Pick<NumbersLogRow, "name" | "year" | "kind" | "state" | "score">, filter: LogFilter, query: string): boolean {
+export function matchesLog(
+  row: Pick<NumbersLogRow, "name" | "year" | "kind" | "state" | "score"> & { note?: string | null },
+  filter: LogFilter,
+  query: string,
+): boolean {
   const q = query.trim().toLowerCase();
   if (q && !`${row.name} ${row.year ?? ""}`.toLowerCase().includes(q)) return false;
   switch (filter) {
@@ -33,6 +38,8 @@ export function matchesLog(row: Pick<NumbersLogRow, "name" | "year" | "kind" | "
       return row.kind === "series";
     case "rated":
       return row.state === "rated" && row.score != null;
+    case "noted":
+      return (row.note ?? "").trim() !== "";
     default:
       return row.state === filter;
   }

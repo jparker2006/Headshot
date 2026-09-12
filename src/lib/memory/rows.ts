@@ -46,6 +46,11 @@ export interface RenderedRows {
   text: string;
   /** Every title name in the rendering, for the drop check. */
   names: string[];
+  /**
+   * SPEC v5.3: every row's imdb id, in the same order as `names`. Claim
+   * evidence must be one of these (or a person id the summary knows).
+   */
+  ids: string[];
   /** How many rows the user has in total, including the ones not rendered. */
   total: number;
 }
@@ -67,12 +72,16 @@ export function renderRows(rows: WatchedRow[], graph: RowsGraph, notes: Map<stri
   }
 
   const names: string[] = [];
+  const ids: string[] = [];
   const lines = kept.map((row) => {
     const node = graph.nodeByImdbId(row.titleImdbId);
     const name = node?.name ?? row.titleImdbId;
     names.push(name);
+    ids.push(row.titleImdbId);
     const year = node?.year ? ` (${node.year})` : "";
     const parts = [
+      // v5.3: the id first, so the model can cite a row as evidence.
+      row.titleImdbId,
       `${name}${year}`,
       kindOf(node?.titleType),
       row.rating === "rated" && row.score != null ? `${row.score}/10` : (STATE[row.rating] ?? row.rating),
@@ -85,7 +94,7 @@ export function renderRows(rows: WatchedRow[], graph: RowsGraph, notes: Map<stri
     return `- ${parts.join(" · ")}`;
   });
 
-  return { text: lines.join("\n"), names, total: rows.length };
+  return { text: lines.join("\n"), names, ids, total: rows.length };
 }
 
 /** A cheap, stable hash of one rendering: unchanged rows must be a no-op. */

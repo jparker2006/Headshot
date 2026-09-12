@@ -14,7 +14,8 @@ export interface TasteSummary {
   /** `liked` is score >= 7 and `meh` is score <= 6; the words are the model's, the rule is the score. */
   counts: { liked: number; meh: number; want: number; unseen: number };
   services: string[];
-  people: { name: string; count: number }[];
+  /** v5.3: the imdb id travels too, so a claim can cite a person as evidence. */
+  people: { imdbId: string; name: string; count: number }[];
   eras: Record<string, number>;
   tvShare: number | null;
   avgRuntimeFinished: number | null;

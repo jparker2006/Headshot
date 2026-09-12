@@ -87,7 +87,7 @@ export class MemoryTasteStore implements TasteStore {
 
   async getMemory(userId: string): Promise<MemoryRow | null> {
     const row = this.memoryByUser.get(userId);
-    return row ? { ...row, dropped: [...row.dropped] } : null;
+    return row ? { ...row, dropped: [...row.dropped], claims: row.claims ? structuredClone(row.claims) : null } : null;
   }
 
   async setMemory(userId: string, input: MemoryInput): Promise<void> {
@@ -97,6 +97,8 @@ export class MemoryTasteStore implements TasteStore {
       pinned: input.pinned ?? prev?.pinned ?? "",
       dropped: input.dropped ?? prev?.dropped ?? [],
       rowsHash: input.rowsHash ?? prev?.rowsHash ?? "",
+      // `undefined` keeps what is there; an explicit `null` clears it.
+      claims: input.claims === undefined ? (prev?.claims ?? null) : input.claims,
       updatedAt: this.stamp(),
     });
   }

@@ -42,6 +42,32 @@ export interface EpisodeInput {
   at?: string;
 }
 
+/** SPEC v5.3: a claim is for them or against them. */
+export type ClaimPolarity = "love" | "avoid";
+
+/**
+ * SPEC v5.3: one belief, with the log rows that prove it. `evidence` holds
+ * imdb ids — `tt…` titles the user has a row for, or `nm…` people the log's
+ * people list knows.
+ */
+export interface Claim {
+  id: string;
+  text: string;
+  evidence: string[];
+  polarity: ClaimPolarity;
+}
+
+/**
+ * SPEC v5.3: the memory as structure, not prose. `sentence` is the one line
+ * that says who they are; `rejected` holds the texts the user said "not me"
+ * to, which the rewrite must never restate.
+ */
+export interface MemoryClaims {
+  sentence: string;
+  claims: Claim[];
+  rejected: { text: string }[];
+}
+
 /** The beliefs layer: prose the rewrite job owns plus lines the user pinned. */
 export interface MemoryRow {
   markdown: string;
@@ -56,6 +82,11 @@ export interface MemoryRow {
    * plus no new episodes is a no-op.
    */
   rowsHash: string;
+  /**
+   * SPEC v5.3: the claims the last rewrite produced. Null for a row written
+   * before the migration — `markdown` is still the fallback.
+   */
+  claims: MemoryClaims | null;
   updatedAt: string;
 }
 
@@ -64,6 +95,7 @@ export interface MemoryInput {
   pinned?: string;
   dropped?: string[];
   rowsHash?: string;
+  claims?: MemoryClaims | null;
 }
 
 export interface WatchedRow {

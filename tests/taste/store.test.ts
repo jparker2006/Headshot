@@ -171,6 +171,21 @@ function describeStore(name: string, factory: StoreFactory) {
       // Dismissing clears the list and touches nothing else.
       await store.setMemory("u1", { dropped: [] });
       expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten", dropped: [], rowsHash: "abc" });
+
+      // v5.3: the structured memory round-trips, and a partial write keeps it.
+      expect((await store.getMemory("u1"))?.claims).toBeNull();
+      const claims = {
+        sentence: "you like a long fuse",
+        claims: [{ id: "c_0000beef", text: "crime with a long fuse", evidence: ["tt1", "tt2"], polarity: "love" as const }],
+        rejected: [{ text: "musicals" }],
+      };
+      await store.setMemory("u1", { claims });
+      expect((await store.getMemory("u1"))?.claims).toEqual(claims);
+      await store.setMemory("u1", { markdown: "- rewritten again" });
+      expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten again", claims });
+      // An explicit null clears it; undefined never does.
+      await store.setMemory("u1", { claims: null });
+      expect((await store.getMemory("u1"))?.claims).toBeNull();
     });
 
     it("episodes come back newest first, filtered by limit, query and since", async () => {

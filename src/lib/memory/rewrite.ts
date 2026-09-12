@@ -10,6 +10,12 @@
  * rows and are dropped. A title that is no longer in the rows must not survive
  * in the prose, and the titles that did not survive come back as `dropped`.
  *
+ * v5.3: the model no longer writes the prose. It returns JSON claims, each
+ * with the imdb ids that prove it; `validateClaims` checks them against the
+ * rows this rewrite actually read, and `renderClaimsMarkdown` renders the
+ * markdown the agent reads. The model's words survive only inside a claim's
+ * `text` and the one sentence at the top.
+ *
  * This runs in the background (`waitUntil`). It must never throw and never
  * fail the request that scheduled it.
  */
@@ -17,9 +23,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { generateText, type LanguageModel } from "ai";
 import type { IndustryGraph } from "@/lib/graph/engine";
-import type { EpisodeKind, EpisodeRow, TasteStore } from "@/lib/taste/types";
-import { formatTasteContext, tasteSummary } from "@/lib/agent/tasteContext";
+import type { EpisodeKind, EpisodeRow, MemoryClaims, TasteStore, WatchedRow } from "@/lib/taste/types";
+import { formatTasteContext, tasteSummary, type TasteSummary } from "@/lib/agent/tasteContext";
 import { boldNames, hashRows, normalizeTitle, notesFromEpisodes, renderRows } from "./rows";
+import { renderClaimsMarkdown, validateClaims, type EvidenceLookup } from "./claims";
 
 const PROMPT_PATH = path.join(process.cwd(), "src", "lib", "memory", "rewrite.md");
 
@@ -58,6 +65,8 @@ export interface RewriteDeps {
 
 export interface RewriteResult {
   markdown: string;
+  /** SPEC v5.3: the validated claims this rewrite produced. */
+  claims: MemoryClaims;
   /**
    * Titles the old prose named that the log no longer holds. Deterministic:
    * the bold names in the previous markdown, minus the row titles.
@@ -109,39 +118,51 @@ export async function rewriteMemory(deps: RewriteDeps, userId: string): Promise<
 
     const summary = await tasteSummary(graph, store, userId);
     const facts = summary ? formatTasteContext(summary) : "";
+    const people = peopleIds(summary);
 
     const pinned = (row?.pinned ?? "").trim();
+    const previousClaims = row?.claims ?? null;
     const previous = stripPinned(row?.markdown ?? "", pinned);
     const { text } = await generateText({
       model,
       system: rewritePrompt(),
-      prompt: buildPrompt({ previous, pinned, facts, rows: rendered, episodes: fresh }),
+      prompt: buildPrompt({ previous, previousClaims, pinned, facts, people, rows: rendered, episodes: fresh }),
       maxOutputTokens: 900,
       // The rewrite model is a thinking model on some routes; the whole budget
       // would go to reasoning about forty lines. Off, like every cheap call.
       providerOptions: { openrouter: { reasoning: { enabled: false } } },
     });
 
-    const body = capLines(stripFence(text), MAX_LINES);
-    if (!body) {
-      log(`[memory] skip ${userId}: model returned nothing`);
+    const raw = parseClaims(text);
+    if (!raw) {
+      log(`[memory] skip ${userId}: model returned no JSON`);
       return null;
     }
+    // Nothing the model said is trusted: evidence must be rows this rewrite
+    // actually read, and a rejected claim can never come back.
+    const claims = validateClaims(raw, {
+      knownIds: [...rendered.ids, ...people.map((p) => p.imdbId)],
+      previous: previousClaims,
+    });
+    if (!claims.sentence && claims.claims.length === 0) {
+      log(`[memory] skip ${userId}: nothing survived validation`);
+      return null;
+    }
+
+    const body = capLines(renderClaimsMarkdown(claims, lookupEvidence(graph, watched)), MAX_LINES);
     const markdown = pinned ? `${body}\n\n${PINNED_HEADING}\n${pinned}` : body;
 
-    const dropped = droppedTitles(graph, previous, rendered.names);
-    const stillThere = dropped.filter((name) => boldNames(body).some((n) => normalizeTitle(n) === normalizeTitle(name)));
-    if (stillThere.length) {
-      // The prompt says a title not in the rows must not appear. When one does
-      // anyway we do not edit the model's prose — we say so, and it is still
-      // reported as dropped, because the log is what the user can act on.
-      log(`[memory] warn ${userId}: not in the log but still in the prose: ${stillThere.join(", ")}`);
-    }
+    // What the log no longer holds: the titles the last memory named, from the
+    // previous claims' evidence and from the bold names in the old prose.
+    const dropped = mergeDropped(
+      droppedFromClaims(graph, previousClaims, rendered.ids),
+      droppedTitles(graph, previous, rendered.names),
+    );
     // Anything the user has not seen yet stays on the list until they dismiss it.
     const carried = mergeDropped(row?.dropped ?? [], dropped);
-    await store.setMemory(userId, { markdown, dropped: carried, rowsHash });
-    log(`[memory] rewrote ${userId}: ${body.split("\n").length} lines from ${rendered.total} rows and ${fresh.length} new episodes${dropped.length ? `, dropped ${dropped.join(", ")}` : ""}`);
-    return { markdown, dropped };
+    await store.setMemory(userId, { markdown, claims, dropped: carried, rowsHash });
+    log(`[memory] rewrote ${userId}: ${claims.claims.length} claims from ${rendered.total} rows and ${fresh.length} new episodes${dropped.length ? `, dropped ${dropped.join(", ")}` : ""}`);
+    return { markdown, claims, dropped };
   } catch (err) {
     log(`[memory] rewrite failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`);
     return null;
@@ -203,21 +224,103 @@ function mergeDropped(previous: string[], next: string[]): string[] {
   return out.slice(-12);
 }
 
+/** The people the taste summary knows, with the ids the model may cite. */
+function peopleIds(summary: TasteSummary | null): { imdbId: string; name: string }[] {
+  const out: { imdbId: string; name: string }[] = [];
+  for (const person of summary?.people ?? []) {
+    if (person.imdbId) out.push({ imdbId: person.imdbId, name: person.name });
+  }
+  return out;
+}
+
+/**
+ * Name and score for one evidence id: the row's score when the log has one,
+ * the graph's name either way (a person id has no score).
+ */
+export function lookupEvidence(graph: Pick<IndustryGraph, "nodeByImdbId">, rows: WatchedRow[]): EvidenceLookup {
+  const scores = new Map<string, number | null>();
+  for (const row of rows) scores.set(row.titleImdbId, row.rating === "rated" ? row.score : null);
+  return (imdbId) => {
+    const node = graph.nodeByImdbId(imdbId);
+    if (!node && !scores.has(imdbId)) return undefined;
+    return { name: node?.name ?? imdbId, score: scores.get(imdbId) ?? null };
+  };
+}
+
+/**
+ * Titles the previous claims cited that the log no longer holds. Unlike the
+ * bold-name check this needs no guessing: the evidence was an id.
+ */
+export function droppedFromClaims(
+  graph: Pick<IndustryGraph, "nodeByImdbId">,
+  previous: MemoryClaims | null | undefined,
+  rowIds: string[],
+): string[] {
+  const inRows = new Set(rowIds);
+  const out: string[] = [];
+  for (const claim of previous?.claims ?? []) {
+    for (const id of claim.evidence) {
+      // People are not in the log and never "fall out" of it.
+      if (!id.startsWith("tt") || inRows.has(id)) continue;
+      const name = graph.nodeByImdbId(id)?.name;
+      if (name) out.push(name);
+    }
+  }
+  return out;
+}
+
+/**
+ * Pull the JSON object out of whatever the model said: a bare object, a fenced
+ * block, or an object with a line of chatter around it. Null when there is
+ * none, or when it does not parse — the caller then leaves the memory alone.
+ */
+export function parseClaims(text: string): { sentence?: unknown; claims?: unknown } | null {
+  const candidates: string[] = [];
+  const trimmed = text.trim();
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)\n?```/i.exec(trimmed);
+  if (fenced) candidates.push(fenced[1].trim());
+  candidates.push(trimmed);
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(trimmed.slice(first, last + 1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as { sentence?: unknown; claims?: unknown };
+    } catch {
+      // Try the next shape.
+    }
+  }
+  return null;
+}
+
 function buildPrompt(input: {
   previous: string;
+  previousClaims: MemoryClaims | null;
   pinned: string;
   facts: string;
+  people: { imdbId: string; name: string }[];
   rows: { text: string; total: number };
   episodes: EpisodeRow[];
 }): string {
   const shown = input.rows.text ? input.rows.text.split("\n").length : 0;
   const more = input.rows.total > shown ? ` (the ${shown} most recently touched of ${input.rows.total})` : "";
+  const claims = input.previousClaims?.claims ?? [];
+  const rejected = input.previousClaims?.rejected ?? [];
   const parts = [
     input.rows.text
-      ? `Their log as it stands right now${more}. This is the truth: every title in the memory must be one of these, with the score it has here.\n${input.rows.text}`
+      ? `Their log as it stands right now${more}, one row per line, imdb id first. This is the truth: every evidence id must be one of these.\n${input.rows.text}`
       : "Their log is empty right now. Do not name a title as something they have watched.",
     input.facts ? `Derived from the same log (facts, not prose):\n${input.facts}` : "",
-    input.previous ? `The memory you wrote last time. Keep what the log still supports, and drop the rest.\n${input.previous}` : "There is no memory yet; write the first one.",
+    input.people.length ? `People the log knows, with the ids you may cite as evidence:\n${input.people.map((p) => `- ${p.imdbId} · ${p.name}`).join("\n")}` : "",
+    claims.length
+      ? `The claims you made last time. Keep the ones the log still supports, word for word.\n${claims.map((c) => `- [${c.polarity}] ${c.text} — ${c.evidence.join(", ")}`).join("\n")}`
+      : input.previous
+        ? `The memory you wrote last time, before claims existed. Turn what the log still supports into claims.\n${input.previous}`
+        : "There is no memory yet; write the first one.",
+    rejected.length
+      ? `Claims this person has rejected. Never restate any of these, in any wording — a synonym is the same claim.\n${rejected.map((r) => `- ${r.text}`).join("\n")}`
+      : "",
     input.pinned
       ? `Lines this person pinned themselves. They are theirs, not yours: never rewrite or repeat them, but let them steer what you keep.\n${input.pinned}`
       : "",
@@ -233,12 +336,6 @@ function stripPinned(markdown: string, pinned: string): string {
   const at = markdown.indexOf(PINNED_HEADING);
   if (at >= 0) return markdown.slice(0, at).trim();
   return pinned ? markdown.replace(pinned, "").trim() : markdown.trim();
-}
-
-function stripFence(text: string): string {
-  const trimmed = text.trim();
-  const fenced = /^```[a-z]*\n([\s\S]*?)\n?```$/i.exec(trimmed);
-  return (fenced ? fenced[1] : trimmed).trim();
 }
 
 export function capLines(text: string, max: number): string {

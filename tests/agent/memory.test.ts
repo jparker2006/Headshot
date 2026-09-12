@@ -20,6 +20,11 @@ function textModel(text: string | (() => string)) {
   });
 }
 
+/** A model that answers with a claims payload, as JSON. */
+function claimsModel(payload: unknown | (() => unknown)) {
+  return textModel(() => JSON.stringify(typeof payload === "function" ? (payload as () => unknown)() : payload));
+}
+
 const APOLLO = "tt0000001";
 const GUMP = "tt0000002";
 
@@ -31,11 +36,19 @@ describe("memory rewrite", () => {
     await store.setMemory("u1", { markdown: "old notes", pinned: "i will never watch a musical.\n- **Heat** is the best film ever made." });
     await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: "liked Apollo 13 (1995)" }]);
 
-    const model = textModel("## What you love\n- space procedurals, **Apollo 13** most of all.");
+    const model = claimsModel({
+      sentence: "space procedurals, the quieter the better",
+      claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }],
+    });
     const result = await rewriteMemory({ store, graph, model }, "u1");
     const markdown = result!.markdown;
 
     expect(markdown).toContain("space procedurals");
+    // The prose the agent reads is rendered from the claims, by code.
+    expect(markdown).toContain("space procedurals: **Apollo 13** 8.");
+    expect(result!.claims.claims[0]).toMatchObject({ text: "space procedurals", evidence: [APOLLO], polarity: "love" });
+    expect(result!.claims.claims[0].id).toMatch(/^c_[0-9a-f]{8}$/);
+    expect((await store.getMemory("u1"))!.claims).toEqual(result!.claims);
     expect(markdown).toContain(PINNED_HEADING);
     expect(markdown).toContain("i will never watch a musical.\n- **Heat** is the best film ever made.");
     const row = (await store.getMemory("u1"))!;
@@ -49,20 +62,20 @@ describe("memory rewrite", () => {
     expect(prompt).toContain("Apollo 13 (1995)");
     expect(prompt).toContain("8/10");
     expect(prompt).toContain("This is the truth");
+    // v5.3: the row's imdb id is on its line, so the model can cite it.
+    expect(prompt).toContain(APOLLO);
   });
 
-  it("caps the body at 40 lines before the pinned block", async () => {
+  it("keeps the pinned block under its own heading after the rendered claims", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     await store.setMemory("u1", { pinned: "pinned line" });
     await store.addEpisodes("u1", [{ kind: "log", text: "liked Apollo 13" }]);
-    const long = Array.from({ length: 80 }, (_, i) => `- line ${i + 1}`).join("\n");
-    const markdown = (await rewriteMemory({ store, graph, model: textModel(long) }, "u1"))!.markdown;
+    const model = claimsModel({ sentence: "you like a countdown", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }] });
+    const markdown = (await rewriteMemory({ store, graph, model }, "u1"))!.markdown;
     const [body, pinned] = markdown.split(`\n\n${PINNED_HEADING}\n`);
-    expect(body.split("\n")).toHaveLength(40);
-    expect(body).toContain("- line 40");
-    expect(body).not.toContain("- line 41");
+    expect(body).toBe("you like a countdown\n\n## What you love\nspace procedurals: **Apollo 13** 8.");
     expect(pinned).toBe("pinned line");
   });
 
@@ -73,7 +86,7 @@ describe("memory rewrite", () => {
     let tick = Date.parse("2026-09-11T20:00:00.000Z");
     const store = new MemoryTasteStore({ now: () => new Date((tick += 1000)) });
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
-    const model = textModel("new notes");
+    const model = claimsModel({ sentence: "new notes", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }] });
 
     expect((await rewriteMemory({ store, graph, model }, "u1"))!.markdown).toContain("new notes");
     expect(model.doGenerateCalls).toHaveLength(1);
@@ -153,7 +166,7 @@ describe("memory in the chat", () => {
     const model = scriptedModel([{ text: "nice." }]);
     // v5.2: the side model is called exactly once, for the rewrite. A chat turn
     // that logs nothing writes no episode at all.
-    const side = textModel("## What you love\n- space procedurals");
+    const side = claimsModel({ sentence: "space procedurals", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }] });
     const jobs: Promise<void>[] = [];
 
     await collect(
@@ -221,7 +234,7 @@ describe("rewrite from the rows", () => {
     await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: 'rated Apollo 13 (1995) 8/10: "the countdown"' }]);
     await store.setMemory("u1", { markdown: "## What you love\n**Apollo 13** at 8, and **Forrest Gump** was a 9." });
 
-    const model = textModel("## What you love\n**Apollo 13** at 8.");
+    const model = claimsModel({ sentence: "you like a countdown", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }] });
     const result = (await rewriteMemory({ store, graph, model }, "u1"))!;
     expect(result.dropped).toEqual(["Forrest Gump"]);
     expect(result.markdown).not.toContain("Forrest Gump");
@@ -240,7 +253,7 @@ describe("rewrite from the rows", () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 4, source: "log" }]);
-    const model = textModel("## What you avoid\n**Apollo 13** was a 4.");
+    const model = claimsModel({ sentence: "a shrug", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "avoid" }] });
     await rewriteMemory({ store, graph, model }, "u1");
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 9.7, source: "chat" }]);
     await rewriteMemory({ store, graph, model }, "u1");
@@ -253,7 +266,7 @@ describe("rewrite from the rows", () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
-    const model = textModel("## What you love\n**Apollo 13**.");
+    const model = claimsModel(() => ({ sentence: "you like a countdown", claims: [{ text: "space procedurals", evidence: [APOLLO, GUMP], polarity: "love" }] }));
     expect(await rewriteMemory({ store, graph, model }, "u1")).not.toBeNull();
     expect(model.doGenerateCalls).toHaveLength(1);
 

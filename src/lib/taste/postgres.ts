@@ -150,14 +150,30 @@ export class PostgresTasteStore implements TasteStore {
   async getMemory(userId: string): Promise<MemoryRow | null> {
     const [row] = await this.db.select().from(memory).where(eq(memory.userId, userId)).limit(1);
     if (!row) return null;
-    return { markdown: row.markdown, pinned: row.pinned, dropped: row.dropped ?? [], rowsHash: row.rowsHash ?? "", updatedAt: row.updatedAt.toISOString() };
+    return {
+      markdown: row.markdown,
+      pinned: row.pinned,
+      dropped: row.dropped ?? [],
+      rowsHash: row.rowsHash ?? "",
+      // Null for a pre-v5.3 row: the caller falls back to `markdown`.
+      claims: row.claims ?? null,
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
   async setMemory(userId: string, input: MemoryInput): Promise<void> {
     const at = this.now();
     await this.db
       .insert(memory)
-      .values({ userId, markdown: input.markdown ?? "", pinned: input.pinned ?? "", dropped: input.dropped ?? [], rowsHash: input.rowsHash ?? "", updatedAt: at })
+      .values({
+        userId,
+        markdown: input.markdown ?? "",
+        pinned: input.pinned ?? "",
+        dropped: input.dropped ?? [],
+        rowsHash: input.rowsHash ?? "",
+        claims: input.claims ?? null,
+        updatedAt: at,
+      })
       .onConflictDoUpdate({
         target: memory.userId,
         set: {
@@ -168,6 +184,7 @@ export class PostgresTasteStore implements TasteStore {
           ...(input.pinned === undefined ? {} : { pinned: sql`excluded.pinned` }),
           ...(input.dropped === undefined ? {} : { dropped: sql`excluded.dropped` }),
           ...(input.rowsHash === undefined ? {} : { rowsHash: sql`excluded.rows_hash` }),
+          ...(input.claims === undefined ? {} : { claims: sql`excluded.claims` }),
           updatedAt: sql`excluded.updated_at`,
         },
       });

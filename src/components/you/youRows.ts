@@ -1,29 +1,27 @@
 /**
- * The three rows on You, as pure rules (SPEC v5 → You page). The page draws
- * them; it never decides what is in them, so `tests/client/youRows.test.ts`
- * can hold the cuts to account without a renderer.
+ * The list rows on You, as pure rules (SPEC v5 → You page; v5.3 → "right
+ * now"). The page draws them; it never decides what is in them, so
+ * `tests/client/youRows.test.ts` can hold the cuts to account without a
+ * renderer.
  */
 import type { WatchedRow } from "@/lib/taste/types";
-import type { DecadeCount } from "./numbersRules";
 
-/** How many faces the people row carries — one row of twelve. */
-export const PEOPLE_ROW = 12;
-/** How many decades the ledger carries. */
-export const DECADE_ROWS = 6;
+/** How many series "right now" carries. */
+export const RIGHT_NOW_ROWS = 6;
 
 /**
- * The people row: the route already ranks them, so this only takes the first
- * twelve and drops anyone it could not count.
+ * Right now: the series you are part-way through — a row with a season marked
+ * that you have actually started (`want` is Later and `unseen` is a removal),
+ * most recently touched first, six at most. It comes from the log, never from
+ * the model (SPEC v5.3, story 89).
  */
-export function peopleRow<T extends { count: number }>(people: readonly T[], limit = PEOPLE_ROW): T[] {
-  return people.filter((p) => p.count > 0).slice(0, limit);
-}
-
-/** The decades ledger: biggest first, ties by decade, top six. */
-export function decadeRows(decades: readonly DecadeCount[], limit = DECADE_ROWS): DecadeCount[] {
-  return [...decades]
-    .filter((d) => d.count > 0)
-    .sort((a, b) => b.count - a.count || (a.decade < b.decade ? -1 : 1))
+export function rightNowRows<T extends Pick<WatchedRow, "titleImdbId" | "rating" | "season" | "updatedAt">>(
+  rows: readonly T[],
+  limit = RIGHT_NOW_ROWS,
+): T[] {
+  return rows
+    .filter((r) => r.season != null && r.rating !== "want" && r.rating !== "unseen")
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
     .slice(0, limit);
 }
 

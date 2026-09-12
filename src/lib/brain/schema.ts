@@ -18,6 +18,7 @@ import {
   timestamp,
   vector,
 } from "drizzle-orm/pg-core";
+import type { MemoryClaims } from "@/lib/taste/types";
 import type { NodeKind, TitleType } from "@/lib/graph/format";
 
 /**
@@ -235,6 +236,8 @@ export const memory = pgTable("memory", {
   dropped: jsonb("dropped").$type<string[]>().notNull().default([]),
   /** SPEC v5.2: hash of the rows the last rewrite saw; unchanged rows are a no-op. */
   rowsHash: text("rows_hash").notNull().default(""),
+  /** SPEC v5.3: the structured memory (sentence + claims + rejected). Null before the first v5.3 rewrite. */
+  claims: jsonb("claims").$type<MemoryClaims | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 

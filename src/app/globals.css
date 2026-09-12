@@ -278,6 +278,30 @@ body {
 }
 .poster-mark-md { width: 30px; height: 45px; }
 .poster-mark-lg { width: 34px; height: 51px; }
+/* A person is square where a title is a poster (v5.3, the claim rows): the
+   face is the mark, and a headshot cropped to 2:3 is a portrait nobody asked
+   for. Same width as `.poster-mark-md`, so a row of mixed evidence lines up. */
+.poster-mark-face { width: 30px; height: 30px; border-radius: 2px; }
+
+/* The "not me" control on a claim row. Hidden until the row is wanted, the way
+   a session row hides its rename — but always there on a touch screen, which
+   never hovers and would otherwise have no way to reject a claim. */
+.claim-row .row-reveal { visibility: hidden; }
+.claim-row:hover .row-reveal,
+.claim-row:focus-within .row-reveal { visibility: visible; }
+@media (hover: none) {
+  .claim-row .row-reveal { visibility: visible; }
+}
+
+/* The Log field's rating step: once a title is picked, answering "how was it?"
+   is a step of its own, so it sits in a block rather than loose under the
+   field (SPEC v5.3 → Log field). The one filled box on the Log page. */
+.log-block {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+}
 
 /* The rating is a word. liked reads louder; the rest sit at dim. */
 .bucket {

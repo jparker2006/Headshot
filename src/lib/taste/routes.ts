@@ -301,6 +301,9 @@ export function createTasteHandlers(deps: TasteDeps) {
         // has them. You shows the line once and then dismisses it.
         dropped: row?.dropped ?? [],
         updatedAt: row?.updatedAt ?? null,
+        // SPEC v5.3: the structured memory You renders. Null for a user whose
+        // last rewrite predates claims — `markdown` is still the fallback.
+        claims: row?.claims ?? null,
       });
     },
 
@@ -312,7 +315,7 @@ export function createTasteHandlers(deps: TasteDeps) {
     async putMemory(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      let body: { pinned?: unknown; dismissDropped?: unknown };
+      let body: { pinned?: unknown; dismissDropped?: unknown; rejectClaim?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {
@@ -323,6 +326,29 @@ export function createTasteHandlers(deps: TasteDeps) {
       if (body.dismissDropped === true) {
         const store = await deps.store();
         await store.setMemory(who.userId, { dropped: [] });
+        return Response.json({ ok: true });
+      }
+      // SPEC v5.3: "not me". The claim moves to `rejected`, where the next
+      // rewrite reads it as a thing never to say again, in any wording.
+      if (typeof body.rejectClaim === "string") {
+        const store = await deps.store();
+        const row = await store.getMemory(who.userId);
+        const claims = row?.claims;
+        const hit = claims?.claims.find((c) => c.id === body.rejectClaim);
+        if (claims && hit) {
+          await store.setMemory(who.userId, {
+            claims: {
+              sentence: claims.sentence,
+              claims: claims.claims.filter((c) => c.id !== hit.id),
+              rejected: [...claims.rejected, { text: hit.text }],
+            },
+            // The rows have not changed, so the rewrite's no-op guard would
+            // swallow this one. Clearing the hash is what forces it to run.
+            rowsHash: "",
+          });
+          rewriteMemory(who.userId);
+        }
+        // Idempotent: rejecting a claim that is already gone is still fine.
         return Response.json({ ok: true });
       }
       if (typeof body.pinned !== "string") return badRequest("pinned required");

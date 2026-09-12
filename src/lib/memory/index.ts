@@ -3,6 +3,9 @@ export {
   memoryText,
   capLines,
   droppedTitles,
+  droppedFromClaims,
+  lookupEvidence,
+  parseClaims,
   PINNED_HEADING,
   MAX_LINES,
   MAX_EPISODES,
@@ -10,4 +13,18 @@ export {
   type RewriteDeps,
   type RewriteResult,
 } from "./rewrite";
+export {
+  validateClaims,
+  renderClaimsMarkdown,
+  capSentence,
+  emptyClaims,
+  MAX_CLAIMS,
+  MAX_AVOID,
+  MAX_CLAIM_WORDS,
+  MAX_SENTENCE_WORDS,
+  LOVE_HEADING,
+  AVOID_HEADING,
+  type EvidenceLookup,
+  type ValidateContext,
+} from "./claims";
 export { renderRows, notesFromEpisodes, hashRows, boldNames, normalizeTitle, MAX_ROWS, type RenderedRows } from "./rows";

@@ -13,7 +13,7 @@
  * write bumps `logBus` and the table re-fetches — so a row appears at the top
  * of the table the moment it is logged.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useImages } from "@/components/chat/useImages";
 import { bumpLog, useLogVersion } from "@/components/you/logBus";
 import { useNumbers } from "@/components/you/useNumbers";
@@ -23,6 +23,7 @@ import { useCrawlStatus } from "@/components/imports/useCrawlStatus";
 import type { LogFilter } from "@/components/you/numbersRules";
 import { LogTable } from "./LogTable";
 import { ScoreRow } from "./ScoreRow";
+import { initialLogField, logFieldReducer, loggedLine, stepTimeout } from "./logFieldState";
 
 /** What `POST /api/taste/log` `{ query }` hands back for one match. */
 export interface LogCandidate {
@@ -51,8 +52,14 @@ export function LogPage({ onSelectNode, initialFilter }: Props) {
   const crawl = useCrawlStatus(true, bumpLog);
   const importing = crawl.body?.status === "running";
 
-  const rows = numbers.status === "ready" ? numbers.data.log : [];
+  const rows = useMemo(() => (numbers.status === "ready" ? numbers.data.log : []), [numbers]);
   const totals = numbers.status === "ready" ? numbers.data.totals : null;
+  // The candidate payload carries no runtime, so the block borrows one from the
+  // log when the title is already in it (see the report: `year · kind` otherwise).
+  const runtimes = useMemo(
+    () => Object.fromEntries(rows.filter((r) => r.runtime != null).map((r) => [r.imdbId, r.runtime as number])),
+    [rows],
+  );
 
   return (
     <div className="flex flex-col gap-[30px]" aria-label="Log">
@@ -70,7 +77,7 @@ export function LogPage({ onSelectNode, initialFilter }: Props) {
 
       {importing && <p className="t-meta -mt-[18px]">importing from letterboxd…</p>}
 
-      <LogField onSelectNode={onSelectNode} />
+      <LogField onSelectNode={onSelectNode} runtimes={runtimes} />
 
       {catchUp ? (
         <CatchUp onDone={() => setCatchUp(false)} onSelectNode={onSelectNode} />
@@ -94,7 +101,16 @@ export function LogPage({ onSelectNode, initialFilter }: Props) {
 
 // ---- the field at the top --------------------------------------------------
 
-function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) => void; onLogged?: (row: WatchedRow) => void }) {
+function LogField({
+  onSelectNode,
+  onLogged,
+  runtimes = {},
+}: {
+  onSelectNode: (imdbId: string) => void;
+  onLogged?: (row: WatchedRow) => void;
+  runtimes?: Record<string, number>;
+}) {
+  const [field, dispatch] = useReducer(logFieldReducer, initialLogField);
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<LogCandidate[]>([]);
   const [cursor, setCursor] = useState(-1);
@@ -147,7 +163,14 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
     setError(null);
   }, []);
 
+  /** Cancel: back out of the pick, but never out of a line that is already a fact. */
+  const cancel = useCallback(() => {
+    dispatch({ type: "cancel" });
+    reset();
+  }, [reset]);
+
   function pick(c: LogCandidate) {
+    dispatch({ type: "pick", imdbId: c.imdbId });
     setChosen(c);
     setCandidates([]);
     setCursor(-1);
@@ -179,6 +202,9 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
       if (res.status === 401) return setError("sign in to keep a log");
       if (!res.ok) return setError("that did not save");
       const body = (await res.json()) as { row: WatchedRow };
+      // The block collapses, the field clears and takes the keyboard back, and
+      // the only thing left is one line saying what was written (SPEC v5.3).
+      dispatch({ type: "logged", imdbId: chosen.imdbId, line: loggedLine(body.row, chosen.name) });
       reset();
       inputRef.current?.focus();
       onLogged?.(body.row);
@@ -199,7 +225,7 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
       const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
       if (e.key === "Escape") {
         e.preventDefault();
-        return reset();
+        return cancel();
       }
       if (e.key === "Enter" && chosen && !typing) {
         e.preventDefault();
@@ -208,7 +234,30 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [chosen, reset, submit]);
+  }, [chosen, cancel, submit]);
+
+  // The undo window, and the two seconds "undone" stays up after it. The
+  // durations are the state machine's, not the component's.
+  useEffect(() => {
+    const ms = stepTimeout(field);
+    if (ms == null) return;
+    const timer = setTimeout(() => dispatch({ type: "expire" }), ms);
+    return () => clearTimeout(timer);
+  }, [field]);
+
+  /** Undo takes the row back out through the delete the drawer uses. */
+  const undo = useCallback(() => {
+    if (field.step !== "logged") return;
+    const imdbId = field.imdbId;
+    dispatch({ type: "undo" });
+    void fetch("/api/taste/log", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imdbId }),
+    })
+      .then(() => bumpLog())
+      .catch(() => {});
+  }, [field]);
 
   function onFieldKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (candidates.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
@@ -229,9 +278,14 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
   const seasons = chosen?.kind === "series" ? (chosen.seasons ?? []) : [];
   const poster = chosen ? images[chosen.imdbId]?.url : null;
 
+  const runtime = chosen ? runtimes[chosen.imdbId] : undefined;
+
   return (
     <div className="flex max-w-[1000px] flex-col gap-[18px]">
-      <div className="flex h-[46px] items-center gap-[12px] border-b border-[color:var(--line-input)]">
+      {/* The field says what it is for. Without the label it reads as a search
+          box, which is the one thing it is not (SPEC v5.3 → Log field). */}
+      <span className="t-sub">log something you just watched</span>
+      <div className="-mt-[8px] flex h-[46px] items-center gap-[12px] border-b border-[color:var(--line-input)]">
         <span className="tnum text-[15px] leading-none text-ink-ghost">&gt;</span>
         <input
           ref={inputRef}
@@ -244,14 +298,24 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
             }
           }}
           onKeyDown={onFieldKeyDown}
-          aria-label="what did you watch?"
-          placeholder="what did you watch?"
+          aria-label="log something you just watched"
+          placeholder="The title, then a score"
           // the board sets what you type here in Geist at 17px, not in mono: it is a
           // title, not a figure (design/boards-v5/Log.dc.html)
           className="min-w-0 flex-1 bg-transparent text-[17px] leading-none text-ink outline-none placeholder:text-ink-faint"
         />
         <span className="t-meta ml-auto hidden shrink-0 sm:inline">↑↓ to pick · ⏎ to open</span>
       </div>
+
+      {field.step === "logged" && (
+        <p className="t-meta -mt-[10px] flex flex-wrap items-center gap-[10px]">
+          <span>{field.line}</span>
+          <button type="button" onClick={undo} className="tap">
+            <span className="t-link">undo</span>
+          </button>
+        </p>
+      )}
+      {field.step === "undone" && <p className="t-meta -mt-[10px]">undone</p>}
 
       {!chosen && candidates.length > 0 && (
         <ul className="flex flex-col" role="listbox" aria-label="titles">
@@ -283,7 +347,9 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
       )}
 
       {chosen && (
-        <div className="flex flex-col gap-[18px]">
+        /* Rating is a step, so it looks like one: the one filled block on the
+           page, with the title at the top of it (SPEC v5.3 → Log field). */
+        <div className="log-block flex flex-col gap-[18px]">
           <div className="flex items-center gap-[14px]">
             <button type="button" onClick={() => onSelectNode(chosen.imdbId)} aria-label={chosen.name}>
               {poster ? (
@@ -295,7 +361,7 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
             </button>
             <span className="text-[16px] font-semibold leading-none text-ink">{chosen.name}</span>
             <span className="t-meta text-[12px] text-ink-faint">
-              {[chosen.year, chosen.kind === "series" ? "show" : "film"].filter(Boolean).join(" · ")}
+              {[chosen.year, chosen.kind === "series" ? "show" : "film", runtime ? `${runtime}m` : ""].filter(Boolean).join(" · ")}
             </span>
             <span className="t-meta ml-auto hidden sm:inline">{chosen.imdbId}</span>
           </div>
@@ -368,7 +434,7 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
             </button>
             {/* the key hint belongs to the keyboard that would press it */}
             <span className="t-meta hidden sm:inline">⏎</span>
-            <button type="button" onClick={reset} className="t-link">
+            <button type="button" onClick={cancel} className="t-link">
               cancel
             </button>
           </div>

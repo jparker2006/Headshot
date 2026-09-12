@@ -78,14 +78,16 @@ Entity names inside prose and bubbles are `font-weight: 500` at `--ink` and are 
 - **Sections.** `gap: 38px` between sections on You, `30px` on Log and Thread. A section header is a baseline row (`gap: 12px`) with a 10px bottom pad and one `--line` rule under it.
 - **Rail.** 232px wide (v5), `border-right: 1px var(--line)`, padding `22px 12px 18px 12px`; rows carry their own 12px inset and 4px hover shape, so the rail has no internal gap of its own.
 - **Page.** Content padding `22px 34px 40px` (You) / `22px 34px 32px` (Thread, Log). Gutter is therefore 34px on a laptop.
-- **Column widths.** Prose and thread cap at **880px**. The instrument sections (log field, candidates, picked title, receipts) cap at **1000px**. The ledger and the log table run the full content column (1264px at a 1440px viewport). The memory is three equal columns with a `0 34px` gap; the people ledger is four equal columns with a `6px 40px` gap.
-- **Phone (390px)** — `design/boards-v5/Shell-phone.dc.html` for the shell, a deviation elsewhere. Rules: the rail becomes a 44px top bar (wordmark left; on Ask, signed in, a `chats` label and a `+` pushed right — no hamburger, no account) plus the bottom tab bar of three 54px cells; sessions open as a sheet from `chats`. Gutter drops to 16px, section gap to 28px. Every list row becomes two lines at 52px (`.row` carries this itself under `max-width: 767px`, which is also what makes the controls inside a row big enough to hit; `.row-fig`, `.row-tight`, `.row-pick` and `.row-tall` keep their own heights): line one is poster-mark + title + year, line two is the mono meta (`3h ago · liked · film · 157m`), or the note if there is one. A tonight pick becomes a block: poster and reason on top, Play full-width at 44px below. The memory's three columns become one. Ledger rows keep 24px with a 96px label column and a 40px figure column. Bubbles cap at 86% and the composer is pinned with `env(safe-area-inset-bottom)` added to its bottom pad. Nothing horizontal scrolls except the log table, which scrolls inside its own container.
+- **Column widths.** Prose and thread cap at **880px**. The instrument sections (log field, candidates, picked title, receipts) cap at **1000px**. The ledger and the log table run the full content column (1264px at a 1440px viewport). **v5.3: You is one column at 720px and the memory has no columns of its own** — the three-column memory and the four-column people ledger are gone with the essay.
+- **Phone (390px)** — `design/boards-v5/Shell-phone.dc.html` for the shell, a deviation elsewhere. Rules: the rail becomes a 44px top bar (wordmark left; on Ask, signed in, a `chats` label and a `+` pushed right — no hamburger, no account) plus the bottom tab bar of three 54px cells; sessions open as a sheet from `chats`. Gutter drops to 16px, section gap to 28px. Every list row becomes two lines at 52px (`.row` carries this itself under `max-width: 767px`, which is also what makes the controls inside a row big enough to hit; `.row-fig`, `.row-tight`, `.row-pick` and `.row-tall` keep their own heights): line one is poster-mark + title + year, line two is the mono meta (`3h ago · liked · film · 157m`), or the note if there is one. A tonight pick becomes a block: poster and reason on top, Play full-width at 44px below. (v5.3: the memory is one column at every width, so there is nothing to collapse; a claim's marks wrap under its text.) Ledger rows keep 24px with a 96px label column and a 40px figure column. Bubbles cap at 86% and the composer is pinned with `env(safe-area-inset-bottom)` added to its bottom pad. Nothing horizontal scrolls except the log table, which scrolls inside its own container.
 
 ## Layouts
 
 Every screen is `232px | 1fr`: the rail, then one content column with the composer pinned at its bottom (Log and You carry their own controls instead). There is no second panel and no resident canvas — the sigma brain, `/brain` and its search box were deleted in v5.
 
 ### You (v5)
+
+**You (v5.3) below supersedes this section's layout, memory and numbers block**; the header, the `dropped` line and Later are unchanged and still described here.
 
 The receipt, and nothing else (SPEC v5 → You page). Everything that was plumbing moved to **Settings (v5)**; tonight moved into Ask's empty state; recently logged and the charts are the Log page's. Three sections, `38px` apart (`28px` on a phone), no accent anywhere on the screen.
 
@@ -120,6 +122,47 @@ Order is fixed: memory, numbers, later. Rules that matter:
 - **Later.** The `want` rows, newest first, `.row` at 38px: 22px poster mark, title, year, and one quiet `seen it` (`.t-link`) which writes `{ state: "seen" }` through the same `POST /api/taste/log` every other write goes through. The header's `the whole list` opens the Log on its `want` chip. No `remove`: unlisting something is a state, and the Log is where states are changed.
 - **Signed out** it is the landing: one 26px first-person sentence, one `.t-meta` line, `Sign in` as a `.btn-outline`. Nothing else.
 
+### You (v5.3)
+
+v5.3 replaces the essay. The memory is claims with evidence, and the page is **one column at 720px** — the Ask width — with no two-column flow anywhere, on any viewport.
+
+```
+┌──────────┬──────────────────────────────────────────────────────────────┐
+│ headshot │ what I know about you   rewritten 3h ago            edit ─── │
+│          │ no longer in your log: The Wire and Heat               ok ── │
+│          │ you like a slow build and a long memory.                     │
+│          │                                                              │
+│ log      │ crime with a long fuse        ▯ ▯ ▯          not me          │
+│ ask      │                              9.9 10  9                      │
+│ you      │ you finish what Fincher starts ▯ ▯                           │
+│          │                               9  8.5                        │
+│          │ romantic comedy       avoid   ▯ ▯            not me          │
+│          │                               3  4                          │
+│          │ 130 titles, 222 hours. 113 films, 17 shows. mostly 2000s …   │
+│          │ ──────────────────────────────────────────────────────────── │
+│          │ right now                                                    │
+│          │ ▌ Severance                                    s2 · 3 eps    │
+│          │ ──────────────────────────────────────────────────────────── │
+│          │ later   6 saved                              the whole list ─│
+│          │ ▌ Andrei Rublev              1966              seen it       │
+│          │ ──────────────────────────────────────────────────────────── │
+│          │ in your words                                    all notes ──│
+│          │ the best hour of television anyone has shot                  │
+│ jake  ⚙  │ The Leftovers                                                │
+└──────────┴──────────────────────────────────────────────────────────────┘
+```
+
+Order is fixed: **the sentence, the claims, the numbers line, right now, later, in your words.** Rules that matter:
+
+- **The sentence.** One line, 17px Geist at `--ink`, line-height 1.5. No bold, no name, no figure — it is the five-second answer and a number in it would send you reading instead. When the rewrite has not produced claims yet, the old `markdown` stands in, stripped of its headings and its `**`, as plain `.t-prose` paragraphs; with neither, one line: `nothing yet. log a few things, or tell the chat what you love.`
+- **A claim row.** No rule between rows, 12px apart. Left: the text at 14.5px, `--ink` for a `love` and `--ink-dim` for an `avoid`, cut to twelve words (`truncateClaim`); an `avoid` carries the mono word `avoid` beside it as `.t-meta`, and that tag is the only thing that marks polarity — there is no colour on this page. Right: three to five marks, ordered by the score the log holds for them, best first (`orderEvidence`, cap 5). A title is a `.poster-mark poster-mark-md` (30 × 45); a person is `.poster-mark poster-mark-face` (30 × 30, square, the people-row crop) so a headshot is not forced into a poster. Under each mark its score, mono `tnum` at 11.5px `--ink-ghost` through `formatScore` — nothing when the row carries no score. Every mark opens the drawer. On a phone the marks wrap onto their own line under the text.
+- **not me.** A `.t-link` in a `.tap` at the end of the row, hidden until the row is hovered or focused (`.claim-row .row-reveal`) and **always visible under `@media (hover: none)`** — a touch screen never hovers and would otherwise have no way to reject a claim. It removes the row on the spot and PUTs `{ rejectClaim: id }`; the rewrite makes it permanent, and the rejected text never comes back.
+- **The numbers line.** `numbersSentence`, unchanged, as the last `.t-prose` line of the claims section — it is one sentence about the log, so it sits with the other sentences. **The people row and the decades ledger are gone** with `ledger.ts`: a claim with five posters under it ranks the same facts and says where they came from.
+- **right now.** The series you are part-way through, from the rows and never from the model: `season` is set and the row is neither `want` nor `unseen`, most recently touched first, six at most (`rightNowRows`). A `.row`: poster mark, title, then mono `s2 · 3 eps` pushed right — the episode count is dropped when it is zero. The whole section, header included, is absent when nothing is running.
+- **later.** Unchanged from v5: the `want` rows, `seen it` per row, `the whole list` into the Log's `want` chip.
+- **in your words.** The pinned lines first, each one a `.t-note` quote, then the newest six log rows that carry a note: the note as a `.t-note` quote with the title under it as `.t-meta`, the whole thing clickable into the drawer. `all notes` opens the Log on its new `noted` chip. Absent when there is neither a pinned line nor a note.
+- **What changed from v5.** Out: `MemoryProse` on this page and the three-column flow, the people row, the decades ledger, `ledger.ts`. In: the sentence, the claim rows, `right now`, `in your words`, and a 720px column. Kept exactly as they were: the header with `rewritten Nm ago` and `edit`, the `dropped` line with `ok`, and Later.
+
 ### Settings (v5)
 
 `/settings`, reached from the account row at the bottom of the rail and from nowhere else. It keeps the rail — it is a place inside the product, not a modal — but nothing in the rail is lit, because you are not in Log, Ask or You (`AppShell`, `surface={null}`). Column caps at 880px; sections separate by the page's own rhythm, a `.section-head` with one hairline under it and then rows.
@@ -147,6 +190,8 @@ The Log page's table, the one place a figure still gets a column of its own. **T
 
 - `.row` at 38px: poster, title, year, kind, score, date, runtime, folding to two lines on a phone. A 24px `.t-sub` header row. Chips above it for the state, the score and the kind, one at a time, plus a text filter; `.t-meta` `115 rows · 8 shown` pushed right. Arriving from You's Later opens it on the `want` chip. No zebra striping, no row borders, no pagination chrome — it scrolls in its own container.
 - **Scores are written with one decimal, and only when there is one** (v5.1): `9.7` keeps its tenth, `8` stays a bare `8` — never `8.0`. One helper, `formatScore` in `src/components/log/scoreRules.ts`, is what every score on every screen goes through: the log table, the drawer's line, the receipts, the You rows. The row of ten stays ten whole cells — a tap is a tap — and a decimal value lights the cell it is nearest to (9.7 lights the 10) with the exact figure set in mono beside the row. Someone who means 9.7 types it into the small tenths field next to the ten, which is offered in the log field and the drawer and nowhere else.
+
+**Log field (v5.3).** The field is labelled: a `.t-sub` line above it, `log something you just watched`, and the placeholder is `The title, then a score` — without them the field reads as a search box, which is the one thing it is not. The mono `>` and the `↑↓ to pick · ⏎ to open` hint stay. Once a title is picked, the rating step becomes a **block** (`.log-block`: `--bg-elev` fill, 1px `--line`, 12px radius, 18px padding) — the one filled box on the page, because rating is a step and not a loose row: `.poster-mark-md`, the title at 16px/600, `year · kind · runtime` (the runtime only when the log already knows it — the candidate payload carries none), the row of ten with the tenths field, `want` / `seen, not rated`, the season row, the note field, then `log it` and `cancel`. After a write the block collapses, the field clears and takes focus back, and one `.t-meta` line sits under it for ten seconds: `logged Heat 9 · undo`, the score through `formatScore` or the state word. `undo` DELETEs the row and the line becomes `undone` for two seconds. The steps and their durations are `logFieldState.ts` (idle → picked → logged → idle), tested.
 
 ### Thread
 
