@@ -209,6 +209,24 @@ body {
   outline: none;
 }
 
+/* A `.t-link` is 12.5px of text, which is a fine thing to read and a poor
+   thing to hit. `.tap` wraps one (the link stays on an inner span, so the
+   underline keeps hugging the words) and grows the hit area to 44px on a
+   screen with no cursor. The padding is cancelled by an equal negative
+   margin, so nothing in the layout moves. */
+.tap {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .tap {
+    min-height: 44px;
+    margin-block: -13px;
+    padding-block: 13px;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Primitives
 --------------------------------------------------------------------------- */
@@ -229,6 +247,14 @@ body {
 .row-pick  { height: 42px; gap: 16px; }  /* log-field candidates */
 .row-tall  { height: 68px; gap: 18px; }  /* tonight picks */
 .row-fig   { height: 24px; gap: 14px; padding-inline: 0; margin-inline: 0; }
+/* Phone: a list row is 52px, which is also what makes every control inside one
+   big enough to hit (DESIGN.md → Rhythm → Phone). The ledger keeps 24, the
+   receipt 32, and the candidate and tonight rows keep their own heights. */
+@media (max-width: 767px) {
+  .row:not(.row-fig):not(.row-tight):not(.row-pick):not(.row-tall) {
+    height: 52px;
+  }
+}
 .row:hover,
 .row-pick:hover,
 .row-tall:hover,

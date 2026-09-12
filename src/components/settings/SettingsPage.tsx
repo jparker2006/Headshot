@@ -93,9 +93,9 @@ function Account({ email }: { email: string | null }) {
           onClick={() => (confirm ? void remove() : setConfirm(true))}
           onBlur={() => setConfirm(false)}
           disabled={busy}
-          className={`t-link ${confirm ? "text-danger" : ""}`}
+          className="tap"
         >
-          {busy ? "deleting…" : confirm ? "delete everything?" : "delete account"}
+          <span className={`t-link ${confirm ? "text-danger" : ""}`}>{busy ? "deleting…" : confirm ? "delete everything?" : "delete account"}</span>
         </button>
         {confirm && !busy && <span className="t-meta">the log, the memory and the chats. no undo.</span>}
       </div>

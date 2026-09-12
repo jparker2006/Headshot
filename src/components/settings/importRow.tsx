@@ -27,7 +27,7 @@ export function ImportRow({ name, note, controls }: { name: string; note: string
  */
 export function FilePick({ name, label, chosen, onPick }: { name: string; label: string; chosen: string | null; onPick: (file: File | null) => void }) {
   return (
-    <label className="cursor-pointer">
+    <label className="tap">
       <span className={`t-link ${chosen ? "text-ink" : ""}`}>{chosen ?? label}</span>
       <input
         type="file"

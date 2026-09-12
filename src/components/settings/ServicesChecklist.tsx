@@ -80,14 +80,22 @@ export function ServicesChecklist({ onSaved, intro = false, heading }: Props) {
         <div className="section-head">
           <h2 className="t-title">{heading ?? "services"}</h2>
           <span className="t-sub hidden sm:inline">tonight only picks things you can open</span>
-          {!intro && <span className="t-meta ml-auto">{chosen.size} of {providers?.length ?? 0}</span>}
+          {/* No count until there is a list to count: `0 of 0` is a figure that
+              is not true yet. */}
+          {!intro && providers !== null && (
+            <span className="t-meta ml-auto">
+              {chosen.size} of {providers.length}
+            </span>
+          )}
         </div>
       )}
 
       {providers === null ? (
         <p className="t-meta">reading the list…</p>
       ) : (
-        <div className="flex flex-col">
+        // A one-word name and a two-letter state do not want 880px between
+        // them: the list keeps the column it needs and no more.
+        <div className="flex max-w-[420px] flex-col">
           {providers.map((p) => {
             const on = chosen.has(p.id);
             return (

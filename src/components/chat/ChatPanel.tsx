@@ -24,7 +24,6 @@ import { PathGraphic } from "./PathGraphic";
 import { FaceGrid } from "./FaceGrid";
 import { NewChatOpener } from "./NewChatOpener";
 import { faceTapAction } from "./faceGridRule";
-import { egoDefaultFor, egoDelayMs } from "./egoDefault";
 import { lookupName } from "./lookup";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
@@ -91,13 +90,11 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
       const type = part.type.replace(/^data-/, "") as keyof HeadshotDataParts;
       store.apply(type, part.data as never);
     },
-    onFinish: ({ message, isAbort }) => {
+    // v5: the drawer opens when a name or face is tapped, never on its own
+    // (v2's ego-by-default rule served the canvas, which is gone).
+    onFinish: () => {
       store.setStatus(null);
       onTurnFinished?.();
-      if (isAbort) return;
-      // Ego view by default: after the path animation, center the panel on the first person.
-      const center = egoDefaultFor(message.parts);
-      if (center) setTimeout(() => store.requestEgo(center, { reveal: false }), egoDelayMs(message.parts));
     },
     onError: () => store.setStatus(null),
   });

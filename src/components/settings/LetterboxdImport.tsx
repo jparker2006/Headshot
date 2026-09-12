@@ -104,7 +104,7 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
     <div className="flex flex-col gap-[10px] py-[10px]">
       <p className="t-prose max-w-[880px]">
         {result.imported} of {result.parsed} rows matched. these are the {result.review.length} least certain — fix any that are wrong, then carry on.
-        watched but unrated counts as seen, not liked.
+        watched but unrated counts as seen, not scored.
         {result.unmatched.length > 0 ? ` ${result.unmatched.length} were not in the graph and were skipped.` : ""}
       </p>
       {result.review.map((item) => (
@@ -130,7 +130,7 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
       <section className="flex flex-col gap-[14px]" aria-label="Letterboxd">
         <div className="section-head">
           <h1 className="t-title">bring your Letterboxd</h1>
-          <span className="t-sub hidden sm:inline">ratings become liked or meh; the watchlist becomes want</span>
+          <span className="t-sub hidden sm:inline">stars become a score out of ten; the watchlist becomes want</span>
         </div>
         <p className="t-prose max-w-[880px]">
           Settings → Import &amp; Export → Export your data. drop the CSVs in; re-uploading later replaces what is here rather than piling on.
@@ -154,7 +154,7 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
     );
   }
 
-  const note = error ? error : done !== null ? `imported ${done} rows` : "settings → import & export · ratings become liked or meh";
+  const note = error ? error : done !== null ? `imported ${done} rows` : "settings → import & export · stars become a score out of ten";
 
   return (
     <>
@@ -164,8 +164,8 @@ export function LetterboxdImport({ onDone, intro = false, onSkip }: Props) {
         controls={
           <>
             {picks}
-            <button type="button" onClick={() => void upload()} disabled={busy} className="t-link disabled:opacity-40">
-              {busy ? "matching…" : "replace"}
+            <button type="button" onClick={() => void upload()} disabled={busy} className="tap disabled:opacity-40">
+              <span className="t-link">{busy ? "matching…" : "replace"}</span>
             </button>
           </>
         }

@@ -130,9 +130,9 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
               setDraft(memory?.pinned ?? "");
               setEditing(true);
             }}
-            className="t-link ml-auto shrink-0"
+            className="tap ml-auto shrink-0"
           >
-            edit
+            <span className="t-link">edit</span>
           </button>
         )}
       </div>
@@ -152,8 +152,8 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
             <button type="button" onClick={() => void save()} disabled={saving} className="btn btn-outline disabled:opacity-40">
               {saving ? "saving…" : "Save"}
             </button>
-            <button type="button" onClick={() => setEditing(false)} className="t-link">
-              cancel
+            <button type="button" onClick={() => setEditing(false)} className="tap">
+              <span className="t-link">cancel</span>
             </button>
           </div>
         </div>
@@ -210,12 +210,12 @@ function PeopleRow({ people, onSelectNode }: { people: PersonWithFace[]; onSelec
       <span className="t-sub">who you keep watching</span>
       <div className="scrollbar-thin -mx-4 flex gap-[18px] overflow-x-auto px-4 pb-[4px] md:-mx-[12px] md:px-[12px]">
         {people.map((p) => (
-          <button key={p.imdbId} type="button" onClick={() => onSelectNode(p.imdbId)} className="group flex w-[64px] shrink-0 flex-col gap-[6px] text-left">
+          <button key={p.imdbId} type="button" onClick={() => onSelectNode(p.imdbId)} className="group flex w-[52px] shrink-0 flex-col gap-[6px] text-left">
             {p.face ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={p.face} alt="" className="h-[64px] w-[64px] bg-raised object-cover" loading="lazy" />
+              <img src={p.face} alt="" className="h-[52px] w-[52px] bg-raised object-cover" loading="lazy" />
             ) : (
-              <span className="block h-[64px] w-[64px] bg-raised" />
+              <span className="block h-[52px] w-[52px] bg-raised" />
             )}
             <span className="truncate text-[12.5px] leading-[1.25] text-ink-dim transition-colors duration-[120ms] group-hover:text-ink" title={p.name}>
               {p.name}
@@ -300,8 +300,8 @@ function Later({
         <h2 className="t-title">later</h2>
         {kept.length > 0 && <span className="t-meta">{kept.length} saved</span>}
         {onGoToLog && (
-          <button type="button" onClick={() => onGoToLog("want")} className="t-link ml-auto shrink-0">
-            the whole list
+          <button type="button" onClick={() => onGoToLog("want")} className="tap ml-auto shrink-0">
+            <span className="t-link">the whole list</span>
           </button>
         )}
       </div>
@@ -323,15 +323,16 @@ function Later({
                   <span className="poster-mark" />
                 )}
               </button>
-              <button type="button" onClick={() => onSelectNode(id)} className="min-w-0 text-left">
-                <span className="t-row block truncate">
-                  {names[id]?.name ?? "…"}
-                  {year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{year}</span> : null}
-                </span>
+              {/* Phone: two lines in a 52px row — the title, then the year as
+                  mono under it, so a long title never squeezes the year down to
+                  an ellipsis (DESIGN.md → Rhythm → Phone). */}
+              <button type="button" onClick={() => onSelectNode(id)} className="flex min-w-0 flex-col gap-[2px] text-left sm:block">
+                <span className="t-row block truncate">{names[id]?.name ?? "…"}</span>
+                {year ? <span className="t-meta block text-ink-faint sm:hidden">{year}</span> : null}
               </button>
               <span className="t-meta hidden text-ink-faint sm:block">{year}</span>
-              <button type="button" onClick={() => seenIt(id)} className="t-link justify-self-end sm:justify-self-start">
-                seen it
+              <button type="button" onClick={() => seenIt(id)} className="tap justify-self-end sm:justify-self-start">
+                <span className="t-link">seen it</span>
               </button>
             </div>
           );

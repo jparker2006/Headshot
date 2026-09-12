@@ -79,7 +79,7 @@ export function NetflixImport({ onDone }: Props) {
     ? error
     : done !== null
       ? `imported ${done} titles`
-      : "account → profile → viewing activity · everything lands as seen, never liked";
+      : "account → profile → viewing activity · everything lands as seen, never scored";
 
   return (
     <>
@@ -89,8 +89,8 @@ export function NetflixImport({ onDone }: Props) {
         controls={
           <>
             <FilePick name="file" label="NetflixViewingHistory.csv" chosen={file?.name ?? null} onPick={setFile} />
-            <button type="button" onClick={() => void upload()} disabled={busy || !file} className="t-link disabled:opacity-40">
-              {busy ? "matching…" : "replace"}
+            <button type="button" onClick={() => void upload()} disabled={busy || !file} className="tap disabled:opacity-40">
+              <span className="t-link">{busy ? "matching…" : "replace"}</span>
             </button>
           </>
         }

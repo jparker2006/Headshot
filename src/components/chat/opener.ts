@@ -28,8 +28,10 @@ export function openerMetaLine(pick: PickView): string {
  */
 export function openerPlay(pick: PickView): { label: string; url: string; accent: boolean } | null {
   if (!pick.playUrl) return null;
-  if (pick.playLabel) return { label: pick.playLabel, url: pick.playUrl, accent: true };
-  return { label: "Where to watch", url: pick.playUrl, accent: false };
+  const label = pick.playLabel ?? "Where to watch";
+  // The accent has one job and it is Play: a link that can only say "Where to
+  // watch" or "Rent" is not one, whichever label the pick arrived with.
+  return { label, url: pick.playUrl, accent: label.startsWith("Play") };
 }
 
 export type OpenerState = "loading" | "ready" | "none" | "signed-out";

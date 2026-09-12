@@ -50,7 +50,7 @@ export function ImdbImport({ onDone }: Props) {
     ? error
     : result
       ? `imported ${result.imported} of ${result.parsed}${result.skipped ? ` · ${result.skipped} not in the graph` : ""}`
-      : "your ratings → export · 7 and up is liked, below that is meh";
+      : "your ratings → export · your number comes across as it is";
 
   return (
     <ImportRow
@@ -59,8 +59,8 @@ export function ImdbImport({ onDone }: Props) {
       controls={
         <>
           <FilePick name="file" label="ratings.csv" chosen={file?.name ?? null} onPick={setFile} />
-          <button type="button" onClick={() => void upload()} disabled={busy || !file} className="t-link disabled:opacity-40">
-            {busy ? "importing…" : "replace"}
+          <button type="button" onClick={() => void upload()} disabled={busy || !file} className="tap disabled:opacity-40">
+            <span className="t-link">{busy ? "importing…" : "replace"}</span>
           </button>
         </>
       }

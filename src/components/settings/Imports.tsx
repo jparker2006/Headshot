@@ -37,8 +37,8 @@ export function Imports({ onDone }: Props) {
         <span className="t-strong">letterboxd</span>
         <LetterboxdCrawl onState={setCrawl} onDone={onDone} />
         {!csv && (
-          <button type="button" onClick={() => setCsvAsked(true)} className="t-link self-start">
-            use the CSV export instead
+          <button type="button" onClick={() => setCsvAsked(true)} className="tap self-start">
+            <span className="t-link">use the CSV export instead</span>
           </button>
         )}
       </div>

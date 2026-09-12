@@ -40,8 +40,12 @@ export function WelcomeStep({ step, title, line, children, skippable = true, wid
         <span className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">headshot</span>
       </div>
 
-      <div className="flex flex-1 justify-center px-4 py-[56px] md:px-[34px]">
-        <div className={`flex w-full flex-col gap-[22px] ${wide ? "max-w-[720px]" : "max-w-[560px]"}`}>
+      {/* Centred, the way sign-in is — onboarding uses the sign-in grammar and
+          a step is one short column, not a page with a pile of air under it. */}
+      <div className="flex flex-1 items-center justify-center px-4 py-[56px] md:px-[34px]">
+        {/* The deck's own column is 420px, so a wide step is 420 too: the
+            header, the card and `skip` then share one left edge. */}
+        <div className={`flex w-full flex-col gap-[22px] ${wide ? "max-w-[420px]" : "max-w-[560px]"}`}>
           <div className="flex flex-wrap items-baseline gap-[12px]">
             <h1 className="t-title">{title}</h1>
             <span className="t-meta ml-auto shrink-0">{stepLabel(step)}</span>
@@ -51,8 +55,8 @@ export function WelcomeStep({ step, title, line, children, skippable = true, wid
           {user ? children : <p className="t-meta">{loading ? "…" : "sending you to sign in…"}</p>}
 
           {user && skippable && (
-            <Link href={skipHref(step)} className="t-link self-start">
-              skip
+            <Link href={skipHref(step)} className="tap self-start">
+              <span className="t-link">skip</span>
             </Link>
           )}
         </div>

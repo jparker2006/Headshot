@@ -68,7 +68,7 @@ export function LogPage({ onSelectNode, initialFilter }: Props) {
         )}
       </div>
 
-      {importing && <p className="t-meta -mt-[18px]">importing from Letterboxd…</p>}
+      {importing && <p className="t-meta -mt-[18px]">importing from letterboxd…</p>}
 
       <LogField onSelectNode={onSelectNode} />
 
@@ -77,9 +77,9 @@ export function LogPage({ onSelectNode, initialFilter }: Props) {
       ) : numbers.status === "loading" ? (
         <p className="t-meta">counting…</p>
       ) : numbers.status === "signed-out" ? (
-        <p className="t-prose">Sign in to keep a log.</p>
+        <p className="t-prose">sign in to keep a log.</p>
       ) : numbers.status === "error" ? (
-        <p className="t-prose">The log is not answering right now.</p>
+        <p className="t-prose">the log is not answering right now.</p>
       ) : (
         <LogTable
           rows={rows}
