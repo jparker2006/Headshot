@@ -7,7 +7,7 @@
  * at the end the committed rows go to `POST /api/taste/swipe/session`, which
  * writes them, logs one episode, awaits the rewrite and hands back the line
  * diff. That takes the better part of half a minute, so the wait is one
- * `.t-meta` line with the thread's three pulsing middots after it — board C
+ * `.t-prose` line with the thread's three pulsing middots after it — board C
  * has no spinners, and those dots are its only "working" device.
  *
  * There is no floor: "done for now" is live from the first card, the rewrite
@@ -58,7 +58,9 @@ type Row = { imdbId: string; rating: WatchedRating; score: number | null };
  */
 function Waiting({ children }: { children: string }) {
   return (
-    <p className="t-meta">
+    // `.t-prose`, not `.t-meta`: this line is the only thing on the screen for
+    // the better part of half a minute, and the ghost ink reads as a dead page.
+    <p className="t-prose">
       {children}
       <span className="thinking-dot"> ·</span>
       <span className="thinking-dot">·</span>

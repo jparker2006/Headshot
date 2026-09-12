@@ -10,11 +10,13 @@ const row = (over: Partial<NumbersLogRow>): NumbersLogRow => ({
   state: "rated",
   score: 8,
   watchedAt: "2026-09-02T20:00:00.000Z",
+  addedAt: "2026-09-02T20:00:00.000Z",
   source: "log",
   season: null,
   runtime: 140,
   genres: [],
   posterPath: null,
+  note: null,
   ...over,
 });
 

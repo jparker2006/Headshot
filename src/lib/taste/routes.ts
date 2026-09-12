@@ -574,7 +574,20 @@ export function createTasteHandlers(deps: TasteDeps) {
         );
       }
 
-      const data = computeNumbers({ watched, titles, graph });
+      // The note the user typed rides in its `log` episode, quoted at the end
+      // of the line ("rated Heat (1995) 8/10: "…""). Newest first, so the
+      // first one seen for a title is the line that still stands.
+      const notes = new Map<string, string>();
+      const said = new Set<string>();
+      for (const episode of await store.listEpisodes(who.userId, { limit: 500 })) {
+        if (episode.kind !== "log" || !episode.titleImdbId || said.has(episode.titleImdbId)) continue;
+        // Only the latest line counts: logging it again without one clears it.
+        said.add(episode.titleImdbId);
+        const quoted = /: "([^]+)"$/.exec(episode.text);
+        if (quoted) notes.set(episode.titleImdbId, quoted[1]);
+      }
+
+      const data = computeNumbers({ watched, titles, graph, notes });
       let people: (NumbersPerson & { face: string | null })[] = data.people.map((p) => ({ ...p, face: null }));
       if (deps.faces && people.length) {
         const faces = await deps.faces(people.map((p) => p.imdbId)).catch((): Record<string, { url: string | null; knownAs?: string }> => ({}));

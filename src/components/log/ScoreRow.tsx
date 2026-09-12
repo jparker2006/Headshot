@@ -8,10 +8,12 @@
  * score is for. The keyboard map and the words live in `scoreRules.ts`.
  *
  * Sizes: `md` is the board's 44px cell (design/boards-v5/Log.dc.html, and the
- * same on the phone board, where the ten wrap five-and-five); `sm` is a 28px
- * cell for a tight column. **Deviation** from the brief's "md: 36px": the
- * approved boards draw 44 at both widths and DESIGN.md → Rhythm puts every
- * button at 44–46, so the board wins.
+ * same on the phone board, where the ten wrap five-and-five across the column);
+ * `sm` is a 28px cell for a tight column — but only from the `sm` breakpoint
+ * up: on a phone both sizes stay at 44px, which is the touch minimum.
+ * **Deviation** from the brief's "md: 36px": the approved boards draw 44 at
+ * both widths and DESIGN.md → Rhythm puts every button at 44–46, so the board
+ * wins.
  */
 import { useEffect } from "react";
 import { SCORES, keyForScore, scoreFromKey } from "./scoreRules";
@@ -49,36 +51,44 @@ export function ScoreRow({ value, onChange, size = "md", keyboard = false, label
     return () => document.removeEventListener("keydown", onKey);
   }, [keyboard, onChange]);
 
-  const cell = size === "md" ? "h-11 w-11 text-[13.5px]" : "h-7 w-7 text-[12px]";
+  // A phone has no cursor and no keyboard: the cells stay at the board's 44px
+  // and fill their five columns, at both sizes. `sm` shrinks to 28px only from
+  // the `sm` breakpoint up, where there is a mouse to hit it with.
+  const cell = size === "md" ? "h-11 w-full text-[13.5px] sm:w-11" : "h-11 w-full text-[13.5px] sm:h-7 sm:w-7 sm:text-[12px]";
 
   return (
-    <div className="flex flex-col gap-[10px]">
+    <div className="flex w-full flex-col gap-[10px] sm:w-auto">
       {label && <span className="t-sub">{label}</span>}
-      <div
-        className={`grid w-fit grid-cols-5 gap-[6px] sm:flex sm:flex-wrap sm:items-center`}
-        role="group"
-        aria-label="score out of ten"
-      >
-        {SCORES.map((score) => (
-          <button
-            key={score}
-            type="button"
-            aria-pressed={value === score}
-            aria-label={`${score} out of 10`}
-            onClick={() => onChange(score)}
-            className={`tnum inline-flex items-center justify-center rounded-[6px] ${cell} ${
-              value === score ? "btn-solid font-bold" : "btn-fill"
-            }`}
-          >
-            {score}
-          </button>
-        ))}
+      {/* the board draws the cells and the key hint on one line, and lets them
+          break where the column is too narrow for both */}
+      <div className="flex flex-wrap items-center gap-x-[16px] gap-y-[10px]">
+        <div
+          className={`grid w-full shrink-0 grid-cols-5 gap-[6px] sm:flex sm:w-auto sm:shrink sm:flex-wrap sm:items-center`}
+          role="group"
+          aria-label="score out of ten"
+        >
+          {SCORES.map((score) => (
+            <button
+              key={score}
+              type="button"
+              aria-pressed={value === score}
+              aria-label={`${score} out of 10`}
+              onClick={() => onChange(score)}
+              className={`tnum inline-flex shrink-0 items-center justify-center rounded-[6px] ${cell} ${
+                value === score ? "btn-solid font-bold" : "btn-fill"
+              }`}
+            >
+              {score}
+            </button>
+          ))}
+        </div>
+        {/* the keys, hidden where there is no keyboard to press them */}
+        {size === "md" && (
+          <span className="t-meta hidden sm:inline">
+            keys {keyForScore(1)}…{keyForScore(10)} · {keyForScore(10)} is ten
+          </span>
+        )}
       </div>
-      {size === "md" && (
-        <span className="t-meta">
-          keys {keyForScore(1)}…{keyForScore(10)} · {keyForScore(10)} is ten
-        </span>
-      )}
     </div>
   );
 }

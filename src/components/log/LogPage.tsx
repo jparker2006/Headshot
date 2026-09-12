@@ -289,9 +289,12 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
             <span className="t-meta ml-auto hidden sm:inline">{chosen.imdbId}</span>
           </div>
 
-          <div className="flex flex-col gap-[10px]">
+          {/* the board runs the ten, the key hint and the two states along one
+              line (design/boards-v5/Log.dc.html); they break onto their own
+              line only where the column is too narrow, which is the phone. */}
+          <div className="flex flex-wrap items-center gap-x-[22px] gap-y-[10px]">
             <ScoreRow value={score} onChange={(s) => { setScore(s); setState(null); }} keyboard />
-            <div className="flex items-center gap-[18px]">
+            <div className="flex items-center gap-[14px]">
               {(["want", "seen"] as const).map((s) => (
                 <button
                   key={s}
@@ -352,7 +355,8 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
             >
               {saving ? "logging…" : "log it"}
             </button>
-            <span className="t-meta">⏎</span>
+            {/* the key hint belongs to the keyboard that would press it */}
+            <span className="t-meta hidden sm:inline">⏎</span>
             <button type="button" onClick={reset} className="t-link">
               cancel
             </button>

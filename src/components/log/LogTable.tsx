@@ -56,21 +56,26 @@ export function LogTable({ rows, onSelectNode, heading = "everything you have wa
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-[8px]">
-        {LOG_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            aria-pressed={filter === f}
-            onClick={() => {
-              setFilter(f);
-              setLimit(LOG_PAGE);
-            }}
-            className={`chip ${filter === f ? "bg-raised text-ink" : ""}`}
-          >
-            {f}
-          </button>
-        ))}
+      {/* the six chips are one line on the phone board too: they scroll inside
+          their own strip rather than wrapping into a ragged block, and the
+          find-a-title field takes the line under them. */}
+      <div className="flex flex-col gap-[8px] sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="scrollbar-none -mx-[16px] flex gap-[8px] overflow-x-auto px-[16px] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          {LOG_FILTERS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={filter === f}
+              onClick={() => {
+                setFilter(f);
+                setLimit(LOG_PAGE);
+              }}
+              className={`chip shrink-0 ${filter === f ? "bg-raised text-ink" : ""}`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
         <input
           value={query}
           onChange={(e) => {
@@ -79,7 +84,7 @@ export function LogTable({ rows, onSelectNode, heading = "everything you have wa
           }}
           aria-label="find a title in the log"
           placeholder="find a title"
-          className="h-[38px] min-w-0 flex-1 basis-[140px] bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-ghost"
+          className="h-[38px] min-w-0 flex-none border-b border-[color:var(--line-note)] bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-ghost sm:flex-1 sm:basis-[140px]"
         />
         {onCatchUp && (
           <button type="button" onClick={onCatchUp} className="btn btn-quiet ml-auto hidden shrink-0 sm:inline-flex">
@@ -119,6 +124,9 @@ function Row({ row, onSelectNode }: { row: NumbersLogRow; onSelectNode: (imdbId:
   const poster = posterThumb(row.posterPath);
   const word = ratingWord(row);
   const runtime = row.runtime ? `${row.runtime}m` : "";
+  // A `want` was never watched, so it has no `watchedAt`; the day it went on
+  // the list is still a date, and the board draws one on every row.
+  const when = terseTime(row.watchedAt ?? row.addedAt);
   // A `want` row has not been watched, so it sits back a level — the board
   // dims both its poster and its title rather than colouring anything.
   const pending = row.state === "want" || row.state === "unseen";
@@ -141,10 +149,15 @@ function Row({ row, onSelectNode }: { row: NumbersLogRow; onSelectNode: (imdbId:
           {row.season ? <span className="t-meta ml-[6px] text-ink-faint">s{row.season}</span> : null}
           {row.year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{row.year}</span> : null}
         </span>
-        {/* the phone's second line: the whole row as one mono readout */}
-        <span className="t-meta block sm:hidden">
-          {[terseTime(row.watchedAt), row.kind === "series" ? "show" : "film", runtime].filter(Boolean).join(" · ")}
-        </span>
+        {/* the phone's second line: the whole row as one mono readout — or the
+            line the user wrote, which is worth more than the readout */}
+        {row.note ? (
+          <span className="block truncate text-[13px] leading-[1.3] text-ink-dim sm:hidden">“{row.note}”</span>
+        ) : (
+          <span className="t-meta block sm:hidden">
+            {[when, row.kind === "series" ? "show" : "film", runtime].filter(Boolean).join(" · ")}
+          </span>
+        )}
       </span>
       <span className="t-meta hidden text-ink-faint sm:block">{row.year ?? ""}</span>
       <span className="hidden text-[12.5px] leading-[1.2] text-ink-dim sm:block">{row.kind === "series" ? "show" : "film"}</span>
@@ -157,8 +170,15 @@ function Row({ row, onSelectNode }: { row: NumbersLogRow; onSelectNode: (imdbId:
       >
         {word}
       </span>
-      <span className="t-meta hidden sm:block">{terseTime(row.watchedAt)}</span>
-      <span className="t-meta hidden truncate sm:block">{runtime}</span>
+      <span className="t-meta hidden sm:block">{when}</span>
+      {/* runtime, and after it the line the user wrote, quoted (the board's
+          last column) */}
+      <span className="hidden min-w-0 items-baseline gap-[10px] sm:flex">
+        {/* a fixed slot, so the quotes below each other start on one line even
+            where a row has no runtime to print */}
+        <span className="t-meta w-[42px] flex-none">{runtime}</span>
+        {row.note && <span className="truncate text-[13px] leading-[1.3] text-ink-dim">“{row.note}”</span>}
+      </span>
     </button>
   );
 }

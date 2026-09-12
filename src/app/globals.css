@@ -443,6 +443,10 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
+/* A strip that scrolls sideways on a phone without drawing a bar over its own
+   content (the log's chips). */
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.25; }

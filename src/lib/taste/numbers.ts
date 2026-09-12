@@ -15,8 +15,6 @@ import type { CastEntry, NodeInfo } from "@/lib/graph/engine";
 import type { TitleRow, TitleSeason } from "@/lib/titles";
 import type { WatchedRating, WatchedRow, WatchedSource } from "./types";
 import { isLiked, isMeh, isWatched } from "./score";
-// TODO(v5-B): the log table still renders a bucket word. When it renders the
-// score instead, `rating` below goes and this import with it.
 
 /** The slice of the industry graph Numbers needs, so tests can pass a stub. */
 export interface NumbersGraph {
@@ -79,11 +77,15 @@ export interface NumbersLogRow {
   /** 1–10 when the row is rated, null otherwise. */
   score: number | null;
   watchedAt: string | null;
+  /** When the row was last written. A `want` has no `watchedAt`; it still has this. */
+  addedAt: string;
   source: WatchedSource;
   season: number | null;
   runtime: number | null;
   genres: string[];
   posterPath: string | null;
+  /** The line the user typed when they logged it, word for word. */
+  note: string | null;
 }
 
 export interface NumbersData {
@@ -106,6 +108,8 @@ export interface ComputeNumbersInput {
   watched: WatchedRow[];
   titles: Map<string, TitleRow>;
   graph: NumbersGraph;
+  /** Title id → the line the user typed when they logged it, if any. */
+  notes?: Map<string, string>;
   /** Defaults to the real clock; tests pin it. */
   now?: Date;
 }
@@ -227,11 +231,13 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
       state: row.rating,
       score: row.score,
       watchedAt: row.watchedAt,
+      addedAt: row.updatedAt,
       source: row.source,
       season: row.season,
       runtime: title?.runtime ?? null,
       genres: genresOf(title, node),
       posterPath: title?.posterPath ?? null,
+      note: input.notes?.get(row.titleImdbId) ?? null,
     });
 
     // `want` is a plan and `unseen` is a no: neither is watching.

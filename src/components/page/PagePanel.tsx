@@ -272,10 +272,11 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                 </div>
                 <button
                   onClick={onClose}
-                  className="ml-auto flex h-8 shrink-0 items-center gap-2 text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+                  className="-mr-[10px] ml-auto flex h-11 shrink-0 items-center justify-end gap-2 pl-[10px] pr-[10px] text-ink-faint transition-colors duration-[120ms] hover:text-ink sm:mr-0 sm:h-8 sm:pr-0"
                   aria-label="Close"
                 >
-                  <span className="t-meta">esc</span>
+                  {/* the key hint belongs to the keyboard that opened it */}
+                  <span className="t-meta hidden sm:inline">esc</span>
                   <span className="text-[15px] leading-none">×</span>
                 </button>
               </div>

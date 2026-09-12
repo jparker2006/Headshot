@@ -232,12 +232,21 @@ describe("computeNumbers: the log", () => {
       state: "rated",
       score: 8,
       watchedAt: "2026-09-02T20:00:00.000Z",
+      addedAt: "2026-09-11T12:00:00.000Z",
       source: "log",
       season: null,
       runtime: 140,
       genres: ["Adventure", "Drama", "History"],
       posterPath: "/a.jpg",
+      note: null,
     });
+  });
+
+  it("carries the line the user wrote, when the caller hands one over", () => {
+    const notes = new Map([["tt0000001", "the diner scene, two pros sizing each other up"]]);
+    const withNotes = computeNumbers({ watched: ROWS, titles: TITLES, graph, now: NOW, notes });
+    expect(withNotes.log.find((r) => r.imdbId === "tt0000001")!.note).toBe("the diner scene, two pros sizing each other up");
+    expect(withNotes.log.find((r) => r.imdbId === "tt0000002")!.note).toBeNull();
   });
 
   it("falls back to the graph when the titles cache has never seen the row", () => {
