@@ -69,6 +69,12 @@ export interface RunAgentOptions {
    * turn it off.
    */
   memory?: boolean;
+  /**
+   * v5 threads: the finished assistant UI message, once the stream ends. The
+   * chat route persists it for a signed-in thread; the callback is run through
+   * `schedule`, so nothing here delays the response.
+   */
+  onFinish?: (assistant: HeadshotUIMessage) => Promise<void>;
 }
 
 /** The heading the memory markdown arrives under in the system prompt. */
@@ -116,6 +122,16 @@ export function runAgent(opts: RunAgentOptions) {
   const question = lastUserText(opts.messages);
   // The engine sees the brain's current overlay for this request.
   return createUIMessageStream<HeadshotUIMessage>({
+    // Persistence mode: the SDK assembles the turn's assistant message for us
+    // and hands it back as `responseMessage` when the stream ends.
+    originalMessages: opts.onFinish ? opts.messages : undefined,
+    onFinish: opts.onFinish
+      ? ({ responseMessage }) => {
+          const work = () => opts.onFinish!(responseMessage);
+          if (opts.schedule) opts.schedule(work);
+          else return work();
+        }
+      : undefined,
     execute: async ({ writer }) => {
       const started = Date.now();
       // One assistant message per turn. Our own data parts precede the model's stream, so we
@@ -199,7 +215,7 @@ export function runAgent(opts: RunAgentOptions) {
         messages: await convertToModelMessages(opts.messages),
         tools,
         // The chat model is a thinking model whose reasoning arrives interleaved with text on some
-        // providers ("The user asks… Let me call my_taste." leaking into the answer). Off for chat.
+        // providers ("The user asks… Let me call my_profile." leaking into the answer). Off for chat.
         providerOptions: { openrouter: { reasoning: { enabled: false } } },
         stopWhen: isStepCount(opts.maxSteps ?? 12),
         onStepFinish: (step) => {

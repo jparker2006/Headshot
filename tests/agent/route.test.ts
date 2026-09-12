@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createChatHandler } from "@/app/api/chat/route";
 import { MemoryBrain } from "@/lib/brain";
 import { resetLimits } from "@/lib/limits";
+import { MemoryThreadStore } from "@/lib/threads/memory";
 import { fixtureGraph, scriptedModel, userMessage } from "./helpers";
 
 const BACON = "nm0000001";
@@ -81,5 +82,86 @@ describe("POST /api/chat (route seam)", () => {
     expect(second.status).toBe(429);
     expect(await second.json()).toMatchObject({ error: "daily_cap", resting: true });
     expect(await brain.countQuestionsToday()).toBe(1);
+  });
+});
+
+describe("POST /api/chat thread persistence (v5)", () => {
+  const THREAD = "thread-aaaaaaaa";
+
+  /** The handler with a scripted one-step answer, a thread store, and an optional user. */
+  function chat(threads: MemoryThreadStore, userId: string | null) {
+    const scheduled: Promise<void>[] = [];
+    const handler = createChatHandler({
+      model: () => scriptedModel([{ text: "two hops, honestly a cute one." }]),
+      graph: fixtureGraph,
+      brain: async () => new MemoryBrain(),
+      tmdb: () => null,
+      session: async () => ({ id: "session-1", setCookie: false }),
+      followups: false,
+      userId: async () => userId,
+      threads: async () => threads,
+      schedule: (work) => scheduled.push(work()),
+    });
+    return { handler, settle: () => Promise.all(scheduled) };
+  }
+
+  beforeEach(() => {
+    resetLimits();
+  });
+
+  it("stores both sides of a signed-in turn and titles the thread", async () => {
+    const threads = new MemoryThreadStore();
+    const { handler, settle } = chat(threads, "u1");
+    const res = await handler(post({ messages: [userMessage("how is tom hanks connected to gary sinise?")], threadId: THREAD }));
+    expect(res.status).toBe(200);
+    await res.text();
+    await settle();
+
+    const listed = await threads.listThreads("u1");
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: THREAD, title: "how is tom hanks connected to gary sinise?" });
+
+    const stored = await threads.listMessages("u1", THREAD);
+    expect(stored.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(JSON.stringify(stored[1].parts)).toContain("two hops");
+  });
+
+  it("stores nothing for a signed-out request, even with a threadId", async () => {
+    const threads = new MemoryThreadStore();
+    const { handler, settle } = chat(threads, null);
+    await (await handler(post({ messages: [userMessage("who was in both?")], threadId: THREAD }))).text();
+    await settle();
+    expect(await threads.listThreads("u1")).toEqual([]);
+    expect(await threads.getThread("u1", THREAD)).toBeNull();
+  });
+
+  it("stores nothing when the signed-in request carries no (or an invalid) threadId", async () => {
+    const threads = new MemoryThreadStore();
+    const { handler, settle } = chat(threads, "u1");
+    await (await handler(post({ messages: [userMessage("a")] }))).text();
+    await (await handler(post({ messages: [userMessage("b")] }, "2.2.2.2"))).text();
+    await settle();
+    expect(await threads.listThreads("u1")).toEqual([]);
+
+    const bad = chat(threads, "u1");
+    await (await bad.handler(post({ messages: [userMessage("c")] }, "3.3.3.3"))).text();
+    await bad.settle();
+    expect(await threads.listThreads("u1")).toEqual([]);
+  });
+
+  it("appends to an existing thread rather than creating a second one", async () => {
+    const threads = new MemoryThreadStore();
+    await threads.createThread("u1", { id: THREAD, title: "kept" });
+    const ask = (id: string, text: string) => ({ ...userMessage(text), id });
+    const first = chat(threads, "u1");
+    await (await first.handler(post({ messages: [ask("q1", "first question")], threadId: THREAD }))).text();
+    await first.settle();
+    const second = chat(threads, "u1");
+    await (await second.handler(post({ messages: [ask("q1", "first question"), ask("q2", "second question")], threadId: THREAD }, "4.4.4.4"))).text();
+    await second.settle();
+
+    expect(await threads.listThreads("u1")).toHaveLength(1);
+    expect((await threads.getThread("u1", THREAD))!.title).toBe("kept");
+    expect((await threads.listMessages("u1", THREAD)).map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
   });
 });

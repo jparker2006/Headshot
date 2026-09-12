@@ -8,7 +8,8 @@ import type { TmdbClient } from "@/lib/tmdb/client";
 import type { TasteStore, WatchedInput } from "@/lib/taste/types";
 import type { TitlesStore } from "@/lib/titles";
 import type { Filters } from "./engine";
-import { computeTonight, loadTonight } from "./service";
+import { computeTonight, loadTonight, pickNow } from "./service";
+import type { PickView } from "./view";
 import { deckSource, parseDeckSize } from "./deckSource";
 import { diffLines, type MemoryDiff } from "./sessionDiff";
 import { memoryText } from "@/lib/memory";
@@ -39,6 +40,22 @@ export interface TonightRouteDeps {
 }
 
 const unauthorized = () => Response.json({ error: "sign_in_required" }, { status: 401 });
+
+/**
+ * The one line a new chat opens with (SPEC v5): "tonight: **X** on max,
+ * because …". The service name is the pick's first provider, lowercased; with
+ * none we say so rather than pretending. The reason is the engine's own text
+ * (a real graph fact), joined mid-sentence and finished with exactly one full
+ * stop — the leading letter drops to lowercase unless the reason opens with a
+ * person's name ("Tom Hanks, who you liked in Heat"), which stays as written.
+ */
+export function openerLine(pick: PickView): string {
+  const service = pick.providerNames[0]?.toLowerCase() ?? "nothing you pay for";
+  const raw = pick.reason.text.trim().replace(/\.+$/, "");
+  const opensWithAName = /^\p{Lu}[\p{L}'’.-]*\s\p{Lu}/u.test(raw);
+  const reason = opensWithAName ? raw : raw.charAt(0).toLowerCase() + raw.slice(1);
+  return `tonight: **${pick.name}** on ${service}, because ${reason}.`;
+}
 
 function parseFilters(body: Record<string, unknown>): Filters {
   const f: Filters = {};
@@ -122,6 +139,24 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       }
       const data = await computeTonight(await build(), userId, parseFilters(body));
       return data ? Response.json(data) : Response.json({ error: "no_taste_yet" }, { status: 404 });
+    },
+
+    /**
+     * GET /api/tonight/opener?maxRuntimeMin=&energy= — the line a new chat
+     * opens with, computed on demand from the engine: no model, no stored row.
+     */
+    async opener(req: Request): Promise<Response> {
+      const userId = await deps.userId(req);
+      if (!userId) return unauthorized();
+      const params = new URL(req.url).searchParams;
+      const filters = parseFilters({
+        maxRuntimeMin: params.get("maxRuntimeMin") ? Number(params.get("maxRuntimeMin")) : undefined,
+        energy: params.get("energy") ?? undefined,
+      });
+      const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
+      const result = await pickNow({ graph, tmdb: deps.tmdb(), store, log: deps.log }, userId, filters);
+      if (!result) return Response.json({ error: "no_taste_yet" }, { status: 404 });
+      return Response.json({ pick: result.pick, line: openerLine(result.pick) });
     },
 
     /**

@@ -12,7 +12,7 @@ import { getTitles, type TitlesStore } from "@/lib/titles";
 import { buildCandidates } from "./candidates";
 import { pickTonight, tasteFacts, type Filters, type WatchedRow } from "./engine";
 import { narrateReasons } from "./narrate";
-import { toPickView, TONIGHT_VERSION, type TonightData } from "./view";
+import { toPickView, TONIGHT_VERSION, type PickView, type TonightData } from "./view";
 
 export interface TonightDeps {
   graph: IndustryGraph;
@@ -39,6 +39,35 @@ export function toEngineRows(rows: Awaited<ReturnType<TasteStore["listWatched"]>
 export async function hasTaste(store: TasteStore, userId: string): Promise<boolean> {
   const rows = await store.listWatched(userId);
   return rows.some((r) => r.rating === "rated" || r.rating === "want");
+}
+
+/**
+ * Tonight, on demand (SPEC v5). Same engine and the same `toPickView` as
+ * `computeTonight`, minus everything that costs time or leaves a trace: no
+ * model call (the engine's own reason lines stand), no stored `tonight` row,
+ * no facts write, no titles warm. It runs when a chat opens, so it has to be
+ * fast, and the answer it produces is a line in a conversation, not state.
+ */
+export async function pickNow(
+  deps: Pick<TonightDeps, "graph" | "tmdb" | "store" | "log">,
+  userId: string,
+  filters: Filters | null = null,
+): Promise<{ pick: PickView; picks: PickView[] } | null> {
+  const { graph, store } = deps;
+  const log = deps.log ?? (() => {});
+  const rows = await store.listWatched(userId);
+  const watched = toEngineRows(rows);
+  if (!watched.some((w) => w.rating === "rated" || w.rating === "want")) return null;
+  const servicesRow = await store.getServices(userId);
+  const services = servicesRow?.providerIds ?? [];
+  const region = servicesRow?.region ?? "US";
+  const taste = await store.getTaste(userId);
+
+  const pool = await buildCandidates({ graph, tmdb: deps.tmdb, watched, services, region, log });
+  const result = pickTonight({ graph, watched, services, candidates: pool.candidates, taste: taste ? { vector: taste.vector, facts: taste.facts } : null, filters });
+  const picks = result.picks.map((p) => toPickView(p, pool.meta.get(p.imdbId), services));
+  if (!picks.length) return null;
+  return { pick: picks[0], picks };
 }
 
 export async function computeTonight(deps: TonightDeps, userId: string, filters: Filters | null = null): Promise<TonightData | null> {

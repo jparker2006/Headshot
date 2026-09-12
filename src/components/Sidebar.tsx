@@ -1,137 +1,204 @@
 "use client";
 /**
- * The rail, board C (DESIGN.md → Sidebar): 176px, one hairline on the right,
- * padding 22/0/22/24, internal gap 26. Wordmark, then `log` / `you` /
- * `history` at
- * 13.5px where the ink level *is* the state (no pill, no icon, no counter),
- * then the threads under History, then the account name pushed to the bottom.
+ * The rail, v5 (DESIGN.md → Sidebar (v5), `design/boards-v5/Shell.dc.html`):
+ * 232px on the same ground as the page, one hairline on the right, padding
+ * 22/12/18/12. Wordmark, then three 32px section rows — `log` / `ask` / `you`
+ * — where the ink level *is* the state (no pill, no fill, no active bar), then
+ * the sessions indented under Ask and only under Ask, then the account row
+ * pinned to the bottom over one hairline.
  *
- * Collapsed it keeps the same ground and the same type — just the wordmark's
- * initial and the account's — because the doc has no second visual language
- * for a rail. The nav itself is decided in `navModel.ts` so the cuts are
- * testable.
+ * Signed out there is no log and no you: the rail is `ask` and the way in.
+ * Signed-out threads live in localStorage and are never listed (SPEC v5).
+ *
+ * What the rail contains is decided in `navModel.ts` so the cuts are testable.
  */
-import { useState } from "react";
-import type { ThreadMeta } from "./chat/threads";
-import { shortAgo } from "./chat/threadMeta";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { SectionIcon, PlusIcon, SettingsIcon } from "./navIcons";
 import { requireSignIn, signOut, useSessionUser } from "./auth/SignInGate";
-import { accountModel, accountName, navItems, type Section, type Surface } from "./navModel";
+import { accountModel, navItems, sessionsShown, sessionTitle, type Section, type Surface } from "./navModel";
 
 export type { Surface };
 
+export interface SessionItem {
+  id: string;
+  title: string | null;
+}
+
 interface Props {
   surface: Surface;
-  threads: ThreadMeta[];
+  /** The signed-in person's threads, newest updated first. Empty signed out. */
+  sessions: SessionItem[];
   activeId: string | null;
-  collapsed: boolean;
-  onToggle: () => void;
-  /** Go to a section: Log (home for anyone signed in) or You. */
   onNavigate: (section: Section) => void;
+  onNewChat: () => void;
   onSelectThread: (id: string) => void;
+  onRenameThread: (id: string, title: string) => void;
   onDeleteThread: (id: string) => void;
 }
 
-export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNavigate, onSelectThread, onDeleteThread }: Props) {
+export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, onSelectThread, onRenameThread, onDeleteThread }: Props) {
   const [menu, setMenu] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const { user, loading } = useSessionUser();
+  const signedIn = Boolean(user);
 
-  const nav = navItems(surface);
+  const nav = navItems(surface, signedIn);
   const account = accountModel(user, loading);
   const signIn = () => requireSignIn(typeof window === "undefined" ? "/" : window.location.pathname);
 
-  if (collapsed) {
-    return (
-      <aside className="flex h-full w-[56px] shrink-0 flex-col items-start gap-[26px] border-r border-line bg-bg py-[22px] pl-[20px]" aria-label="Sidebar">
-        <button onClick={onToggle} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink" aria-label="Expand sidebar" title="headshot">
-          h
-        </button>
-        {nav.map((n) => (
-          <button key={n.key} onClick={() => onNavigate(n.key)} title={n.label} aria-label={n.label} className={`t-ui ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"} transition-colors duration-[120ms]`}>
-            {n.label[0]}
-          </button>
-        ))}
-        <button onClick={() => (user ? onToggle() : signIn())} className="t-meta mt-auto text-ink-faint transition-colors duration-[120ms] hover:text-ink" title={account.label} aria-label={account.label}>
-          {accountName(account.label)[0] ?? "?"}
-        </button>
-      </aside>
-    );
-  }
-
   return (
-    // 176px is the rail; as a phone sheet it gets 260px so a thread's own
-    // question is readable instead of truncating after four words.
-    <aside className="group/rail relative flex h-full w-[260px] shrink-0 flex-col gap-[26px] border-r border-line bg-bg py-[22px] pl-[24px] md:w-[176px]" aria-label="Sidebar">
-      <div className="flex items-baseline">
-        <button onClick={() => onNavigate("log")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
-          headshot
-        </button>
-        <button
-          onClick={onToggle}
-          className="t-meta ml-auto mr-[10px] opacity-0 transition-opacity duration-[120ms] hover:text-ink group-hover/rail:opacity-100"
-          aria-label="Collapse sidebar"
-          title="Collapse"
-        >
-          «
-        </button>
-      </div>
+    // 232px is the rail; as a phone sheet it takes the width it is given.
+    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-line bg-bg px-[12px] pb-[18px] pt-[22px] md:w-[232px]" aria-label="Sidebar">
+      <button
+        onClick={() => onNavigate(signedIn ? "log" : "ask")}
+        className="mb-[22px] px-[12px] text-left text-[14px] font-bold leading-none tracking-[-0.02em] text-ink"
+      >
+        headshot
+      </button>
 
-      <nav className="flex flex-col gap-[7px]" aria-label="Surfaces">
+      <nav className="flex flex-col gap-[2px]" aria-label="Sections">
         {nav.map((n) => (
           <button
             key={n.key}
-            onClick={() => onNavigate(n.key)}
-            className={`t-ui text-left transition-colors duration-[120ms] ${n.active ? "text-ink" : "font-normal text-ink-faint hover:text-ink"}`}
+            onClick={() => (n.key === "sign-in" ? signIn() : onNavigate(n.key as Section))}
+            className={`nav-row text-left ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"}`}
           >
-            {n.label}
+            <SectionIcon name={n.key} />
+            <span className="t-ui truncate">{n.label}</span>
           </button>
         ))}
-        <span className={`t-ui ${surface === "chat" ? "text-ink" : "font-normal text-ink-faint"}`}>history</span>
       </nav>
 
-      <nav className="scrollbar-thin mt-[4px] flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto pr-[12px]" aria-label="History">
-        {threads.length === 0 && <span className="t-meta">nothing asked yet</span>}
-        {threads.map((t) => {
-          const on = t.id === activeId && surface === "chat";
-          return (
-            <div key={t.id} className="group/row flex flex-col gap-[6px]">
-              <div className="flex items-start gap-[6px]">
-                <button onClick={() => onSelectThread(t.id)} className={`min-w-0 flex-1 truncate text-left text-[13px] leading-[1.3] transition-colors duration-[120ms] ${on ? "text-ink" : "text-ink-dim hover:text-ink"}`}>
-                  {t.title}
-                </button>
-                <button
-                  onClick={() => onDeleteThread(t.id)}
-                  className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink group-hover/row:opacity-100"
-                  aria-label="Delete thread"
-                  title="Delete"
-                >
-                  ×
-                </button>
-              </div>
-              <span className="t-meta">{shortAgo(t.createdAt)}</span>
-            </div>
-          );
-        })}
-      </nav>
+      {sessionsShown(surface, signedIn) && (
+        <>
+          <button onClick={onNewChat} className="session-row mt-[6px] gap-[9px] text-ink">
+            <PlusIcon />
+            <span className="truncate text-[13px] leading-none">new chat</span>
+          </button>
 
-      <div className="relative mt-auto flex flex-col gap-[5px] pr-[12px]">
-        {menu && user && (
-          <div className="panel absolute bottom-full left-0 mb-[10px] w-[200px] p-[10px]" role="menu">
-            <div className="t-meta truncate pb-[8px]">{user.email}</div>
-            <button onClick={() => void signOut()} className="t-ui block w-full text-left text-ink-dim transition-colors duration-[120ms] hover:text-ink">
+          <span className="mb-[4px] mt-[12px] px-[12px] pl-[28px] text-[13px] leading-[20px] text-ink-faint">chats</span>
+
+          <nav className="scrollbar-thin -mr-[4px] flex min-h-0 flex-1 flex-col overflow-y-auto pr-[4px]" aria-label="Chats">
+            {sessions.length === 0 && <span className="t-meta px-[12px] pl-[28px]">nothing asked yet</span>}
+            {sessions.map((s) => (
+              <SessionRow
+                key={s.id}
+                session={s}
+                active={s.id === activeId && surface === "ask"}
+                editing={editing === s.id}
+                onEdit={() => setEditing(s.id)}
+                onEndEdit={(title) => {
+                  setEditing(null);
+                  const next = title.trim();
+                  if (next && next !== sessionTitle(s.title)) onRenameThread(s.id, next);
+                }}
+                onOpen={() => onSelectThread(s.id)}
+                onDelete={() => onDeleteThread(s.id)}
+              />
+            ))}
+          </nav>
+        </>
+      )}
+
+      <div className="relative mt-auto border-t border-line pt-[12px]">
+        {menu && signedIn && (
+          <div className="panel absolute bottom-full left-0 mb-[10px] w-[188px] p-[8px]" role="menu">
+            <Link href="/settings" className="rail-row t-ui text-ink-dim transition-colors duration-[120ms] hover:text-ink" onClick={() => setMenu(false)}>
+              Settings
+            </Link>
+            <button onClick={() => void signOut()} className="rail-row t-ui w-full text-left text-ink-dim transition-colors duration-[120ms] hover:text-ink">
               Sign out
             </button>
           </div>
         )}
         <button
-          onClick={() => (user ? setMenu((m) => !m) : signIn())}
-          className="t-meta truncate text-left text-ink-faint transition-colors duration-[120ms] hover:text-ink"
+          onClick={() => (signedIn ? setMenu((m) => !m) : signIn())}
+          className="rail-row w-full text-left text-ink-faint transition-colors duration-[120ms] hover:text-ink"
           title={account.label}
-          aria-haspopup={user ? "menu" : undefined}
+          aria-haspopup={signedIn ? "menu" : undefined}
           aria-expanded={menu}
         >
-          {accountName(account.label)}
+          <span className="t-meta min-w-0 flex-1 truncate text-ink-faint">{account.label}</span>
+          <span className="shrink-0 text-ink-ghost">
+            <SettingsIcon />
+          </span>
         </button>
       </div>
     </aside>
+  );
+}
+
+/**
+ * One session: 28px, one line, truncating. Hover reveals `rename` and `×`;
+ * a double click renames in place, which is what everyone already tries.
+ */
+function SessionRow({
+  session,
+  active,
+  editing,
+  onEdit,
+  onEndEdit,
+  onOpen,
+  onDelete,
+}: {
+  session: SessionItem;
+  active: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onEndEdit: (title: string) => void;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const title = sessionTitle(session.title);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing) ref.current?.select();
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <div className="session-row">
+        <input
+          ref={ref}
+          defaultValue={title}
+          aria-label="Rename chat"
+          onBlur={(e) => onEndEdit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onEndEdit((e.target as HTMLInputElement).value);
+            if (e.key === "Escape") onEndEdit(title);
+          }}
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] leading-none text-ink outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`session-row group/row ${active ? "is-open" : ""}`}>
+      <button
+        onClick={onOpen}
+        onDoubleClick={onEdit}
+        className={`min-w-0 flex-1 truncate text-left text-[13px] leading-none transition-colors duration-[120ms] ${active ? "font-medium text-ink" : "text-ink-dim hover:text-ink"}`}
+        title={title}
+      >
+        {title}
+      </button>
+      <button
+        onClick={onEdit}
+        className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
+        aria-label={`Rename ${title}`}
+      >
+        rename
+      </button>
+      <button
+        onClick={onDelete}
+        className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
+        aria-label={`Delete ${title}`}
+        title="Delete"
+      >
+        ×
+      </button>
+    </div>
   );
 }

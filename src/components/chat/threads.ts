@@ -54,8 +54,8 @@ export function useThreads(): ThreadMeta[] {
   return useSyncExternalStore(subscribeThreads, snapshot, () => EMPTY);
 }
 
-export function createThread(): ThreadMeta {
-  const meta: ThreadMeta = { id: crypto.randomUUID(), title: "New thread", createdAt: new Date().toISOString() };
+export function createThread(id: string = crypto.randomUUID()): ThreadMeta {
+  const meta: ThreadMeta = { id, title: "New thread", createdAt: new Date().toISOString() };
   safe(() => localStorage.setItem(INDEX_KEY, JSON.stringify([meta, ...listThreads()])), undefined);
   notify();
   return meta;

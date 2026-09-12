@@ -1,10 +1,18 @@
 "use client";
 /**
- * The thread, board C ("Terminal for cinephiles"). DESIGN.md → Thread:
- * a section header carrying the thread's own question, 28px of air, then
- * bubbles at a 880px cap — yours squared off to the right, the agent's to the
- * left — with the receipts line, the follow-up chips and the composer under
- * them. No cards, no accent: the only accent on any screen is Play.
+ * Ask, v5 (`design/boards-v5/Shell.dc.html`, DESIGN.md → Ask (v5)): a centered
+ * 720px column in the content pane, message rows at a 14px gap with 28px of
+ * air above them, and one 56px composer pinned at the bottom of that same
+ * column — a hairline under it, a mono `>` in front of it, a mono `⏎` at its
+ * end, and no send button.
+ *
+ * No thread header: the sidebar carries the title, so the column starts with
+ * the conversation. A new chat starts with the tonight opener instead
+ * (`NewChatOpener.tsx`) — a client-side empty state that is never sent as a message.
+ *
+ * Signed in, the chat route stores both sides of every turn itself, so the
+ * only thing this has to do is carry `threadId` on the transport and tell the
+ * shell when a turn finished. Signed out, threads stay in localStorage.
  */
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
@@ -14,13 +22,13 @@ import type { BrainStore } from "@/components/canvas/brainStore";
 import { Markdown } from "./Markdown";
 import { PathGraphic } from "./PathGraphic";
 import { FaceGrid } from "./FaceGrid";
+import { NewChatOpener } from "./NewChatOpener";
 import { faceTapAction } from "./faceGridRule";
 import { egoDefaultFor, egoDelayMs } from "./egoDefault";
 import { lookupName } from "./lookup";
-import { loadMessages, renameThread, saveMessages, useThreads } from "./threads";
+import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 import { receiptSegments } from "./receipts";
-import { threadMetaLine } from "./threadMeta";
 
 interface Props {
   threadId: string;
@@ -28,11 +36,19 @@ interface Props {
   /** A question another panel wants asked (e.g. "Ask about this"). `send` submits it rather than only filling the box. */
   prefill: { text: string; nonce: number; send?: boolean } | null;
   onSelectNode: (imdbId: string) => void;
-  /** Told whenever the thread has messages, so the shell can mark it as a chat rather than Tonight. */
-  onHasMessages?: (has: boolean) => void;
+  /** Signed in: the server owns the thread and this panel persists nothing locally. */
+  signedIn: boolean;
+  /** The thread's stored messages, loaded by the shell from `/api/threads/:id`. */
+  initialMessages?: HeadshotUIMessage[];
+  /** A turn finished: the shell re-reads the session list (title and order move). */
+  onTurnFinished?: () => void;
+  /** The thread's first question, so an untitled server thread can be named. */
+  onFirstQuestion?: (text: string) => void;
+  /** Create the thread row before the first turn goes out; awaited, so the route always has one. */
+  onBeforeFirstSend?: () => Promise<void>;
 }
 
-/** Lowercase, the way every other label on board C reads. */
+/** Lowercase, the way every other label on board C reads. The v5 tool set. */
 const TOOL_LABELS: Record<string, string> = {
   find_entities: "resolving names",
   find_by_constraints: "matching the description",
@@ -47,26 +63,26 @@ const TOOL_LABELS: Record<string, string> = {
   expand_node: "expanding the brain",
   read_page: "reading a page",
   write_page: "writing a page",
-  show_on_brain: "centering the brain",
-  my_taste: "reading your log",
+  my_profile: "reading what I know about you",
   recall: "searching the record",
   have_i_seen: "checking your log",
-  tonight_picks: "reading tonight's picks",
-  rate: "writing to your log",
-  mark_progress: "writing to your log",
+  tonight: "finding something for tonight",
+  log: "writing to your log",
 };
 
-export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessages }: Props) {
-  const initial = useMemo(() => loadMessages(threadId), [threadId]);
+export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, initialMessages, onTurnFinished, onFirstQuestion, onBeforeFirstSend }: Props) {
+  // Signed in the server is the record; signed out localStorage is.
+  const initial = useMemo(() => (signedIn ? (initialMessages ?? []) : loadMessages(threadId)), [signedIn, initialMessages, threadId]);
   const [input, setInput] = useState("");
   const [dismissedError, setDismissedError] = useState<Error | null>(null);
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
   const sentNonce = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const threads = useThreads();
-  const meta = threads.find((t) => t.id === threadId) ?? null;
+  const titled = useRef(false);
+  const ensured = useRef(false);
 
-  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat" }), []);
+  // The thread id rides the body so the route can store the turn against it.
+  const transport = useMemo(() => new DefaultChatTransport({ api: "/api/chat", body: { threadId } }), [threadId]);
   const { messages, sendMessage, status, error, stop } = useChat<HeadshotUIMessage>({
     id: threadId,
     messages: initial,
@@ -77,6 +93,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
     },
     onFinish: ({ message, isAbort }) => {
       store.setStatus(null);
+      onTurnFinished?.();
       if (isAbort) return;
       // Ego view by default: after the path animation, center the panel on the first person.
       const center = egoDefaultFor(message.parts);
@@ -85,21 +102,29 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
     onError: () => store.setStatus(null),
   });
 
-  // Persist, and name the thread after its first question.
+  // Signed out, persist and name the thread here. Signed in, the route does
+  // both — writing the same turn to localStorage would be a second record.
   useEffect(() => {
     if (messages.length === 0) return;
-    onHasMessages?.(true);
-    saveMessages(threadId, messages);
     const first = messages.find((m) => m.role === "user");
     const text = first?.parts.find((p) => p.type === "text");
-    if (text && "text" in text) renameThread(threadId, text.text.slice(0, 60));
-  }, [messages, threadId, onHasMessages]);
+    const question = text && "text" in text ? text.text.slice(0, 60) : null;
+    if (signedIn) {
+      if (question && !titled.current) {
+        titled.current = true;
+        onFirstQuestion?.(question);
+      }
+      return;
+    }
+    saveMessages(threadId, messages);
+    if (question) renameThread(threadId, question);
+  }, [messages, threadId, signedIn, onFirstQuestion]);
 
   const resting = error && error !== dismissedError ? restingText(error) : null;
 
   // Adopt a prefilled question from another panel (derived-state pattern, no effect).
-  // A `send` prefill (the You composer, the drawer's "ask", /?q=) is left to
-  // the effect below instead: sending is a side effect, not a render.
+  // A `send` prefill (the drawer's "ask", /?q=) is left to the effect below
+  // instead: sending is a side effect, not a render.
   if (prefill && prefill.nonce !== seenNonce) {
     setSeenNonce(prefill.nonce);
     if (!prefill.send) setInput(prefill.text);
@@ -117,15 +142,18 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
       if (!t || busy) return;
       setDismissedError(error ?? null);
       store.clearHighlight();
-      sendMessage({ text: t });
       setInput("");
+      const send = () => sendMessage({ text: t });
+      if (ensured.current || !onBeforeFirstSend) return send();
+      ensured.current = true;
+      void Promise.resolve(onBeforeFirstSend()).then(send, send);
     },
-    [busy, error, sendMessage, store],
+    [busy, error, sendMessage, store, onBeforeFirstSend],
   );
 
-  // A `send` prefill is asked once, so the thread the You composer just opened
-  // starts with the question already in flight. The nonce is remembered in a
-  // ref rather than state: re-running must not re-send.
+  // A `send` prefill is asked once, so the thread the drawer just opened starts
+  // with the question already in flight. The nonce is remembered in a ref
+  // rather than state: re-running must not re-send.
   useEffect(() => {
     if (!prefill?.send || prefill.nonce === sentNonce.current) return;
     sentNonce.current = prefill.nonce;
@@ -134,29 +162,22 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
 
   const chips = useMemo(() => followUps(messages), [messages]);
   const entities = useMemo(() => threadIndex(messages), [messages]);
-  const lookup = (name: string) => {
-    store.setStatus(`Looking up ${name}…`);
-    void lookupName(name).then((id) => {
-      store.setStatus(id ? null : `No match for ${name}`);
-      if (id) onSelectNode(id);
-    });
-  };
-
-  const headline = meta && meta.title !== "New thread" ? meta.title : "new thread";
-  const metaLine = threadMetaLine(meta?.createdAt, messages.length);
+  const lookup = useCallback(
+    (name: string) => {
+      store.setStatus(`Looking up ${name}…`);
+      void lookupName(name).then((id) => {
+        store.setStatus(id ? null : `No match for ${name}`);
+        if (id) onSelectNode(id);
+      });
+    },
+    [store, onSelectNode],
+  );
 
   return (
-    <section className="flex h-full min-w-0 flex-col" aria-label="Chat">
-      <div className="px-4 pt-[22px] md:px-[34px]">
-        <div className="section-head">
-          <h1 className="t-title min-w-0 truncate">{headline}</h1>
-          {metaLine && <span className="t-meta shrink-0">{metaLine}</span>}
-        </div>
-      </div>
-
-      <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto px-4 md:px-[34px]">
-        <div className="flex w-full max-w-[880px] flex-col gap-[14px] pb-[30px] pt-[28px]">
-          {messages.length === 0 && <p className="t-prose">nothing asked yet. type a question below.</p>}
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Ask">
+      <div ref={listRef} className="scrollbar-thin flex-1 overflow-y-auto px-4 pt-[22px] md:px-[34px]">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-[14px] pb-[30px] pt-[28px]">
+          {messages.length === 0 && <NewChatOpener signedIn={signedIn} onSelectNode={onSelectNode} onLookup={lookup} />}
 
           {messages.map((m) => (
             <Message key={m.id} m={m} onSelectNode={onSelectNode} entities={entities} onLookup={lookup} onAsk={ask} />
@@ -174,7 +195,7 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
           {resting && <p className="self-start text-[13.5px] leading-[1.54] text-ink">{resting}</p>}
 
           {!busy && chips.length > 0 && (
-            <div className="scrollbar-thin -mx-4 flex flex-nowrap gap-[9px] self-start overflow-x-auto px-4 pb-1 pt-[10px] md:mx-0 md:flex-wrap md:px-0 md:pl-[2px]">
+            <div className="scrollbar-none -mx-4 flex flex-nowrap gap-[9px] self-start overflow-x-auto px-4 pb-1 pt-[10px] md:mx-0 md:flex-wrap md:px-0 md:pl-[2px]">
               {chips.map((c) => (
                 <button key={c} type="button" onClick={() => ask(c)} className="chip shrink-0 whitespace-nowrap text-left md:shrink md:whitespace-normal">
                   {c}
@@ -185,15 +206,15 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
         </div>
       </div>
 
-      <div className="px-4 pb-[max(32px,env(safe-area-inset-bottom))] md:px-[34px] md:pb-[32px]">
+      <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))] md:px-[34px] md:pb-[32px]">
         <form
-          className="composer"
+          className="composer-lg mx-auto w-full max-w-[720px]"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
         >
-          <span className="font-mono text-[13px] leading-none text-ink-ghost" aria-hidden>
+          <span className="font-mono text-[15px] leading-none text-ink-ghost" aria-hidden>
             &gt;
           </span>
           <textarea
@@ -207,8 +228,8 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, onHasMessage
             }}
             rows={1}
             aria-label="ask"
-            placeholder="log something, or just ask"
-            className="scrollbar-thin max-h-40 min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-[14px] leading-[1.5] text-ink outline-none placeholder:text-ink-faint"
+            placeholder="ask anything, or log what you just watched"
+            className="scrollbar-thin max-h-40 min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-[15px] leading-[1.4] text-ink outline-none placeholder:text-ink-faint"
           />
           {busy ? (
             <button type="button" onClick={stop} className="t-link ml-auto shrink-0">

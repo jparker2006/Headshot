@@ -48,7 +48,7 @@ describe("taste in the chat", () => {
 
   it("signed out: no taste block and no taste tools", async () => {
     const graph = await fixtureGraph();
-    const model = scriptedModel([{ tool: "my_taste", input: {} }, { text: "?" }]);
+    const model = scriptedModel([{ tool: "my_profile", input: {} }, { text: "?" }]);
     const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("what do i like")], followups: false }));
     const system = String(model.doStreamCalls[0].prompt.find((m) => m.role === "system")?.content);
     expect(system).not.toContain("This user is signed in");
@@ -56,16 +56,30 @@ describe("taste in the chat", () => {
     expect(ofType(chunks, "tool-output-available")).toHaveLength(0);
   });
 
-  it("tonight_picks returns the stored picks with reasons", async () => {
+  it("the tonight tool picks on demand, with a real reason and nothing stored", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.setServices("u1", { providerIds: [15] });
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
-    const model = scriptedModel([{ tool: "tonight_picks", input: {} }, { text: "ok" }]);
+    const model = scriptedModel([{ tool: "tonight", input: {} }, { text: "ok" }]);
     const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("what should i watch")], followups: false, userId: "u1", taste: store }));
-    const out = ofType(chunks, "tool-output-available")[0].output as { picks: { title: string; reason: string }[] };
+    const out = ofType(chunks, "tool-output-available")[0].output as { picks: { title: string; reason: string; providers: string[] }[] };
     expect(out.picks.length).toBeGreaterThan(0);
+    expect(out.picks.length).toBeLessThanOrEqual(3);
     expect(out.picks.some((p) => p.title.startsWith("Forrest Gump"))).toBe(true);
     expect(out.picks[0].reason.length).toBeGreaterThan(0);
+    // On demand means on demand: the tonight row stays empty.
+    expect(await store.getTonight("u1")).toBeNull();
+  });
+
+  it("the tonight tool post-filters by the service the user named", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
+    const model = scriptedModel([{ tool: "tonight", input: { service: "Netflix" } }, { text: "ok" }]);
+    const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("anything on netflix?")], followups: false, userId: "u1", taste: store }));
+    // The fixture has no TMDB, so nothing carries a provider: the tool says so
+    // rather than handing back picks that are not on Netflix.
+    expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ empty: true, service: "Netflix" });
   });
 });

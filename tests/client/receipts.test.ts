@@ -22,18 +22,26 @@ describe("receipts under an answer", () => {
     expect(receiptSegments([node("tt1"), node("tt1"), node("nm1"), node("nm2")])).toEqual(["from the graph", "1 title", "2 people"]);
   });
 
-  it("credits the log when a taste tool returned", () => {
-    expect(receiptSegments([tool("my_taste"), node("tt1")])).toEqual(["from your log", "1 title"]);
+  it("credits the log when one of the v5 taste reads returned", () => {
+    expect(receiptSegments([tool("my_profile"), node("tt1")])).toEqual(["from your log", "1 title"]);
     expect(receiptsLine([tool("recall")])).toBe("from your log");
+    expect(receiptsLine([tool("have_i_seen")])).toBe("from your log");
+    expect(receiptsLine([tool("tonight")])).toBe("from your log");
   });
 
   it("ignores a tool that has not returned, or failed", () => {
-    expect(receiptSegments([tool("my_taste", "input-available")])).toEqual([]);
+    expect(receiptSegments([tool("my_profile", "input-available")])).toEqual([]);
     expect(receiptSegments([tool("recall", "output-error")])).toEqual([]);
   });
 
   it("reports a write to the log last", () => {
-    expect(receiptSegments([tool("my_taste"), node("tt1"), tool("rate")])).toEqual(["from your log", "1 title", "log updated"]);
+    expect(receiptSegments([tool("my_profile"), node("tt1"), tool("log")])).toEqual(["from your log", "1 title", "log updated"]);
+  });
+
+  it("knows nothing of the tools v5 deleted", () => {
+    for (const gone of ["my_taste", "rate", "mark_progress", "tonight_picks", "show_on_brain"]) {
+      expect(receiptSegments([tool(gone)])).toEqual([]);
+    }
   });
 
   it("never claims the log for a graph-only answer", () => {

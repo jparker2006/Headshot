@@ -170,19 +170,3 @@ describe("fast path in the agent loop", () => {
   });
 });
 
-describe("show_on_brain", () => {
-  it("emits a focus-ego event for a resolved entity", async () => {
-    const graph = await fixtureGraph();
-    const model = scriptedModel([{ tool: "show_on_brain", input: { imdbId: HANKS } }, { text: "Here is **Tom Hanks**." }]);
-    const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("show me Tom Hanks on the brain")], followups: false }));
-    expect(ofType(chunks, "data-focus-ego")[0].data).toEqual({ imdbId: HANKS, name: "Tom Hanks" });
-    expect(ofType(chunks, "data-node").map((n) => (n.data as { imdbId: string }).imdbId)).toContain(HANKS);
-  });
-  it("reports unknown entities instead of throwing", async () => {
-    const graph = await fixtureGraph();
-    const model = scriptedModel([{ tool: "show_on_brain", input: { imdbId: "nm0009999" } }, { text: "?" }]);
-    const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("show me")], followups: false }));
-    expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ error: "unknown_entity" });
-    expect(ofType(chunks, "data-focus-ego")).toHaveLength(0);
-  });
-});

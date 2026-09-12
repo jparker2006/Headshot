@@ -10,9 +10,9 @@
 import type { HeadshotUIMessage } from "@/lib/agent/events";
 
 /** Taste tools that read the user's private log. */
-const TASTE_READS = new Set(["my_taste", "recall", "have_i_seen", "tonight_picks"]);
+const TASTE_READS = new Set(["my_profile", "recall", "have_i_seen", "tonight"]);
 /** Taste tools that write to it. */
-const TASTE_WRITES = new Set(["rate", "mark_progress"]);
+const TASTE_WRITES = new Set(["log"]);
 
 /**
  * The segments of the receipts line, in reading order: where the answer came

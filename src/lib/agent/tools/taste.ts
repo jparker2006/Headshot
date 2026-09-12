@@ -7,7 +7,7 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import type { AgentContext } from "../context";
 import { describe } from "../context";
-import { loadTonight } from "@/lib/picks/service";
+import { pickNow } from "@/lib/picks/service";
 import { tasteSummary } from "../tasteContext";
 import { memoryText } from "@/lib/memory";
 import { isValidScore } from "@/lib/taste/score";
@@ -23,7 +23,7 @@ export function tasteTools(ctx: AgentContext): ToolSet {
   const userId = ctx.userId;
   if (!store || !userId) return {};
   return {
-    my_taste: tool({
+    my_profile: tool({
       description: "What you know about this user: first your own memory of them (the notes you keep, including lines they pinned), then the facts — counts, services, the people they keep watching, decades, recently rated titles, Later list, series in progress. Call when asked what they like or before judging whether they would like something.",
       inputSchema: z.object({}),
       execute: async () => {
@@ -85,31 +85,32 @@ export function tasteTools(ctx: AgentContext): ToolSet {
       },
     }),
 
-    mark_progress: tool({
-      description: "The user is watching a series: record the season they are on and/or bump the episode count ('one more episode of X').",
-      inputSchema: z.object({ imdbId: imdbTitle, season: z.number().int().min(1).optional(), episodesWatched: z.number().int().min(0).optional() }),
-      execute: async ({ imdbId, season, episodesWatched }) => {
-        const node = ctx.graph.nodeByImdbId(imdbId);
-        if (!node || node.kind !== "title") return { error: "unknown_title" };
-        await store.setProgress(userId, imdbId, { season, episodesWatched });
-        const where = [season != null ? `season ${season}` : "", episodesWatched != null ? `${episodesWatched} episodes in` : ""].filter(Boolean).join(", ");
-        await store.addEpisodes(userId, [
-          { kind: "chat", titleImdbId: imdbId, text: `watching ${node.name}${where ? `: ${where}` : ""}` },
-        ]);
-        return { ok: true, title: describe(node), season, episodesWatched };
-      },
-    }),
-
-    tonight_picks: tool({
-      description: "Tonight's three picks for this user (already computed, with one real reason each and where each streams). Use for 'what should I watch', then narrate in your voice; never invent a pick of your own.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        const data = await loadTonight({ graph: ctx.graph, tmdb: ctx.tmdb, store, model: null }, userId);
-        if (!data) return { empty: true, hint: "No picks yet: they need at least one rated title. Suggest the deck or a Letterboxd import." };
+    tonight: tool({
+      description:
+        "What they should watch tonight: the pick engine run on demand over their log and services, with one real reason each and where it streams. Use for 'what should I watch' and pass whatever they said — a time budget, the energy they have, a service they want to stay on. Narrate the results in your voice; never invent a pick of your own.",
+      inputSchema: z.object({
+        maxRuntimeMin: z.number().int().min(1).optional().describe("A time budget in minutes, when they gave one ('I have two hours')."),
+        energy: z.enum(["light", "heavy", "any"]).optional().describe("light = easy watch, heavy = demanding; omit when they did not say."),
+        service: z.string().optional().describe("Only things on this service, when they named one ('something on Netflix')."),
+      }),
+      execute: async ({ maxRuntimeMin, energy, service }) => {
+        const result = await pickNow({ graph: ctx.graph, tmdb: ctx.tmdb, store }, userId, { ...(maxRuntimeMin ? { maxRuntimeMin } : {}), ...(energy ? { energy } : {}) });
+        if (!result) return { empty: true, hint: "No picks yet: they need at least one rated title. Suggest logging a few favourites or a Letterboxd import." };
+        const wanted = service?.trim().toLowerCase();
+        // A named service filters the picks rather than the pool: the engine's
+        // ranking still decides, we only drop what does not stream there.
+        const picks = (wanted ? result.picks.filter((p) => p.providerNames.some((n) => n.toLowerCase().includes(wanted))) : result.picks).slice(0, 3);
+        if (!picks.length) return { empty: true, service: service ?? null, hint: wanted ? `Nothing tonight is on ${service}. Say so and offer the picks that are not.` : "Nothing fit those filters. Say so and offer to loosen them." };
         return {
-          generatedAt: data.generatedAt,
-          picks: data.picks.map((p) => ({ imdbId: p.imdbId, title: `${p.name}${p.year ? ` (${p.year})` : ""}`, kind: p.kind, reason: p.reason.text, play: p.playLabel, onYourServices: p.onYourServices })),
-          deck: data.deck.slice(0, 5).map((p) => `${p.name}${p.year ? ` (${p.year})` : ""}: ${p.reason.text}`),
+          picks: picks.map((p) => ({
+            imdbId: p.imdbId,
+            title: `${p.name}${p.year ? ` (${p.year})` : ""}`,
+            kind: p.kind,
+            reason: p.reason.text,
+            play: p.playLabel,
+            playUrl: p.playUrl,
+            providers: p.providerNames,
+          })),
         };
       },
     }),

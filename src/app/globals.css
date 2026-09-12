@@ -382,6 +382,79 @@ body {
 }
 .btn-outline:hover { border-color: var(--ink-faint); }
 
+/* ---------------------------------------------------------------------------
+   The rail (v5). Three shapes and nothing else: a section row, a session row
+   under Ask, and a phone tab cell. The ink level carries the state — hover is
+   the only fill any of them ever takes.
+--------------------------------------------------------------------------- */
+
+/* A 32px row in the rail that is not a section: the account footer, a menu item. */
+.rail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding-inline: 12px;
+  border-radius: var(--radius-row);
+  transition: background-color 120ms, color 120ms;
+}
+
+/* `log` / `ask` / `you`: a 16px stroke icon, then the label. */
+.nav-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  height: 32px;
+  padding-inline: 12px;
+  border-radius: var(--radius-row);
+  transition: background-color 120ms, color 120ms;
+}
+
+/* A chat under Ask: 28px, one line, indented to the 28px inset that says
+   these belong to the section above them. */
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding-left: 28px;
+  padding-right: 12px;
+  border-radius: var(--radius-row);
+  transition: background-color 120ms, color 120ms;
+}
+
+.rail-row:hover,
+.nav-row:hover,
+.session-row:hover,
+.session-row.is-open {
+  background: var(--row-hover);
+}
+
+/* One cell of the phone's bottom bar. */
+.tab-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 54px;
+  transition: color 120ms;
+}
+
+/* The Ask composer: one tier, the full column, a hairline instead of a fill,
+   and no send button — the ⏎ is the affordance (board Shell.dc.html). */
+.composer-lg {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  border-bottom: 1px solid var(--line-input);
+}
+@media (min-width: 768px) {
+  .composer-lg { gap: 14px; height: 56px; }
+}
+
 /* The composer sits at the bottom of every page: a rule, a prompt, a field. */
 .composer {
   border-top: 1px solid var(--line);

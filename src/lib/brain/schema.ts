@@ -254,3 +254,38 @@ export const episodes = pgTable(
   },
   (t) => [index("episodes_user_id_at_idx").on(t.userId, t.at)],
 );
+
+// ---- v5: server-side chat threads ----------------------------------------
+// Signed-in conversations live here, one row per UI message. Signed-out
+// threads stay in localStorage and never reach the server (SPEC v5).
+
+/** One conversation. `title` is null until the first user turn names it. */
+export const threads = pgTable(
+  "threads",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    /** The first user text, sliced to 60 chars. Null until then; the UI shows "new chat". */
+    title: text("title"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("threads_user_id_updated_at_idx").on(t.userId, t.updatedAt)],
+);
+
+/** One UI message, parts and all. Deleting a thread deletes its messages. */
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    /** user | assistant | system */
+    role: text("role").notNull(),
+    /** The UI message's parts, exactly as the client renders them. */
+    parts: jsonb("parts").$type<unknown[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("messages_thread_id_idx").on(t.threadId)],
+);

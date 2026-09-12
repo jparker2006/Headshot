@@ -76,14 +76,14 @@ Entity names inside prose and bubbles are `font-weight: 500` at `--ink` and are 
 - **Row heights.** Ledger row 24. Receipt row (under an answer) 32. Log / table / recently-logged row 38. Log-field candidate 42. Tonight pick 68. Every button and input 44–46.
 - **Row gaps.** 16 in a 38px row, 14 in a 32px row, 18 in a 68px row, 14 in a ledger row. Rows stack with **zero** gap and **no** rule between them; the only hairline in a section is under its header.
 - **Sections.** `gap: 38px` between sections on You, `30px` on Log and Thread. A section header is a baseline row (`gap: 12px`) with a 10px bottom pad and one `--line` rule under it.
-- **Rail.** 176px wide, `border-right: 1px var(--line)`, padding `22px 0 22px 24px`, internal gap 26px.
+- **Rail.** 232px wide (v5), `border-right: 1px var(--line)`, padding `22px 12px 18px 12px`; rows carry their own 12px inset and 4px hover shape, so the rail has no internal gap of its own.
 - **Page.** Content padding `22px 34px 40px` (You) / `22px 34px 32px` (Thread, Log). Gutter is therefore 34px on a laptop.
 - **Column widths.** Prose and thread cap at **880px**. The instrument sections (log field, candidates, picked title, receipts) cap at **1000px**. The ledger and the log table run the full content column (1264px at a 1440px viewport). The memory is three equal columns with a `0 34px` gap; the people ledger is four equal columns with a `6px 40px` gap.
-- **Phone (390px)** — **deviation**, the boards are laptop-only. Rules: the rail becomes a 44px top bar (wordmark left, `you` / `history` as text, account right — no hamburger). Gutter drops to 16px, section gap to 28px. Every list row becomes two lines at 52px: line one is poster-mark + title + year, line two is the mono meta (`3h ago · liked · film · 157m`), or the note if there is one. A tonight pick becomes a block: poster and reason on top, Play full-width at 44px below. The memory's three columns become one. Ledger rows keep 24px with a 96px label column and a 40px figure column. Bubbles cap at 86% and the composer is pinned with `env(safe-area-inset-bottom)` added to its bottom pad. Nothing horizontal scrolls except the log table, which scrolls inside its own container.
+- **Phone (390px)** — `design/boards-v5/Shell-phone.dc.html` for the shell, a deviation elsewhere. Rules: the rail becomes a 44px top bar (wordmark left; on Ask, signed in, a `chats` label and a `+` pushed right — no hamburger, no account) plus the bottom tab bar of three 54px cells; sessions open as a sheet from `chats`. Gutter drops to 16px, section gap to 28px. Every list row becomes two lines at 52px: line one is poster-mark + title + year, line two is the mono meta (`3h ago · liked · film · 157m`), or the note if there is one. A tonight pick becomes a block: poster and reason on top, Play full-width at 44px below. The memory's three columns become one. Ledger rows keep 24px with a 96px label column and a 40px figure column. Bubbles cap at 86% and the composer is pinned with `env(safe-area-inset-bottom)` added to its bottom pad. Nothing horizontal scrolls except the log table, which scrolls inside its own container.
 
 ## Layouts
 
-Every screen is `176px | 1fr`: the rail, then one content column with the composer pinned at its bottom. There is no second panel and no resident canvas.
+Every screen is `232px | 1fr`: the rail, then one content column with the composer pinned at its bottom. There is no second panel and no resident canvas.
 
 ### You
 
@@ -133,6 +133,8 @@ Full-width content column, no second rail. Blocks in order: per month, film vs T
 - **The log table** is `.row` at 38px, columns `88px 26px minmax(0,360px) 48px 64px 96px minmax(0,1fr)`: time, poster, title, year, bucket, source (`log` / `letterboxd` / `netflix` / `imdb`, `.t-meta`), meta-or-note. A header row at 24px of `.t-sub` labels, clickable to sort; the active sort key goes to `--ink` with a mono `↓` after it. Filter is a 46px field with a `--line-input` underline, `>` prompt in mono at `--ink-ghost`, and `.t-meta` `115 rows · 8 shown` pushed right. No zebra striping, no row borders, no pagination chrome — it scrolls.
 
 ### Thread
+
+**Ask (v5) below supersedes this section's header, column width and composer**; the bubbles, receipts and follow-ups are unchanged and still described here.
 
 ```
 │ what do I like?   3h ago · 2 messages                                   │
@@ -212,16 +214,26 @@ A region, not a floating card: 420px, right-aligned, `--bg` ground, a single `bo
 
 One centred column. The poster at **260×390**, no radius, no shadow, no card behind it. Under it: title `.t-row` at 16px/600, `.t-meta` `1984 · film · 107m`. Under that two `.btn-fill`s at 44px, `seen it` and `not seen`, with mono `s` / `n` hints; `seen it` reveals the row of ten (`ScoreRow`, 44px cells, five-and-five under the poster) and a digit commits and advances; `not seen` commits and advances. Top-right of the column: `.t-meta` `3 / 10`; bottom-left: `.t-link` `undo`, `.t-link` `done for now` (live from the first card). Rounds are ten. A card leaving is a 300ms translate-and-fade — no colored overlay, no stamp, no rotation beyond 2°. Round end shows the memory diff as two `.t-prose` lists, added lines at `--ink` with a mono `+`, removed at `--ink-faint` with a mono `−`, then `ten more` (`.btn-outline`) and `back to the log` (`.t-link`).
 
-### Sidebar
+### Sidebar (v5)
 
-176px, `border-right: 1px var(--line)`, padding `22px 0 22px 24px`, gap 26px, no background shift — it is the same ground.
+Source: `design/boards-v5/Shell.dc.html`. 232px, `border-right: 1px var(--line)`, padding `22px 12px 18px 12px`, no background shift — it is the same ground as the page.
 
-1. Wordmark `headshot`, Geist 14 / 700 / −0.02em, `--ink`.
-2. Nav, gap 7px: `you`, `history`. Active is `--ink` 500; inactive `--ink-faint` 400; both 13.5px. No icons, no counters, no active pill — the ink level is the state.
-3. Under History when a thread is open: the thread's question at Geist 13 `--ink`, then `.t-meta` `3h ago`, gap 6. Older threads the same, at `--ink-dim`.
-4. Pushed to the bottom (`margin-top: auto`), gap 5px: `.t-meta` at `--ink-faint` with your name, then `.t-meta` at `--ink-ghost` `115 · 202h`. The account menu opens from that name.
+1. Wordmark `headshot`, Geist 14 / 700 / −0.02em, `--ink`, with 22px of air under it. No collapse control, no rail, no subtitle.
+2. **Three sections and nothing else** — `log`, `ask`, `you`, in that order, gap 2px. Each is a 32px `.nav-row`: a 16px monoline stroke icon (`stroke: currentColor`, width 1.3) then a `.t-ui` label. Active is `--ink`, icon included; inactive `--ink-faint`. Hover is `--row-hover` at 4px. **No pill, no fill, no active bar** — the ink level is the state.
+3. **Sessions live under Ask, and only when Ask is the surface**, indented to a 28px inset so the indent says whose they are: first a `new chat` row (28px, a 12px `+`, `--ink`), then one dim group header `chats` (Geist 13, `--ink-faint`, sentence case), then the threads as 28px `.session-row`s — Geist 13 at `--ink-dim`, the open one `--ink` 500, one line, truncating. Hover reveals `rename` and `×`; a double click renames in place. No timestamp column, no second line. Signed-out threads are never listed.
+4. **Account footer** pinned with `margin-top: auto` over one `--line` hairline: a 32px `.rail-row` with the email in `.t-meta` at `--ink-faint`, truncating, and the 16px sliders glyph at `--ink-ghost` pushed right. Clicking it opens a `.panel` with `Settings` and `Sign out`. That hairline and the rail's own border are the only two lines in the sidebar.
+5. **Signed out** the rail is two rows: `ask` and `sign in`. Nothing else, and no session list.
 
-No Tonight item, no New chat, no Later item, no taste map, no `/brain` link.
+No Tonight item, no Later item, no taste map, no `/brain` link, no collapsed rail, no `115 · 202h` line.
+
+### Ask (v5)
+
+Source: `design/boards-v5/Shell.dc.html`, `Shell-phone.dc.html`. Content padding `22px 34px 32px` (16px gutters on a phone) with **one centred 720px column** inside it — the thread and the composer share that width.
+
+- No thread header: the sidebar carries the title. The column starts with 28px of air, then the message stack at `gap: 14px`.
+- Bubbles are board C's, unchanged: yours `.bubble-you` hugging the right, the agent's `.bubble-them` on the left capped at 74% (86% on a phone). The receipts ledger, the face grid and the path graphic sit under the bubble with the 2px inset, inside the same assistant row. Follow-ups are a `.chip` row.
+- **Composer: one tier, 56px** (52px on a phone), the full column, `.composer-lg` — a `--line-input` hairline under it and no fill, no top rule, no box. A mono `>` at 15px `--ink-ghost`, Geist 15 text, a mono `⏎` at 11.5px pushed right, `stop` in its place while a turn is running. Enter sends, Shift+Enter is a newline; there is no send button, no `+`, no model selector. Pinned at the bottom with `env(safe-area-inset-bottom)`. Placeholder: `ask anything, or log what you just watched`.
+- **The empty state of a new chat is the tonight opener**, computed on demand: one `.bubble-them` with the line the server wrote (`tonight: **X** on hbo max, because …`, names linked), then — left-aligned at the 2px inset — the 34×51 poster mark, one `.btn-play` carrying the service (`Play on HBO Max`; `.btn-quiet` `Where to watch` when there is no service) and a mono `.t-meta` `2012 · film · hbo max · already paid for`. That Play is the one accent in the view. On a phone the pick becomes a block: poster and meta on top, Play full width at 44px. While it is being computed the column says `finding one for tonight…` in `.t-meta`; with nothing to pick, `.t-prose` `log a few things and I'll have one for tonight.`; signed out, `.t-prose` `ask me who was in what. sign in and I'll know what you've seen.` It is never sent as a message and it disappears with the first turn.
 
 ## Components
 
@@ -233,6 +245,8 @@ Class names live in `src/app/globals.css`. Screens compose these with Tailwind f
 - **`.receipt`** — `display:grid; align-items:center; gap:14px; height:32px;` under an answer; a `seen`-only row dims its poster to 0.6.
 - **`.bubble` + `.bubble-you` / `.bubble-them`** — radius 10px with the speaker-side bottom corner at 3px; `--bg-raised` / `--bg-elev`; padding `9px 15px` / `14px 18px`; `max-width: 74%`; the agent's bubble is a flex column at `gap: 11px`.
 - **`.composer`** — `border-top: 1px var(--line); padding-top: 16px; display:flex; align-items:center; gap:14px;` Inside: mono `>` at 13px `--ink-ghost`, a transparent borderless input at Geist 14 (`--ink` typed, `--ink-faint` placeholder `log something, or just ask`), `.t-meta` `⏎` pushed right. No ring, no fill, no rounded box, no send button.
+- **`.composer-lg`** (v5) — the Ask composer: `display:flex; align-items:center; gap:14px; height:56px; border-bottom: 1px var(--line-input);` (52px / gap 12 on a phone). No top rule, no fill, no box, no send button. Inside: mono `>` at 15px `--ink-ghost`, a transparent borderless textarea at Geist 15, `.t-meta` `⏎` (or the `stop` link while a turn runs) pushed right.
+- **`.nav-row` / `.session-row` / `.rail-row` / `.tab-cell`** (v5) — the rail's four shapes. `.nav-row` is the 32px section row (`grid 16px minmax(0,1fr)`, gap 11, 12px inset, 4px radius); `.session-row` is the 28px chat row (flex, 28px left inset, 12px right); `.rail-row` is any other 32px row (account footer, a menu item); `.tab-cell` is one 54px cell of the phone bar (column, gap 5). Hover on all three rail shapes is `--row-hover`; `.session-row.is-open` takes the same fill. None of them ever gets a pill, a border or an active bar.
 - **`.chip`** — `--bg-elev`, radius 6, padding `8px 14px`, Geist 13 `--ink-dim`; hover lifts to `--bg-raised` / `--ink`. No border, ever.
 - **Table** — see Numbers. `.row` at 38px, a 24px `.t-sub` header row, no striping, no borders, scrolls in its own container.
 - **`.ledger-bar`** — `display:block; height:5px; background: var(--bar)`. `.ledger-bar-strong` (0.55) for the top one or two rows of a block, `.ledger-bar-weak` (0.22) for the tail. Width is the datum. Never a hue, never rounded, never animated on load.

@@ -1,53 +1,67 @@
 "use client";
 /**
- * The shell, board C: `176px | 1fr` — the rail, then one content column with
- * the composer pinned at its bottom, and a 420px drawer behind one hairline on
- * the right (DESIGN.md → Layouts, Rhythm). Three surfaces (SPEC v5): Log (the
- * product, and where a signed-in person lands), You (the receipt) and a
- * thread. Log carries its own field, so it is the one surface with no
- * composer pinned under it. The
- * graph canvas is not part of the product surface and nothing links to it;
- * /brain keeps it for the curious.
+ * The shell, v5: `232px | 1fr` — the rail, then one content column, and a
+ * 420px drawer behind one hairline on the right (DESIGN.md → Layouts).
+ * Three surfaces and nothing else: Log (the product, and where a signed-in
+ * person lands), Ask (the interface to it, and the landing signed out) and You
+ * (the receipt). Log carries its own field, so it is the one surface with no
+ * composer pinned under it.
  *
- * On a phone the rail becomes a 44px top bar (wordmark, `you` / `history`,
- * account — no hamburger), History opens the rail as a sheet, and the drawer
- * is full screen.
+ * On a phone the rail becomes a 44px top bar plus a bottom tab bar; on Ask the
+ * top bar's `chats` opens the rail as a sheet, which is where the sessions
+ * live.
  *
- * One way in: You carries a composer, and anything typed there (or asked from
- * the drawer, or arriving on /?q=) opens a thread with the question already
- * sent. Threads are created lazily, so History never lists an empty one.
+ * Threads: signed in they are the server's (`/api/threads`), listed under Ask
+ * and re-read after every finished turn; signed out one thread lives in
+ * localStorage and is never listed.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { PagePanel } from "./page/PagePanel";
 import { Sidebar } from "./Sidebar";
-import { accountModel, accountName, type Section, type Surface } from "./navModel";
-import { useSessionUser, requireSignIn } from "./auth/SignInGate";
+import { TabBar } from "./TabBar";
+import { PlusIcon } from "./navIcons";
+import { type Section, type Surface } from "./navModel";
+import { useSessionUser } from "./auth/SignInGate";
 import { LogPage } from "./log/LogPage";
 import { YouPage } from "./you/YouPage";
-import { Prompt } from "./you/Prompt";
+import type { HeadshotUIMessage } from "@/lib/agent/events";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
+import { loadServerThread, useServerThreads } from "./chat/serverThreads";
 
 export function HeadshotApp() {
   const store = useMemo(() => new BrainStore(), []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number; send?: boolean } | null>(null);
-  const threads = useThreads();
-  const [chosenThread, setChosenThread] = useState<string | null>(null);
-  const threadId = chosenThread && threads.some((t) => t.id === chosenThread) ? chosenThread : (threads[0]?.id ?? null);
-  // Where a signed-in person lands is the Log (SPEC v5); signed out there is
-  // no log to land on, so the You sentence and the composer stay the landing.
-  // `chosen` is null until someone navigates, so the default can still change
-  // under it when the session resolves.
+
   const { user: sessionUser } = useSessionUser();
+  const signedIn = Boolean(sessionUser);
+  const server = useServerThreads(signedIn);
+
+  // The open thread is derived, not stored: `opened` is only ever set by an
+  // action (picking one from the rail), and with nothing picked Ask shows a
+  // fresh chat — which is the tonight opener. Signed out there is one thread
+  // and it is the local one, so a reload comes back to it.
+  const [opened, setOpened] = useState<{ id: string; messages: HeadshotUIMessage[] } | null>(null);
+  const [freshId, setFreshId] = useState(() => crypto.randomUUID());
+  /** A stored thread whose messages are still in flight. */
+  const [opening, setOpening] = useState<string | null>(null);
+  const localThreads = useThreads();
+
+  // Where a signed-in person lands is the Log (SPEC v5); signed out there is
+  // no log, so Ask is the landing. `chosen` is null until someone navigates,
+  // so the default can still change under it when the session resolves.
   const [chosen, setChosen] = useState<Surface | null>(null);
-  const surface: Surface = chosen ?? (sessionUser ? "log" : "you");
-  const [collapsed, setCollapsed] = useState(false);
+  const surface: Surface = chosen ?? (signedIn ? "log" : "ask");
   const [mobileNav, setMobileNav] = useState(false);
-  // Deleting the open thread drops us home rather than onto an empty column.
-  const shown: Surface = surface === "chat" && threadId ? "chat" : surface === "chat" ? "you" : surface;
+
+  const localId = localThreads[0]?.id;
+  const thread = useMemo(
+    () => opened ?? { id: signedIn ? freshId : (localId ?? freshId), messages: [] as HeadshotUIMessage[] },
+    [opened, signedIn, freshId, localId],
+  );
 
   // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer.
   useEffect(() => {
@@ -75,19 +89,44 @@ export function HeadshotApp() {
   }
 
   /**
-   * Open a thread with `text` already asked: the composer, the drawer, /?q=.
-   * A thread is only ever created here — there is no "New chat" button — so an
-   * empty "New thread" exists for at most the moment before its first question
-   * names it.
+   * A fresh chat, optionally with its first question already in flight. The id
+   * is the client's (the transport carries it on the first turn), so the row
+   * exists before the route has to store anything against it.
    */
-  const ask = useCallback((text: string) => {
-    const empty = listThreads().find((t) => t.title === "New thread");
-    const t = empty ?? createThread();
-    setChosenThread(t.id);
-    setPrefill({ text, nonce: Date.now(), send: true });
-    setChosen("chat");
-    setMobileNav(false);
-  }, []);
+  const newChat = useCallback(
+    (text?: string) => {
+      setOpening(null);
+      setOpened(null);
+      // Signed out there is one thread, reused: unlisted threads must not pile up.
+      if (signedIn) setFreshId(crypto.randomUUID());
+      setChosen("ask");
+      setMobileNav(false);
+      if (text) setPrefill({ text, nonce: Date.now(), send: true });
+    },
+    [signedIn],
+  );
+
+  /**
+   * The row for the open thread, created the moment before its first turn is
+   * sent — so the route always has somewhere to store it, and a chat nobody
+   * asked anything in never appears in the rail.
+   */
+  const created = useRef(new Set<string>());
+  const ensureThread = useCallback(
+    async (id: string) => {
+      if (created.current.has(id)) return;
+      created.current.add(id);
+      if (signedIn) await server.create({ id });
+      else if (!listThreads().some((t) => t.id === id)) createThread(id);
+    },
+    [signedIn, server],
+  );
+
+  /**
+   * Open a thread with `text` already asked: the drawer, You, /?q=. Signed out
+   * there is one thread and it is reused rather than piling up unlisted ones.
+   */
+  const ask = useCallback((text: string) => newChat(text), [newChat]);
 
   // A question from /?q= or the agent opens a thread, which writes to storage
   // — a side effect, so it happens in an effect rather than during render. The
@@ -100,6 +139,18 @@ export function HeadshotApp() {
     ask(prefillReq.text);
   }, [prefillReq, ask]);
 
+  /** Read a stored thread and show it. */
+  const openThread = useCallback((id: string) => {
+    setChosen("ask");
+    setMobileNav(false);
+    setOpening(id);
+    void loadServerThread(id).then((t) => {
+      created.current.add(id);
+      setOpened({ id, messages: (t?.messages ?? []) as HeadshotUIMessage[] });
+      setOpening(null);
+    });
+  }, []);
+
   const expand = useCallback(
     async (imdbId: string) => {
       await fetch("/api/expand", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) }).catch(() => {});
@@ -109,27 +160,39 @@ export function HeadshotApp() {
   );
 
   const goTo = (section: Section) => {
-    // No thread is created on the way to a section.
     setChosen(section);
     setMobileNav(false);
     store.clearHighlight();
   };
-  const openThread = (id: string) => {
-    setChosenThread(id);
-    setChosen("chat");
-    setMobileNav(false);
+
+  const removeThread = (id: string) => {
+    if (signedIn) void server.remove(id);
+    else deleteThread(id);
+    created.current.delete(id);
+    // Deleting the open thread drops us on a fresh new chat, not an empty column.
+    if (thread.id === id) newChat();
   };
+
+  const onFirstQuestion = useCallback(
+    (text: string) => {
+      if (!signedIn) return;
+      const known = server.threads.find((t) => t.id === thread.id);
+      if (known && known.title) return;
+      void server.rename(thread.id, text);
+    },
+    [signedIn, thread, server],
+  );
 
   const sidebar = (
     <Sidebar
-      surface={shown}
-      threads={threads.filter((t) => t.title !== "New thread")}
-      activeId={threadId}
-      collapsed={collapsed}
-      onToggle={() => setCollapsed((c) => !c)}
+      surface={surface}
+      sessions={signedIn ? server.threads : []}
+      activeId={opened?.id ?? null}
       onNavigate={goTo}
+      onNewChat={() => newChat()}
       onSelectThread={openThread}
-      onDeleteThread={(id) => deleteThread(id)}
+      onRenameThread={(id, title) => void server.rename(id, title)}
+      onDeleteThread={removeThread}
     />
   );
 
@@ -147,8 +210,8 @@ export function HeadshotApp() {
           button, a composer below the fold) would otherwise scroll this column
           programmatically and shift the whole shell out of frame for good. */}
       <main className="relative flex h-full min-w-0 flex-1 flex-col overflow-clip">
-        <TopBar surface={shown} onNavigate={goTo} onHistory={() => setMobileNav(true)} />
-        {shown === "log" && (
+        <TopBar surface={surface} signedIn={signedIn} onNavigate={goTo} onChats={() => setMobileNav(true)} onNewChat={() => newChat()} />
+        {surface === "log" && (
           <div className="scrollbar-thin flex-1 overflow-y-auto">
             {/* Log carries its own field at the top, so no composer is pinned
                 under it and the whole column scrolls with the table. */}
@@ -157,22 +220,33 @@ export function HeadshotApp() {
             </div>
           </div>
         )}
-        {shown === "you" && (
-          <>
-            <div className="scrollbar-thin flex-1 overflow-y-auto">
-              <div className="w-full px-4 pb-[40px] pt-[22px] md:px-[34px]">
-                <YouPage onSelectNode={select} onAsk={ask} />
-              </div>
+        {surface === "you" && (
+          <div className="scrollbar-thin flex-1 overflow-y-auto">
+            <div className="w-full px-4 pb-[40px] pt-[22px] md:px-[34px]">
+              <YouPage onSelectNode={select} onAsk={ask} />
             </div>
-            {/* The composer is on the landing signed in or out: trivia chat is open to everyone. */}
-            <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))] sm:px-[34px] sm:pb-[22px]">
-              <Prompt onAsk={ask} />
-            </div>
-          </>
+          </div>
         )}
-        {shown === "chat" && threadId && (
-          <ChatPanel key={threadId} threadId={threadId} store={store} prefill={prefill} onSelectNode={select} />
+        {surface === "ask" && !opening && (
+          <ChatPanel
+            key={thread.id}
+            threadId={thread.id}
+            initialMessages={thread.messages}
+            signedIn={signedIn}
+            store={store}
+            prefill={prefill}
+            onSelectNode={select}
+            onTurnFinished={() => signedIn && server.refresh()}
+            onFirstQuestion={onFirstQuestion}
+            onBeforeFirstSend={() => ensureThread(thread.id)}
+          />
         )}
+        {surface === "ask" && opening && (
+          <div className="flex-1 px-4 pt-[50px] md:px-[34px]">
+            <p className="t-meta mx-auto w-full max-w-[720px]">opening…</p>
+          </div>
+        )}
+        <TabBar surface={surface} onNavigate={goTo} />
       </main>
 
       {/* The drawer: a region behind one hairline, 420px, full screen on a phone. */}
@@ -198,34 +272,38 @@ export function HeadshotApp() {
 }
 
 /**
- * The phone's rail: 44px, wordmark left, `you` / `history` as text, account
- * right. No hamburger (DESIGN.md → Rhythm); `history` opens the rail as a
- * sheet, which is where the threads live.
+ * The phone's top bar: 44px, the wordmark, and — on Ask, signed in — the way
+ * into this section's sessions (`design/boards-v5/Shell-phone.dc.html`). The
+ * sections themselves are the bottom tab bar now.
  */
-function TopBar({ surface, onNavigate, onHistory }: { surface: Surface; onNavigate: (section: Section) => void; onHistory: () => void }) {
-  const { user, loading } = useSessionUser();
-  const account = accountModel(user, loading);
+function TopBar({
+  surface,
+  signedIn,
+  onNavigate,
+  onChats,
+  onNewChat,
+}: {
+  surface: Surface;
+  signedIn: boolean;
+  onNavigate: (section: Section) => void;
+  onChats: () => void;
+  onNewChat: () => void;
+}) {
   return (
-    <div className="flex h-[44px] shrink-0 items-center gap-[16px] border-b border-line px-4 md:hidden">
-      <button onClick={() => onNavigate("log")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+    <div className="flex h-[44px] shrink-0 items-center gap-[10px] border-b border-line px-4 md:hidden">
+      <button onClick={() => onNavigate(signedIn ? "log" : "ask")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
         headshot
       </button>
-      <button onClick={() => onNavigate("log")} className={`t-ui ${surface === "log" ? "text-ink" : "font-normal text-ink-faint"}`}>
-        log
-      </button>
-      <button onClick={() => onNavigate("you")} className={`t-ui ${surface === "you" ? "text-ink" : "font-normal text-ink-faint"}`}>
-        you
-      </button>
-      <button onClick={onHistory} className={`t-ui ${surface === "chat" ? "text-ink" : "font-normal text-ink-faint"}`}>
-        history
-      </button>
-      <button
-        onClick={() => (user ? onHistory() : requireSignIn(window.location.pathname))}
-        className="t-meta ml-auto truncate text-ink-faint"
-        title={account.label}
-      >
-        {accountName(account.label)}
-      </button>
+      {surface === "ask" && signedIn && (
+        <>
+          <button onClick={onChats} className="ml-auto text-[13px] leading-none text-ink-faint">
+            chats
+          </button>
+          <button onClick={onNewChat} aria-label="New chat" className="text-ink">
+            <PlusIcon size={16} />
+          </button>
+        </>
+      )}
     </div>
   );
 }
