@@ -166,4 +166,41 @@ describe("pick engine (pure)", () => {
     expect(f.tvShare).toBeCloseTo(1 / 3, 2);
     expect(f.avgRuntimeFinished).toBe(114);
   });
+
+  // SPEC v5.1: "a drama I haven't seen" is kind + genre, and unseen is the default.
+  it("filters by kind and by genre, case-insensitively", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "rated", score: 8 }];
+    const candidates = [cand(GUMP), cand(MINI), cand(LATE_NIGHT), cand(LONG_RUNNER), cand(GOOD_SERIES)];
+    const shows = pickTonight({ graph, watched, services: [HULU], candidates, filters: { kind: "show" } });
+    expect([...shows.picks, ...shows.deck].map((p) => p.imdbId)).not.toContain(GUMP);
+    expect(shows.rejected).toContainEqual({ imdbId: GUMP, why: "wrong kind" });
+
+    const films = pickTonight({ graph, watched, services: [HULU], candidates, filters: { kind: "film" } });
+    expect([...films.picks, ...films.deck].every((p) => p.titleType === "movie" || p.titleType === "tvMovie")).toBe(true);
+
+    // Forrest Gump is Drama,Romance; Late Night Show is Comedy,Talk-Show.
+    const drama = pickTonight({ graph, watched, services: [HULU], candidates, filters: { genre: "drama" } });
+    expect([...drama.picks, ...drama.deck].map((p) => p.imdbId)).toContain(GUMP);
+    expect([...drama.picks, ...drama.deck].map((p) => p.imdbId)).not.toContain(LATE_NIGHT);
+    expect(drama.rejected).toContainEqual({ imdbId: LATE_NIGHT, why: "wrong genre" });
+  });
+
+  it("unseen is the default: a title with any row at all is never a pick, unless unseen is false", async () => {
+    const graph = await fixtureGraph();
+    const watched: WatchedRow[] = [
+      { imdbId: APOLLO, rating: "rated", score: 8 },
+      { imdbId: GUMP, rating: "want", score: null },
+      { imdbId: MINI, rating: "unseen", score: null },
+    ];
+    const candidates = [cand(GUMP), cand(MINI), cand(LATE_NIGHT), cand(LONG_RUNNER)];
+    const strict = pickTonight({ graph, watched, services: [HULU], candidates });
+    const strictIds = [...strict.picks, ...strict.deck].map((p) => p.imdbId);
+    expect(strictIds).not.toContain(GUMP);
+    expect(strictIds).not.toContain(MINI);
+
+    // Later back in: a "want" row is a candidate again.
+    const loose = pickTonight({ graph, watched, services: [HULU], candidates, filters: { unseen: false } });
+    expect([...loose.picks, ...loose.deck].map((p) => p.imdbId)).toContain(GUMP);
+  });
 });

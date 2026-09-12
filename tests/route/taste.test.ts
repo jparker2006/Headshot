@@ -356,6 +356,15 @@ describe("taste routes: log", () => {
     expect((await titles.getMany(["tt0000001"])).get("tt0000001")).toMatchObject({ name: "Apollo 13", year: 1995 });
   });
 
+  // SPEC v5.1: what the user typed is what is stored, to the tenth.
+  it("stores a one-decimal score exactly", async () => {
+    const res = await handlers.log(json({ imdbId: "tt0000001", score: 9.7 }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).row).toMatchObject({ score: 9.7 });
+    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "rated", score: 9.7 }]);
+    expect((await store.listEpisodes("user-1"))[0].text).toBe("rated Apollo 13 (1995) 9.7/10");
+  });
+
   it("logs a season of a show, and the neutral `seen` state", async () => {
     await handlers.log(json({ imdbId: "tt0000003", state: "seen", season: 2 }));
     expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000003", rating: "seen", season: 2, source: "log" }]);
@@ -365,7 +374,7 @@ describe("taste routes: log", () => {
   it("refuses a score off the scale, a junk state, and a body that says nothing", async () => {
     expect((await handlers.log(json({ imdbId: "tt0000001", score: 0 }))).status).toBe(400);
     expect((await handlers.log(json({ imdbId: "tt0000001", score: 11 }))).status).toBe(400);
-    expect((await handlers.log(json({ imdbId: "tt0000001", score: 7.5 }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "tt0000001", score: 9.75 }))).status).toBe(400);
     expect((await handlers.log(json({ imdbId: "tt0000001", state: "loved" }))).status).toBe(400);
     expect((await handlers.log(json({ imdbId: "nm0000001", score: 8 }))).status).toBe(400);
     expect((await handlers.log(json({}))).status).toBe(400);

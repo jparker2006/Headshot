@@ -1,0 +1,1 @@
+ALTER TABLE "watched" ALTER COLUMN "score" SET DATA TYPE real;

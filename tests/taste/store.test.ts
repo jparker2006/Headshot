@@ -355,10 +355,19 @@ function describeStore(name: string, factory: StoreFactory) {
       await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: null, source: "log" }])).rejects.toThrow(/score/);
       await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 0, source: "log" }])).rejects.toThrow(/score/);
       await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 11, source: "log" }])).rejects.toThrow(/score/);
-      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 7.5, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 7.55, source: "log" }])).rejects.toThrow(/score/);
       await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "want", score: 8, source: "log" }])).rejects.toThrow(/score/);
       await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "seen", score: 3, source: "log" }])).rejects.toThrow(/score/);
       expect(await store.listWatched("u1")).toEqual([]);
+    });
+
+    // SPEC v5.1: the column is `real` and a tenth survives the round trip.
+    it("upsertWatched round-trips a one-decimal score", async () => {
+      const store = await factory();
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-9", rating: "rated", score: 9.7, source: "chat" }]);
+      expect((await store.listWatched("u1")).find((r) => r.titleImdbId === "tt-9")).toMatchObject({ rating: "rated", score: 9.7 });
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-9", rating: "rated", score: 8.4, source: "chat" }]);
+      expect((await store.listWatched("u1")).find((r) => r.titleImdbId === "tt-9")?.score).toBe(8.4);
     });
 
     it("the injected clock stamps updatedAt", async () => {

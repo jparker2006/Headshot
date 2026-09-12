@@ -34,6 +34,7 @@ import { useImages } from "@/components/chat/useImages";
 import { lookupName } from "@/components/chat/lookup";
 import { requireSignIn } from "@/components/auth/SignInGate";
 import { ScoreRow } from "@/components/log/ScoreRow";
+import { formatScore } from "@/components/log/scoreRules";
 import { factsLine } from "./facts";
 
 interface Neighbor {
@@ -122,7 +123,7 @@ interface Props {
 
 /** The one line under the row of ten: what the store holds, said plainly. */
 function tasteLine(mine: Mine): string {
-  if (mine.state === "rated" && mine.score != null) return `you rated this ${mine.score}`;
+  if (mine.state === "rated" && mine.score != null) return `you rated this ${formatScore(mine.score)}`;
   if (mine.state === "want") return "on your list";
   if (mine.state === "seen") return "seen, no score";
   if (mine.state === "unseen") return "never seen";
@@ -294,7 +295,7 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                   a series — the season pointer. */}
               {!isPerson && (
                 <div className="flex flex-col gap-[12px]">
-                  <ScoreRow value={current.score} onChange={rate} size="sm" keyboard={false} />
+                  <ScoreRow value={current.score} onChange={rate} size="sm" keyboard={false} decimal />
                   <div className="flex flex-wrap items-center gap-[16px]">
                     {tasteLine(current) && <span className="t-meta">{tasteLine(current)}</span>}
                     <button type="button" onClick={() => mark("want")} className={`t-link ${current.state === "want" ? "text-ink" : ""}`}>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runAgent } from "@/lib/agent";
+import { tidyMessage } from "@/lib/agent/agent";
 import { MemoryBrain } from "@/lib/brain";
 import { collect, currentHops, fixtureGraph, ofType, scriptedModel, userMessage } from "./helpers";
 
@@ -133,5 +134,50 @@ describe("agent loop (mocked model seam)", () => {
     const chunks = await collect(runAgent({ model, graph, brain, tmdb: null, messages: [userMessage("q")] }));
     expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ error: "unknown_entity" });
     expect(await brain.readPage("nm0001234")).toBeNull();
+  });
+
+  // SPEC v5.1, "stored answers": one bubble, no gaps where the tool steps were.
+  it("tidies the message it hands the thread store: no empty text parts, one text part per run", async () => {
+    const message = {
+      id: "m1",
+      role: "assistant" as const,
+      parts: [
+        { type: "text" as const, text: "  " },
+        { type: "text" as const, text: "Logged. **The Wire** 9.7." },
+        { type: "text" as const, text: "\n" },
+        { type: "text" as const, text: "**Fargo** 8.4 as well.  " },
+        { type: "data-paths" as const, data: { any: true } },
+        { type: "text" as const, text: "   " },
+        { type: "text" as const, text: "Anything else?" },
+      ],
+    } as unknown as Parameters<typeof tidyMessage>[0];
+    const tidied = tidyMessage(message);
+    expect(tidied.parts.map((p) => p.type)).toEqual(["text", "data-paths", "text"]);
+    expect((tidied.parts[0] as { text: string }).text).toBe("Logged. **The Wire** 9.7.\n\n**Fargo** 8.4 as well.");
+    expect((tidied.parts[2] as { text: string }).text).toBe("Anything else?");
+    // The original is untouched.
+    expect(message.parts).toHaveLength(7);
+  });
+
+  it("a turn with a tool step is persisted as one bubble", async () => {
+    const graph = await fixtureGraph();
+    const model = scriptedModel([{ tool: "shortest_path", input: { from: SINISE, to: BACON } }, { text: "One hop." }]);
+    let saved: Awaited<ReturnType<typeof tidyMessage>> | null = null;
+    await collect(
+      runAgent({
+        model,
+        graph,
+        brain: new MemoryBrain(),
+        tmdb: null,
+        messages: [userMessage("q")],
+        followups: false,
+        onFinish: async (assistant) => {
+          saved = assistant;
+        },
+      }),
+    );
+    const parts = (saved as unknown as { parts: { type: string; text?: string }[] }).parts;
+    expect(parts.filter((p) => p.type === "text")).toHaveLength(1);
+    expect(parts.every((p) => p.type !== "text" || p.text!.trim() === p.text)).toBe(true);
   });
 });

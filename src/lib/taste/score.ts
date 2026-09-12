@@ -3,8 +3,9 @@
  *
  * v3/v4 rated in four words (liked / meh / want / unseen, plus v4's `seen`).
  * v5 splits that into a *state* — `rated | want | seen | unseen` — and, when
- * the state is `rated`, an integer `score` from 1 to 10, the way IMDb does it.
- * "Liked" stops being a bucket and becomes a threshold: `score >= 7`.
+ * the state is `rated`, a `score` from 1 to 10 in tenths, the way IMDb does it.
+ * "Liked" stops being a bucket and becomes a threshold: `score >= 7`. v5.1
+ * widened the score itself from an integer to one decimal (9.7 is a score).
  *
  * Everything in here is pure and has no opinion about where a row came from,
  * so the engine, the imports, Numbers, the memory rewrite and the deck can all
@@ -16,7 +17,7 @@ import type { WatchedRating } from "./types";
 /** The threshold that means "they liked it". SPEC v5: seven and up. */
 export const LIKED_MIN = 7;
 
-/** The lowest and highest score a rated row may carry. */
+/** The lowest and highest score a rated row may carry (one decimal in between). */
 export const SCORE_MIN = 1;
 export const SCORE_MAX = 10;
 
@@ -31,7 +32,7 @@ export function isLiked(row: ScoredRow): boolean {
   return row.rating === "rated" && (row.score ?? 0) >= LIKED_MIN;
 }
 
-/** Rated six or worse. The v5 replacement for the `meh` bucket. */
+/** Rated below seven (6.9 and down). The v5 replacement for the `meh` bucket. */
 export function isMeh(row: ScoredRow): boolean {
   return row.rating === "rated" && row.score != null && row.score < LIKED_MIN;
 }
@@ -44,26 +45,42 @@ export function isWatched(row: ScoredRow): boolean {
   return row.rating === "rated" || row.rating === "seen";
 }
 
-/** An integer 1–10, or nothing. Used to validate what a caller supplies. */
+/**
+ * A score 1.0–10.0 in tenths, or nothing (SPEC v5.1: "scores are one-decimal").
+ * 9.7 is a score; 9.75 is not, and neither is 0 or 11. Float arithmetic means
+ * `9.7 * 10` is `96.99999999999999`, so the tenths test rounds first and then
+ * compares the rounded value back against the input at one decimal.
+ */
 export function isValidScore(score: unknown): score is number {
-  return typeof score === "number" && Number.isInteger(score) && score >= SCORE_MIN && score <= SCORE_MAX;
+  if (typeof score !== "number" || !Number.isFinite(score)) return false;
+  if (score < SCORE_MIN || score > SCORE_MAX) return false;
+  return roundScore(score) === score;
 }
 
-/** Clamp to 1–10 and round to an integer. */
+/** One decimal, the way every score is stored and compared. */
+export function roundScore(score: number): number {
+  return Math.round(score * 10) / 10;
+}
+
+/**
+ * Clamp to 1–10 and round to a whole number. The imports (stars, IMDb) are
+ * whole by definition, so this stays integer; a decimal a person typed goes
+ * through `roundScore` instead.
+ */
 export function clampScore(score: number): number {
   return Math.min(SCORE_MAX, Math.max(SCORE_MIN, Math.round(score)));
 }
 
 /**
- * The store's guard on a row a caller supplies: a `rated` row carries an
- * integer 1–10 and every other state carries nothing. Returns the score to
+ * The store's guard on a row a caller supplies: a `rated` row carries a
+ * score 1–10 in tenths and every other state carries nothing. Returns the score to
  * write; throws when the pair does not hold, so a bad write never reaches
  * Postgres and the memory store behaves identically.
  */
 export function validateScore(row: { titleImdbId?: string; rating: WatchedRating; score?: number | null }): number | null {
   const where = row.titleImdbId ? ` (${row.titleImdbId})` : "";
   if (row.rating === "rated") {
-    if (!isValidScore(row.score)) throw new Error(`watched: a rated row needs an integer score 1-10, got ${String(row.score)}${where}`);
+    if (!isValidScore(row.score)) throw new Error(`watched: a rated row needs a score 1-10 in tenths, got ${String(row.score)}${where}`);
     return row.score;
   }
   if (row.score != null) throw new Error(`watched: only a rated row may carry a score, got ${String(row.score)} on "${row.rating}"${where}`);

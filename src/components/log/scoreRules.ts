@@ -25,14 +25,50 @@ export function keyForScore(score: number): string {
   return SCORE_KEYS[score - 1] ?? "";
 }
 
-/** The score as the log table draws it: a bare mono figure, or nothing. */
-export function scoreWord(score: number | null | undefined): string {
-  return score == null ? "" : String(score);
+/**
+ * A score as it is written anywhere it is shown (SPEC v5.1: scores are
+ * one-decimal). `9.7` keeps its decimal, `8` stays a bare `8` — a trailing
+ * `.0` is noise, and a stored integer must not start reading as a precision
+ * nobody typed. Anything finer than a tenth is rounded to one.
+ */
+export function formatScore(score: number): string {
+  const tenths = Math.round(score * 10) / 10;
+  return Number.isInteger(tenths) ? String(tenths) : tenths.toFixed(1);
 }
 
-/** The score spelled out, for prose and titles: `8/10`. */
+/** The score as the log table draws it: a bare mono figure, or nothing. */
+export function scoreWord(score: number | null | undefined): string {
+  return score == null ? "" : formatScore(score);
+}
+
+/** The score spelled out, for prose and titles: `8/10`, `9.7/10`. */
 export function scoreOutOf(score: number | null | undefined): string {
-  return score == null ? "" : `${score}/${SCORE_MAX}`;
+  return score == null ? "" : `${formatScore(score)}/${SCORE_MAX}`;
+}
+
+/**
+ * The cell of the row of ten a value lights: the ten stay whole numbers, so a
+ * 9.7 highlights the 10 and the exact figure is printed beside the row.
+ */
+export function nearestCell(score: number | null | undefined): number | null {
+  if (score == null) return null;
+  return Math.min(SCORE_MAX, Math.max(SCORE_MIN, Math.round(score)));
+}
+
+/** True when a value is finer than the row of ten can show on its own. */
+export function hasDecimal(score: number | null | undefined): boolean {
+  return score != null && !Number.isInteger(Math.round(score * 10) / 10);
+}
+
+/**
+ * What someone typed into a score field -> the score to store, or null when it
+ * is not one. Tenths, 1-10; `9.75` rounds to `9.8`, `11` and `0` are not scores.
+ */
+export function parseScore(text: string): number | null {
+  const t = text.trim();
+  if (!/^\d{1,2}(\.\d+)?$/.test(t)) return null;
+  const n = Math.round(Number(t) * 10) / 10;
+  return n >= SCORE_MIN && n <= SCORE_MAX ? n : null;
 }
 
 /**

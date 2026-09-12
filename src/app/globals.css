@@ -479,17 +479,26 @@ body {
   transition: color 120ms;
 }
 
-/* The Ask composer: one tier, the full column, a hairline instead of a fill,
-   and no send button — the ⏎ is the affordance (board Shell.dc.html). */
+/* The Ask composer: one tier, the full column, a hairline instead of a fill
+   (board Shell.dc.html). v5.1: it grows with the text — four lines on a phone,
+   six on a laptop — so the height is a floor, the row hangs its controls at the
+   bottom, and focus deepens the hairline. The send control lives at the right. */
 .composer-lg {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
+  min-height: 52px;
+  padding-block: 8px;
   border-bottom: 1px solid var(--line-input);
+  transition: border-color 120ms;
 }
+/* Focus deepens the hairline. **Deviation** from the brief's `--line-strong`:
+   at 0.16 it is *fainter* than the resting `--line-input` at 0.22, so focus
+   would have dimmed the line. `--ink-faint` is the next step up and is the
+   only value that reads as "this is where you are typing". */
+.composer-lg:focus-within { border-bottom-color: var(--ink-faint); }
 @media (min-width: 768px) {
-  .composer-lg { gap: 14px; height: 56px; }
+  .composer-lg { gap: 14px; min-height: 56px; }
 }
 
 /* The composer sits at the bottom of every page: a rule, a prompt, a field. */

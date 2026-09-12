@@ -108,6 +108,29 @@ export function lastUserText(messages: HeadshotUIMessage[]): string {
   return "";
 }
 
+/**
+ * What gets stored for a turn (SPEC v5.1, "stored answers"). A multi-step turn
+ * leaves the model's text in one part per step, with whitespace-only parts
+ * where a tool call interrupted it; rendered back that is a bubble full of
+ * gaps. Consecutive text parts are joined with a single blank line between
+ * them and whitespace-only ones are dropped, so a message is one bubble. Every
+ * other part (tool calls, our data parts) keeps its place and its order.
+ */
+export function tidyMessage(message: HeadshotUIMessage): HeadshotUIMessage {
+  const parts: HeadshotUIMessage["parts"] = [];
+  for (const part of message.parts) {
+    if (part.type !== "text") {
+      parts.push(part);
+      continue;
+    }
+    if (!part.text.trim()) continue;
+    const last = parts[parts.length - 1];
+    if (last?.type === "text") last.text = `${last.text.trimEnd()}\n\n${part.text.trim()}`;
+    else parts.push({ ...part, text: part.text.trim() });
+  }
+  return { ...message, parts };
+}
+
 /** Drain a stream to completion (used to recompute a stale answer in the background). */
 async function drain(stream: ReadableStream<unknown>): Promise<void> {
   const reader = stream.getReader();
@@ -127,7 +150,7 @@ export function runAgent(opts: RunAgentOptions) {
     originalMessages: opts.onFinish ? opts.messages : undefined,
     onFinish: opts.onFinish
       ? ({ responseMessage }) => {
-          const work = () => opts.onFinish!(responseMessage);
+          const work = () => opts.onFinish!(tidyMessage(responseMessage));
           if (opts.schedule) opts.schedule(work);
           else return work();
         }

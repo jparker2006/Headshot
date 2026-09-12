@@ -2,9 +2,11 @@
 /**
  * Ask, v5 (`design/boards-v5/Shell.dc.html`, DESIGN.md → Ask (v5)): a centered
  * 720px column in the content pane, message rows at a 14px gap with 28px of
- * air above them, and one 56px composer pinned at the bottom of that same
- * column — a hairline under it, a mono `>` in front of it, a mono `⏎` at its
- * end, and no send button.
+ * air above them, and one composer pinned at the bottom of that same column —
+ * a hairline under it and a mono `>` in front of it. v5.1: it grows with the
+ * text (six lines, four on a phone), the hairline deepens on focus, and a 32px
+ * ink arrow at its right end sends and becomes a stop square while a turn runs
+ * (`composerRules.ts`).
  *
  * No thread header: the sidebar carries the title, so the column starts with
  * the conversation. A new chat starts with the tonight opener instead
@@ -28,6 +30,8 @@ import { lookupName } from "./lookup";
 import { loadMessages, renameThread, saveMessages } from "./threads";
 import { threadIndex, type EntityIndex } from "./entityLinks";
 import { receiptSegments } from "./receipts";
+import { MAX_ROWS, MAX_ROWS_PHONE, keyAction, rowsFor, sendState } from "./composerRules";
+import { liveToolIndex, mergedText } from "./bubbleRules";
 
 interface Props {
   threadId: string;
@@ -77,6 +81,9 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
   const sentNonce = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  // Six lines of growth on a laptop, four on a phone — the tab bar is under it.
+  const [maxRows, setMaxRows] = useState(MAX_ROWS);
   const titled = useRef(false);
   const ensured = useRef(false);
 
@@ -132,6 +139,26 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
   }, [messages, status]);
 
   const busy = status === "submitted" || status === "streaming";
+  const sendKind = sendState({ text: input, busy });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const read = () => setMaxRows(mq.matches ? MAX_ROWS_PHONE : MAX_ROWS);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, []);
+
+  // Auto-grow: `rows` carries the newline count, and this fits the box to what
+  // wrapping actually produced — up to the cap, where it starts scrolling.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const line = 22;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, line * maxRows)}px`;
+    el.style.overflowY = el.scrollHeight > line * maxRows ? "auto" : "hidden";
+  }, [input, maxRows]);
 
   const ask = useCallback(
     (text: string) => {
@@ -204,8 +231,9 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
       </div>
 
       {/* The tab bar sits under this on a phone and it carries
-          `env(safe-area-inset-bottom)`; adding it here too would pad twice. */}
-      <div className="px-4 pb-[16px] md:px-[34px] md:pb-[32px]">
+          `env(safe-area-inset-bottom)`; adding it here too would pad twice.
+          12px of air over the tab bar there, 32px under the column on a laptop. */}
+      <div className="px-4 pb-[12px] md:px-[34px] md:pb-[32px]">
         <form
           className="composer-lg mx-auto w-full max-w-[720px]"
           onSubmit={(e) => {
@@ -217,31 +245,59 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
             &gt;
           </span>
           <textarea
+            ref={boxRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === "Return") && !e.shiftKey) {
+              // `nativeEvent.isComposing` is the IME guard: mid-composition
+              // Enter belongs to the candidate list, not to us.
+              const action = keyAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.nativeEvent.keyCode });
+              if (action === "send") {
                 e.preventDefault();
                 ask(input);
               }
             }}
-            rows={1}
+            rows={rowsFor(input, maxRows)}
+            disabled={status === "submitted"}
             aria-label="ask"
             placeholder="ask anything, or log what you just watched"
-            className="scrollbar-thin max-h-40 min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-[15px] leading-[1.4] text-ink outline-none placeholder:text-ink-faint"
+            className="scrollbar-thin min-h-[22px] flex-1 resize-none self-center border-0 bg-transparent p-0 text-[15px] leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:opacity-60"
           />
-          {busy ? (
-            <button type="button" onClick={stop} className="t-link ml-auto shrink-0">
-              stop
-            </button>
-          ) : (
-            <span className="t-meta ml-auto shrink-0" aria-hidden>
-              ⏎
-            </span>
-          )}
+          <SendControl state={sendKind} onStop={stop} />
         </form>
       </div>
     </section>
+  );
+}
+
+/**
+ * The 32px control at the right end (SPEC v5.1): an ink arrow that lights when
+ * there is something to send, and a stop square while the turn runs. Inline
+ * SVG — no icon library on this board.
+ */
+function SendControl({ state, onStop }: { state: "stop" | "send" | "disabled"; onStop: () => void }) {
+  const stopping = state === "stop";
+  return (
+    <button
+      type={stopping ? "button" : "submit"}
+      onClick={stopping ? onStop : undefined}
+      disabled={state === "disabled"}
+      aria-label={stopping ? "stop" : "send"}
+      className={`ml-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] ${
+        state === "send" ? "text-ink hover:bg-[color:var(--row-hover)]" : stopping ? "text-ink hover:bg-[color:var(--row-hover)]" : "cursor-default text-ink-ghost"
+      }`}
+    >
+      {stopping ? (
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+          <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" fill="currentColor" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M8 13V3" />
+          <path d="M3.5 7.5 8 3l4.5 4.5" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -277,22 +333,31 @@ function Message({
 
   // The bubble holds what the agent said; graphics and tool lines break out of
   // it and sit under it with the board's 2px inset, like the receipts do.
+  //
+  // v5.1: whitespace-only text parts are dropped and consecutive ones are
+  // merged, so an answer that arrived around tool steps is ONE bubble with no
+  // gaps in it. The bubble is placed where the first text part was; a tool line
+  // in the middle no longer splits it.
+  const said = mergedText(m.parts);
+  const live = liveToolIndex(m.parts);
   const blocks: React.ReactNode[] = [];
-  let bubble: React.ReactNode[] = [];
+  let saidDone = false;
+  let sawText = false;
   const flush = () => {
-    if (bubble.length === 0) return;
+    if (saidDone || !sawText || said.length === 0) return;
+    saidDone = true;
     blocks.push(
-      <div key={`b${blocks.length}`} className="bubble bubble-them">
-        {bubble}
+      <div key="said" className="bubble bubble-them">
+        <Markdown text={said} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />
       </div>,
     );
-    bubble = [];
   };
 
   m.parts.forEach((part, i) => {
     if (part.type === "text") {
       if (part.text.trim().length === 0) return;
-      bubble.push(<Markdown key={i} text={part.text} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />);
+      sawText = true;
+      flush();
       return;
     }
     if (part.type === "data-faces") {
@@ -319,8 +384,10 @@ function Message({
     if (part.type.startsWith("tool-")) {
       const name = part.type.slice(5);
       const state = "state" in part ? String(part.state) : "";
-      // Finished tool steps stay out of the way; only the live one and failures show.
+      // Finished tool steps stay out of the way; only the live one and failures
+      // show — and the live label shows once, however many calls are in flight.
       if (state.startsWith("output") && state !== "output-error") return;
+      if (state !== "output-error" && i !== live) return;
       flush();
       blocks.push(
         <span key={i} className="t-meta self-start pl-[2px]">

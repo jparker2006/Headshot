@@ -86,20 +86,20 @@ describe("tonight on demand (v5)", () => {
     expect(await pickNow({ graph, tmdb: null, store }, "u1")).toBeNull();
   });
 
-  it("openerLine names the service and the reason, with exactly one full stop", () => {
+  it("openerLine names the service in proper case and the reason, with exactly one full stop", () => {
     const pick = {
       name: "Forrest Gump",
       reason: { text: "Tom Hanks, who you liked in Apollo 13.", viaImdbIds: [APOLLO] },
       providerNames: ["Max", "Hulu"],
     } as unknown as PickView;
-    // A reason that opens with a name keeps its capital; the trailing stop is not doubled.
-    expect(openerLine(pick)).toBe("tonight: **Forrest Gump** on max, because Tom Hanks, who you liked in Apollo 13.");
+    // v5.1 voice: sentence case, the service named the way it is written.
+    expect(openerLine(pick)).toBe("Tonight: **Forrest Gump** on Max, because Tom Hanks, who you liked in Apollo 13.");
     // A reason that opens with a sentence joins mid-sentence in lowercase.
     expect(openerLine({ ...pick, reason: { text: "Your 3rd Tom Hanks, after Heat and Apollo 13", viaImdbIds: [] } } as PickView)).toBe(
-      "tonight: **Forrest Gump** on max, because your 3rd Tom Hanks, after Heat and Apollo 13.",
+      "Tonight: **Forrest Gump** on Max, because your 3rd Tom Hanks, after Heat and Apollo 13.",
     );
     // No providers: we say so rather than inventing one.
-    expect(openerLine({ ...pick, providerNames: [] } as PickView)).toMatch(/^tonight: \*\*[^*]+\*\*, because/);
+    expect(openerLine({ ...pick, providerNames: [] } as PickView)).toMatch(/^Tonight: \*\*[^*]+\*\*, because/);
   });
 
   it("GET /api/tonight/opener answers with the line and the pick, and stores nothing", async () => {
@@ -108,7 +108,7 @@ describe("tonight on demand (v5)", () => {
     const res = await handlers(store, "u1", graph).opener(get());
     expect(res.status).toBe(200);
     const body = (await res.json()) as { pick: PickView; line: string };
-    expect(body.line.startsWith(`tonight: **${body.pick.name}**`)).toBe(true);
+    expect(body.line.startsWith(`Tonight: **${body.pick.name}**`)).toBe(true);
     expect(body.line).toContain(", because ");
     expect(body.line.endsWith(".")).toBe(true);
     // A Play target for the line's link; the fixture has no TMDB so it may be null, but the field is there.

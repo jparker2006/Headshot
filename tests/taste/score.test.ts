@@ -51,9 +51,17 @@ describe("the liked threshold", () => {
 });
 
 describe("score validity", () => {
-  it("accepts integers 1–10 and nothing else", () => {
+  it("accepts 1–10 in tenths and nothing else", () => {
     for (let n = 1; n <= 10; n++) expect(isValidScore(n)).toBe(true);
-    for (const bad of [0, 11, -3, 7.5, NaN, Infinity, null, undefined, "8"]) expect(isValidScore(bad)).toBe(false);
+    for (const ok of [1.1, 6.9, 7.0, 8.4, 9.2, 9.7, 9.9]) expect(isValidScore(ok)).toBe(true);
+    for (const bad of [0, 0.9, 10.1, 11, -3, 7.55, 9.75, NaN, Infinity, null, undefined, "8"]) expect(isValidScore(bad)).toBe(false);
+  });
+
+  it("a decimal score is still on the right side of the like threshold", () => {
+    expect(isLiked(row("rated", 6.9))).toBe(false);
+    expect(isMeh(row("rated", 6.9))).toBe(true);
+    expect(isLiked(row("rated", 7))).toBe(true);
+    expect(isLiked(row("rated", 9.7))).toBe(true);
   });
 
   it("clamps and rounds into range", () => {
@@ -73,7 +81,10 @@ describe("score validity", () => {
     expect(() => validateScore({ rating: "rated", score: null })).toThrow(/score/);
     expect(() => validateScore({ rating: "rated", score: 0 })).toThrow(/score/);
     expect(() => validateScore({ rating: "rated", score: 11 })).toThrow(/score/);
-    expect(() => validateScore({ rating: "rated", score: 4.5 })).toThrow(/score/);
+    expect(() => validateScore({ rating: "rated", score: 4.55 })).toThrow(/score/);
+    // One decimal is a score now (SPEC v5.1) and comes back exactly as typed.
+    expect(validateScore({ rating: "rated", score: 9.7 })).toBe(9.7);
+    expect(validateScore({ rating: "rated", score: 4.5 })).toBe(4.5);
     expect(() => validateScore({ rating: "want", score: 8 })).toThrow(/score/);
     expect(() => validateScore({ rating: "unseen", score: 1 })).toThrow(/score/);
     // The message says which title, when the caller passed one.

@@ -12,6 +12,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   serial,
   text,
   timestamp,
@@ -152,8 +153,8 @@ export const watched = pgTable(
     titleImdbId: text("title_imdb_id").notNull(),
     /** v5 state: rated | want | seen | unseen. The opinion lives in `score`. */
     rating: text("rating").$type<"rated" | "want" | "seen" | "unseen">().notNull(),
-    /** 1–10, non-null exactly when `rating` is `rated` (SPEC v5, migration 0005). */
-    score: integer("score"),
+    /** 1–10 in tenths, non-null exactly when `rating` is `rated` (SPEC v5.1, migration 0008 widened it from integer to real). */
+    score: real("score"),
     watchedAt: timestamp("watched_at", { withTimezone: true, mode: "date" }),
     /** letterboxd | swipe | chat | log | netflix | imdb */
     source: text("source").$type<"letterboxd" | "swipe" | "chat" | "log" | "netflix" | "imdb">().notNull(),

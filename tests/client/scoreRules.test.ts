@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   SCORES,
   SCORE_KEYS,
+  formatScore,
+  hasDecimal,
   isFigureWord,
   keyForScore,
+  nearestCell,
+  parseScore,
   ratingWord,
   scoreFromKey,
   scoreOutOf,
@@ -57,5 +61,43 @@ describe("the words a score is said in", () => {
   it("knows which words are figures, so only those are set in mono", () => {
     expect(isFigureWord({ state: "rated", score: 8 })).toBe(true);
     expect(isFigureWord({ state: "seen", score: null })).toBe(false);
+  });
+});
+
+describe("one decimal (v5.1)", () => {
+  it("keeps a tenth and never prints a bare .0", () => {
+    expect(formatScore(9.7)).toBe("9.7");
+    expect(formatScore(8)).toBe("8");
+    expect(formatScore(8.0)).toBe("8");
+    expect(formatScore(6.95)).toBe("7");
+    expect(formatScore(10)).toBe("10");
+  });
+
+  it("carries the decimal through every word a row shows", () => {
+    expect(scoreWord(9.7)).toBe("9.7");
+    expect(scoreOutOf(9.7)).toBe("9.7/10");
+    expect(ratingWord({ state: "rated", score: 9.7 })).toBe("9.7");
+    expect(watchedWord({ rating: "rated", score: 8.5 })).toBe("8.5");
+    expect(isFigureWord({ state: "rated", score: 9.7 })).toBe(true);
+  });
+
+  it("lights the nearest whole cell, and says so only when it is finer", () => {
+    expect(nearestCell(9.7)).toBe(10);
+    expect(nearestCell(8.4)).toBe(8);
+    expect(nearestCell(null)).toBe(null);
+    expect(hasDecimal(9.7)).toBe(true);
+    expect(hasDecimal(8)).toBe(false);
+    expect(hasDecimal(null)).toBe(false);
+  });
+
+  it("reads a typed score, and refuses what is not one", () => {
+    expect(parseScore("9.7")).toBe(9.7);
+    expect(parseScore(" 8 ")).toBe(8);
+    expect(parseScore("9.75")).toBe(9.8);
+    expect(parseScore("10")).toBe(10);
+    expect(parseScore("11")).toBe(null);
+    expect(parseScore("0")).toBe(null);
+    expect(parseScore("")).toBe(null);
+    expect(parseScore("nine")).toBe(null);
   });
 });

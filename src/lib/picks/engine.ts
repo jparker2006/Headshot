@@ -62,6 +62,21 @@ export interface Candidate {
 export interface Filters {
   maxRuntimeMin?: number | null;
   energy?: "light" | "heavy" | "any" | null;
+  /** film = a movie, show = a series. Omitted means either (SPEC v5.1). */
+  kind?: "film" | "show" | null;
+  /** One genre, matched case-insensitively against the graph node's genres. */
+  genre?: string | null;
+  /**
+   * "Something I haven't seen", which is the default: a title the user has any
+   * row for — rated, seen, want or unseen — is not a pick. Pass `false` to let
+   * the Later list back in.
+   */
+  unseen?: boolean | null;
+}
+
+/** film | show from the graph's title type, the vocabulary the filters speak. */
+export function titleKindOf(titleType: string): "film" | "show" {
+  return titleType === "tvSeries" || titleType === "tvMiniSeries" || titleType === "tvEpisode" ? "show" : "film";
 }
 
 export interface PickReason {
@@ -258,9 +273,13 @@ export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: nu
   const byId = new Map(input.candidates.map((c) => [c.imdbId, c]));
   const rejected: { imdbId: string; why: string }[] = [];
 
+  // "Unseen" is the default (SPEC v5.1): any row at all takes a title out.
+  const anyRow = new Set(watched.map((w) => w.imdbId));
+  const excluded = filters.unseen === false ? seen : anyRow;
+
   const scored: Pick[] = [];
   for (const c of input.candidates) {
-    if (seen.has(c.imdbId)) continue;
+    if (excluded.has(c.imdbId)) continue;
     if (dismissed.has(c.imdbId)) {
       rejected.push({ imdbId: c.imdbId, why: "dismissed" });
       continue;
@@ -272,6 +291,17 @@ export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: nu
     }
     const node = graph.node(id);
     if (node.kind !== "title") continue;
+    if (filters.kind && titleKindOf(node.titleType) !== filters.kind) {
+      rejected.push({ imdbId: c.imdbId, why: "wrong kind" });
+      continue;
+    }
+    if (filters.genre) {
+      const want = filters.genre.trim().toLowerCase();
+      if (!node.genres.split(",").filter(Boolean).some((g) => g.toLowerCase() === want)) {
+        rejected.push({ imdbId: c.imdbId, why: "wrong genre" });
+        continue;
+      }
+    }
     if (filters.maxRuntimeMin && c.runtimeMin && c.runtimeMin > filters.maxRuntimeMin) {
       rejected.push({ imdbId: c.imdbId, why: "too long" });
       continue;
@@ -312,7 +342,8 @@ export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: nu
 
   const nPicks = opts.picks ?? 3;
   const nDeck = opts.deck ?? 8;
-  const cont = continuePicks(graph, watched, services, byId).slice(0, 1);
+  // A continue pick is always a series, so a "film" filter drops it.
+  const cont = (filters.kind === "film" ? [] : continuePicks(graph, watched, services, byId)).slice(0, 1);
   const picks: Pick[] = [...cont];
   for (const p of scored) {
     if (picks.length >= nPicks) break;

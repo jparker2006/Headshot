@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toPickView } from "@/lib/picks/view";
+import { cleanProviderName, toPickView } from "@/lib/picks/view";
 import type { Pick } from "@/lib/picks/engine";
 import type { CandidateMeta } from "@/lib/picks/candidates";
 
@@ -49,5 +49,18 @@ describe("pick view", () => {
     const v = toPickView({ ...pick, onYourServices: false, availableOn: [] }, meta, [15]);
     expect(v.playLabel).toBe("Where to watch");
     expect(v.playUrl).toBe(meta.link);
+  });
+
+  // SPEC v5.1: TMDB names the reseller; the user calls it HBO Max.
+  it("cleans reseller suffixes off provider names, in the label and the list", () => {
+    expect(cleanProviderName("HBO Max Amazon Channel")).toBe("HBO Max");
+    expect(cleanProviderName("Paramount+ Apple TV Channel")).toBe("Paramount+");
+    expect(cleanProviderName("Paramount+ with Ads")).toBe("Paramount+");
+    expect(cleanProviderName("AMC+ Roku Premium Channel")).toBe("AMC+");
+    expect(cleanProviderName("Netflix")).toBe("Netflix");
+
+    const view = toPickView(pick, { ...meta, providers: [{ id: 8, name: "HBO Max Amazon Channel" }, { id: 1899, name: "HBO Max" }] }, [8]);
+    expect(view.playLabel).toBe("Play on HBO Max");
+    expect(view.providerNames).toEqual(["HBO Max"]);
   });
 });

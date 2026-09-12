@@ -304,7 +304,7 @@ function LogField({ onSelectNode, onLogged }: { onSelectNode: (imdbId: string) =
               line (design/boards-v5/Log.dc.html); they break onto their own
               line only where the column is too narrow, which is the phone. */}
           <div className="flex flex-wrap items-center gap-x-[22px] gap-y-[10px]">
-            <ScoreRow value={score} onChange={(s) => { setScore(s); setState(null); }} keyboard />
+            <ScoreRow value={score} onChange={(s) => { setScore(s); setState(null); }} keyboard decimal />
             <div className="flex items-center gap-[14px]">
               {(["want", "seen"] as const).map((s) => (
                 <button

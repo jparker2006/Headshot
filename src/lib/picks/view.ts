@@ -23,9 +23,23 @@ export interface PickView {
   progress?: { season: number; episodesWatched: number };
 }
 
+/**
+ * A provider name as a person says it (SPEC v5.1). TMDB names the reseller,
+ * not the service — "HBO Max Amazon Channel", "Paramount+ with Ads" — and the
+ * user just calls it HBO Max. Pure, and applied wherever a name is shown: the
+ * Play label, `providerNames`, the opener sentence.
+ */
+export function cleanProviderName(name: string): string {
+  return name
+    .replace(/\s+(?:Amazon|Apple TV|Roku Premium)\s+Channel\b/gi, "")
+    .replace(/\s+with\s+Ads\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function toPickView(pick: Pick, meta: CandidateMeta | undefined, services: number[]): PickView {
   const mine = (meta?.providers ?? []).filter((p) => p.id !== undefined && services.includes(p.id));
-  const first = mine[0]?.name ?? null;
+  const first = mine[0]?.name ? cleanProviderName(mine[0].name) : null;
   const playLabel = pick.onYourServices && first ? `Play on ${first}` : pick.rentPrice ? `Rent${pick.rentPrice === "rent" ? "" : ` ${pick.rentPrice}`}` : meta?.link ? "Where to watch" : null;
   return {
     imdbId: pick.imdbId,
@@ -37,8 +51,13 @@ export function toPickView(pick: Pick, meta: CandidateMeta | undefined, services
     playLabel,
     playUrl: meta?.link ?? null,
     onYourServices: pick.onYourServices,
-    providerNames: (meta?.providers ?? []).map((p) => p.name),
+    providerNames: dedupe((meta?.providers ?? []).map((p) => cleanProviderName(p.name))),
     posterUrl: meta?.posterUrl ?? null,
     progress: pick.progress,
   };
+}
+
+/** Cleaning collapses "HBO Max" and "HBO Max Amazon Channel" into one name. */
+function dedupe(names: string[]): string[] {
+  return [...new Set(names.filter(Boolean))];
 }

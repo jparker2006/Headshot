@@ -48,18 +48,22 @@ const unauthorized = () => Response.json({ error: "sign_in_required" }, { status
 export function openerLine(pick: PickView): string {
   // No service of theirs carries it: the line drops the "on …" clause rather
   // than naming the gap; the Play row under it says where to rent.
-  const first = pick.providerNames[0]?.toLowerCase();
+  // Proper case in the sentence (SPEC v5.1 voice); `providerNames` is already cleaned.
+  const first = pick.providerNames[0];
   const on = first ? ` on ${first}` : "";
   const raw = pick.reason.text.trim().replace(/\.+$/, "");
   const opensWithAName = /^\p{Lu}[\p{L}'’.-]*\s\p{Lu}/u.test(raw);
   const reason = opensWithAName ? raw : raw.charAt(0).toLowerCase() + raw.slice(1);
-  return `tonight: **${pick.name}**${on}, because ${reason}.`;
+  return `Tonight: **${pick.name}**${on}, because ${reason}.`;
 }
 
 function parseFilters(body: Record<string, unknown>): Filters {
   const f: Filters = {};
   if (typeof body.maxRuntimeMin === "number" && body.maxRuntimeMin > 0) f.maxRuntimeMin = body.maxRuntimeMin;
   if (body.energy === "light" || body.energy === "heavy" || body.energy === "any") f.energy = body.energy;
+  if (body.kind === "film" || body.kind === "show") f.kind = body.kind;
+  if (typeof body.genre === "string" && body.genre.trim()) f.genre = body.genre.trim();
+  if (body.unseen === false || body.unseen === "false") f.unseen = false;
   return f;
 }
 
@@ -120,6 +124,9 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       const filters = parseFilters({
         maxRuntimeMin: params.get("maxRuntimeMin") ? Number(params.get("maxRuntimeMin")) : undefined,
         energy: params.get("energy") ?? undefined,
+        kind: params.get("kind") ?? undefined,
+        genre: params.get("genre") ?? undefined,
+        unseen: params.get("unseen") ?? undefined,
       });
       const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
       const titles = deps.titles ? await deps.titles() : null;
