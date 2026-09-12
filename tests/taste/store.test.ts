@@ -163,6 +163,14 @@ function describeStore(name: string, factory: StoreFactory) {
       await store.setMemory("u1", { markdown: "- rewritten" });
       expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten", pinned: "- I will never watch a musical" });
       expect(await store.getMemory("u2")).toBeNull();
+
+      // v5.2: what the last rewrite dropped, and the hash of the rows it saw.
+      expect(await store.getMemory("u1")).toMatchObject({ dropped: [], rowsHash: "" });
+      await store.setMemory("u1", { dropped: ["The Wire"], rowsHash: "abc" });
+      expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten", dropped: ["The Wire"], rowsHash: "abc" });
+      // Dismissing clears the list and touches nothing else.
+      await store.setMemory("u1", { dropped: [] });
+      expect(await store.getMemory("u1")).toMatchObject({ markdown: "- rewritten", dropped: [], rowsHash: "abc" });
     });
 
     it("episodes come back newest first, filtered by limit, query and since", async () => {
@@ -198,6 +206,31 @@ function describeStore(name: string, factory: StoreFactory) {
       ]);
       expect((await store.listEpisodes("u2")).map((e) => e.text)).toEqual(["liked something else"]);
       expect(await store.listEpisodes("nobody")).toEqual([]);
+    });
+
+    it("deleteEpisodes removes by title and kind, and never touches another user", async () => {
+      const store = await factory();
+      await store.addEpisodes("u1", [
+        { kind: "log", titleImdbId: "tt1", text: 'rated Heat (1995) 8/10: "the diner scene"' },
+        { kind: "chat", titleImdbId: "tt1", text: "said Heat is the one" },
+        { kind: "swipe", titleImdbId: "tt1", text: "swiped past Heat" },
+        { kind: "log", titleImdbId: "tt2", text: "rated Cats (2019) 2/10" },
+        { kind: "chat", titleImdbId: null, text: "i love a slow burn" },
+      ]);
+      await store.addEpisodes("u2", [{ kind: "log", titleImdbId: "tt1", text: "rated Heat (1995) 9/10" }]);
+
+      await store.deleteEpisodes("u1", { titleImdbId: "tt1", kinds: ["log", "chat"] });
+      expect((await store.listEpisodes("u1")).map((e) => e.text).sort()).toEqual([
+        "i love a slow burn",
+        "rated Cats (2019) 2/10",
+        "swiped past Heat",
+      ]);
+      expect(await store.listEpisodes("u2")).toHaveLength(1);
+
+      // No filter at all empties the user's record.
+      await store.deleteEpisodes("u1");
+      expect(await store.listEpisodes("u1")).toEqual([]);
+      expect(await store.listEpisodes("u2")).toHaveLength(1);
     });
 
     it("addEpisodes defaults `at` to the clock and stores the text verbatim", async () => {

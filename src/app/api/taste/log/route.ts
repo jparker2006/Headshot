@@ -3,3 +3,4 @@ import { tasteHandlers } from "@/lib/taste/deps";
 export const dynamic = "force-dynamic";
 
 export const POST = tasteHandlers.log;
+export const DELETE = tasteHandlers.deleteLog;

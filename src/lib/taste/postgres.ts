@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { BrainDatabase } from "@/lib/brain/postgres";
 import { crawls, episodes, memory, services, taste, watched } from "@/lib/brain/schema";
@@ -7,6 +7,7 @@ import {
   type CrawlRow,
   type CrawlSource,
   type EpisodeInput,
+  type EpisodeKind,
   type EpisodeRow,
   type ImportSource,
   type MemoryInput,
@@ -149,14 +150,14 @@ export class PostgresTasteStore implements TasteStore {
   async getMemory(userId: string): Promise<MemoryRow | null> {
     const [row] = await this.db.select().from(memory).where(eq(memory.userId, userId)).limit(1);
     if (!row) return null;
-    return { markdown: row.markdown, pinned: row.pinned, updatedAt: row.updatedAt.toISOString() };
+    return { markdown: row.markdown, pinned: row.pinned, dropped: row.dropped ?? [], rowsHash: row.rowsHash ?? "", updatedAt: row.updatedAt.toISOString() };
   }
 
   async setMemory(userId: string, input: MemoryInput): Promise<void> {
     const at = this.now();
     await this.db
       .insert(memory)
-      .values({ userId, markdown: input.markdown ?? "", pinned: input.pinned ?? "", updatedAt: at })
+      .values({ userId, markdown: input.markdown ?? "", pinned: input.pinned ?? "", dropped: input.dropped ?? [], rowsHash: input.rowsHash ?? "", updatedAt: at })
       .onConflictDoUpdate({
         target: memory.userId,
         set: {
@@ -165,6 +166,8 @@ export class PostgresTasteStore implements TasteStore {
           // the prose it was not shown.
           ...(input.markdown === undefined ? {} : { markdown: sql`excluded.markdown` }),
           ...(input.pinned === undefined ? {} : { pinned: sql`excluded.pinned` }),
+          ...(input.dropped === undefined ? {} : { dropped: sql`excluded.dropped` }),
+          ...(input.rowsHash === undefined ? {} : { rowsHash: sql`excluded.rows_hash` }),
           updatedAt: sql`excluded.updated_at`,
         },
       });
@@ -183,6 +186,16 @@ export class PostgresTasteStore implements TasteStore {
         text: row.text,
       })),
     );
+  }
+
+  async deleteEpisodes(userId: string, opts: { titleImdbId?: string; kinds?: EpisodeKind[] } = {}): Promise<void> {
+    const where = [eq(episodes.userId, userId)];
+    if (opts.titleImdbId !== undefined) where.push(eq(episodes.titleImdbId, opts.titleImdbId));
+    if (opts.kinds) {
+      if (opts.kinds.length === 0) return;
+      where.push(inArray(episodes.kind, opts.kinds));
+    }
+    await this.db.delete(episodes).where(and(...where));
   }
 
   async listEpisodes(userId: string, opts: { limit?: number; since?: string; query?: string } = {}): Promise<EpisodeRow[]> {

@@ -39,7 +39,7 @@ describe("memory route", () => {
   });
 
   it("is empty strings before the first rewrite, then round-trips the pinned block", async () => {
-    expect(await (await handlers.getMemory(get())).json()).toEqual({ markdown: "", pinned: "", updatedAt: null });
+    expect(await (await handlers.getMemory(get())).json()).toEqual({ markdown: "", pinned: "", dropped: [], updatedAt: null });
 
     const res = await handlers.putMemory(put({ pinned: "i will never watch a musical." }));
     expect(res.status).toBe(200);
@@ -67,6 +67,62 @@ describe("memory route", () => {
     expect(tooLong.status).toBe(400);
     expect(await store.getMemory("user-1")).toBeNull();
     expect((await handlers.putMemory(put({ pinned: "x".repeat(MAX_PINNED_CHARS) }))).status).toBe(200);
+  });
+
+  it("reports what the last rewrite dropped, and dismisses it", async () => {
+    await store.setMemory("user-1", { markdown: "prose", dropped: ["The Wire", "Heat"] });
+    expect((await (await handlers.getMemory(get())).json()).dropped).toEqual(["The Wire", "Heat"]);
+
+    const res = await handlers.putMemory(put({ dismissDropped: true }));
+    expect(res.status).toBe(200);
+    const body = await (await handlers.getMemory(get())).json();
+    expect(body.dropped).toEqual([]);
+    // Dismissing touches nothing else.
+    expect(body.markdown).toBe("prose");
+  });
+
+  it("delete removes the row and its logging episodes, and schedules a rewrite", async () => {
+    const del = (body: unknown) =>
+      new Request("https://headshot.test/api/taste/log", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    await store.upsertWatched("user-1", [
+      { titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log" },
+      { titleImdbId: "tt0000002", rating: "rated", score: 9, source: "log" },
+    ]);
+    await store.addEpisodes("user-1", [
+      { kind: "log", titleImdbId: "tt0000001", text: 'rated Apollo 13 (1995) 8/10: "still holds up"' },
+      { kind: "log", titleImdbId: "tt0000002", text: "rated Forrest Gump (1994) 9/10" },
+      { kind: "chat", titleImdbId: null, text: "i love a slow burn" },
+    ]);
+
+    const res = await handlers.deleteLog(del({ imdbId: "tt0000001" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await Promise.all(scheduled);
+
+    expect((await store.listWatched("user-1")).map((r) => r.titleImdbId)).toEqual(["tt0000002"]);
+    expect((await store.listEpisodes("user-1")).map((e) => e.text)).toEqual([
+      "i love a slow burn",
+      "rated Forrest Gump (1994) 9/10",
+    ]);
+    expect(rewrites).toEqual(["user-1"]);
+
+    expect((await handlers.deleteLog(del({ imdbId: "nope" }))).status).toBe(400);
+    signedInAs = null;
+    expect((await handlers.deleteLog(del({ imdbId: "tt0000002" }))).status).toBe(401);
+  });
+
+  it("logging again with no line keeps the note, a new line replaces it", async () => {
+    const log = (body: unknown) =>
+      new Request("https://headshot.test/api/taste/log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    await handlers.log(log({ imdbId: "tt0000001", score: 8, text: "still holds up" }));
+    await handlers.log(log({ imdbId: "tt0000001", score: 9 }));
+    expect((await store.listEpisodes("user-1"))[0].text).toContain('"still holds up"');
+
+    await handlers.log(log({ imdbId: "tt0000001", score: 9, text: "the countdown gets me" }));
+    expect((await store.listEpisodes("user-1"))[0].text).toContain('"the countdown gets me"');
+    await Promise.all(scheduled);
   });
 
   it("a log schedules exactly one memory rewrite for that user", async () => {

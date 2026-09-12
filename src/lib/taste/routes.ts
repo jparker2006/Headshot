@@ -40,6 +40,7 @@ import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
 import { isValidScore } from "./score";
+import { notesFromEpisodes } from "@/lib/memory/rows";
 
 /**
  * The graph slice these routes need: name lookup, single-id resolution, and
@@ -293,7 +294,14 @@ export function createTasteHandlers(deps: TasteDeps) {
       if ("response" in who) return who.response;
       const store = await deps.store();
       const row = await store.getMemory(who.userId);
-      return Response.json({ markdown: row?.markdown ?? "", pinned: row?.pinned ?? "", updatedAt: row?.updatedAt ?? null });
+      return Response.json({
+        markdown: row?.markdown ?? "",
+        pinned: row?.pinned ?? "",
+        // SPEC v5.2: titles the last rewrite removed because the log no longer
+        // has them. You shows the line once and then dismisses it.
+        dropped: row?.dropped ?? [],
+        updatedAt: row?.updatedAt ?? null,
+      });
     },
 
     /**
@@ -304,11 +312,18 @@ export function createTasteHandlers(deps: TasteDeps) {
     async putMemory(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      let body: { pinned?: unknown };
+      let body: { pinned?: unknown; dismissDropped?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {
         return badRequest("Invalid JSON");
+      }
+      // The "no longer in your log" line, dismissed. Its own shape, so
+      // dismissing never touches the pinned block.
+      if (body.dismissDropped === true) {
+        const store = await deps.store();
+        await store.setMemory(who.userId, { dropped: [] });
+        return Response.json({ ok: true });
       }
       if (typeof body.pinned !== "string") return badRequest("pinned required");
       if (body.pinned.length > MAX_PINNED_CHARS) return badRequest(`pinned must be ${MAX_PINNED_CHARS} characters or fewer`);
@@ -599,6 +614,10 @@ export function createTasteHandlers(deps: TasteDeps) {
       const name = cached.get(imdbId)?.name ?? node?.name ?? imdbId;
       const year = cached.get(imdbId)?.year ?? (node?.year || null);
 
+      // Logging a title again without a line keeps the last thing they said
+      // about it; a new line replaces it (SPEC v5.2).
+      const kept = line || notesFromEpisodes((await store.listEpisodes(who.userId, { limit: 200 })).filter((e) => e.titleImdbId === imdbId)).get(imdbId) || "";
+
       const at = new Date().toISOString();
       await store.upsertWatched(who.userId, [{ titleImdbId: imdbId, ...write, source: "log", watchedAt: at, season }]);
       await store.addEpisodes(who.userId, [
@@ -607,7 +626,7 @@ export function createTasteHandlers(deps: TasteDeps) {
           titleImdbId: imdbId,
           // "rated Heat (1995) 8/10: "the diner scene"" — the score is the
           // point of the line, so it reads the way they said it.
-          text: `${logEpisodeVerb(write)} ${name}${year ? ` (${year})` : ""}${write.score != null ? ` ${write.score}/10` : ""}${line ? `: "${line}"` : ""}`,
+          text: `${logEpisodeVerb(write)} ${name}${year ? ` (${year})` : ""}${write.score != null ? ` ${write.score}/10` : ""}${kept ? `: "${kept}"` : ""}`,
           at,
         },
       ]);
@@ -617,6 +636,32 @@ export function createTasteHandlers(deps: TasteDeps) {
 
       const row = (await store.listWatched(who.userId)).find((r) => r.titleImdbId === imdbId) as WatchedRow;
       return Response.json({ ok: true, row });
+    },
+
+    /**
+     * DELETE /api/taste/log { imdbId } — remove a title from the log
+     * (SPEC v5.2). The row goes, its logging episodes for that title go with
+     * it (they are what the note is kept in, and the note is about a row that
+     * no longer exists), and the memory is rewritten so the prose stops naming
+     * it. What they said about their taste in general is untouched.
+     */
+    async deleteLog(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      let body: { imdbId?: unknown };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return badRequest("Invalid JSON");
+      }
+      const imdbId = typeof body.imdbId === "string" ? body.imdbId : "";
+      if (!/^tt\d+$/.test(imdbId)) return badRequest("imdbId required");
+
+      const store = await deps.store();
+      await store.deleteWatched(who.userId, imdbId);
+      await store.deleteEpisodes(who.userId, { titleImdbId: imdbId, kinds: ["log", "chat"] });
+      rewriteMemory(who.userId);
+      return Response.json({ ok: true });
     },
 
     /**
@@ -717,18 +762,10 @@ export function createTasteHandlers(deps: TasteDeps) {
         );
       }
 
-      // The note the user typed rides in its `log` episode, quoted at the end
-      // of the line ("rated Heat (1995) 8/10: "…""). Newest first, so the
-      // first one seen for a title is the line that still stands.
-      const notes = new Map<string, string>();
-      const said = new Set<string>();
-      for (const episode of await store.listEpisodes(who.userId, { limit: 500 })) {
-        if (episode.kind !== "log" || !episode.titleImdbId || said.has(episode.titleImdbId)) continue;
-        // Only the latest line counts: logging it again without one clears it.
-        said.add(episode.titleImdbId);
-        const quoted = /: "([^]+)"$/.exec(episode.text);
-        if (quoted) notes.set(episode.titleImdbId, quoted[1]);
-      }
+      // The note the user typed rides in its `log` or `chat` episode, quoted at
+      // the end of the line ("rated Heat (1995) 8/10: "…""). Newest first, and
+      // the latest *quoted* line stands: logging again without one keeps it.
+      const notes = notesFromEpisodes(await store.listEpisodes(who.userId, { limit: 500 }));
 
       const data = computeNumbers({ watched, titles, graph, notes });
       let people: (NumbersPerson & { face: string | null })[] = data.people.map((p) => ({ ...p, face: null }));

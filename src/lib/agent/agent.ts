@@ -31,7 +31,7 @@ import { toBrainInput } from "./context";
 import type { EmbedFn } from "./embeddings";
 import type { TasteStore } from "@/lib/taste/types";
 import { formatTasteContext, tasteSummary } from "./tasteContext";
-import { extractEpisodes, memoryText, rewriteMemory, titleCandidates } from "@/lib/memory";
+import { memoryText, rewriteMemory } from "@/lib/memory";
 import type { CanvasNode } from "./events";
 import type { AgentContext } from "./context";
 import type { CanvasEmitter, HeadshotDataParts, HeadshotUIMessage } from "./events";
@@ -64,7 +64,7 @@ export interface RunAgentOptions {
   taste?: TasteStore | null;
   /**
    * v4 memory: carry the memory markdown in the system prompt and, after the
-   * turn, extract taste statements into episodes and rewrite the memory.
+   * turn, rewrite the memory from the log.
    * Default true for a signed-in request; tests that script every model call
    * turn it off.
    */
@@ -297,20 +297,13 @@ export function runAgent(opts: RunAgentOptions) {
 
       writer.write({ type: "finish" });
 
-      // v4 memory: what the user said this turn becomes evidence, then the
-      // memory is rewritten from it. Both outlive the response.
+      // v5.2 memory: nothing is extracted from the turn. What the user said is
+      // already in the log — the `log` tool's note and the `remember` tool wrote
+      // it — so the job is one rewrite from the rows, and it outlives the response.
       if (opts.userId && opts.taste && opts.memory !== false && question) {
         const store = opts.taste;
         const userId = opts.userId;
         const work = async () => {
-          try {
-            const found = await extractEpisodes(side, question, { knownTitles: titleCandidates(opts.graph, question) });
-            if (found.length) {
-              await store.addEpisodes(userId, found.map((e) => ({ kind: "chat" as const, titleImdbId: e.titleImdbId ?? null, text: e.text })));
-            }
-          } catch (err) {
-            console.warn("[memory] extract failed:", err instanceof Error ? err.message : err);
-          }
           await rewriteMemory({ store, graph: opts.graph, model: side, log: (m) => console.log(m) }, userId);
         };
         if (opts.schedule) opts.schedule(work);

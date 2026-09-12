@@ -231,6 +231,10 @@ export const memory = pgTable("memory", {
   userId: text("user_id").primaryKey(),
   markdown: text("markdown").notNull().default(""),
   pinned: text("pinned").notNull().default(""),
+  /** SPEC v5.2: titles the last rewrite dropped because the log no longer has them. */
+  dropped: jsonb("dropped").$type<string[]>().notNull().default([]),
+  /** SPEC v5.2: hash of the rows the last rewrite saw; unchanged rows are a no-op. */
+  rowsHash: text("rows_hash").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 

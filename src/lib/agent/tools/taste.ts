@@ -10,7 +10,7 @@ import type { NodeInfo } from "@/lib/graph/engine";
 import { describe } from "../context";
 import { pickNow } from "@/lib/picks/service";
 import { tasteSummary } from "../tasteContext";
-import { memoryText } from "@/lib/memory";
+import { memoryText, notesFromEpisodes } from "@/lib/memory";
 import { isValidScore } from "@/lib/taste/score";
 import type { WatchedRating } from "@/lib/taste/types";
 
@@ -79,8 +79,11 @@ export function tasteTools(ctx: AgentContext): ToolSet {
         const write: { rating: WatchedRating; score: number | null } = score != null ? { rating: "rated", score } : { rating: (state ?? "seen") as WatchedRating, score: null };
         await store.upsertWatched(userId, [{ titleImdbId: node.imdbId, ...write, source: "chat" }]);
         if (season != null) await store.setProgress(userId, node.imdbId, { season });
-        // Every write is evidence: the memory rewrite reads episodes, not rows.
-        const said = note?.trim() ? `: "${note.trim()}"` : "";
+        // Every write is evidence. The note is the one thing a row cannot
+        // hold, so logging the same title again without one keeps the last
+        // thing they said about it (SPEC v5.2).
+        const kept = note?.trim() ? note.trim() : await lastNote(store, userId, node.imdbId);
+        const said = kept ? `: "${kept}"` : "";
         const where = season != null ? ` (season ${season})` : "";
         await store.addEpisodes(userId, [
           {
@@ -90,6 +93,18 @@ export function tasteTools(ctx: AgentContext): ToolSet {
           },
         ]);
         return { ok: true, title: describe(node), state: write.rating, score: write.score, kind: titleKind(node), ...(season != null ? { season } : {}) };
+      },
+    }),
+
+    remember: tool({
+      description:
+        "Store something they said about their taste that is not about one title: \"I love a slow burn\", \"I can't do horror\", \"I only watch films after the kids are asleep\". One call per statement, in their words. Never for a question, never for a recommendation request, and never for a remark about a specific title — that is the `note` field on `log`.",
+      inputSchema: z.object({ text: z.string().min(2).max(280).describe("What they said, first person, in their own words.") }),
+      execute: async ({ text }) => {
+        const said = text.trim();
+        if (!said) return { error: "nothing to remember" };
+        await store.addEpisodes(userId, [{ kind: "chat", titleImdbId: null, text: said }]);
+        return { ok: true, remembered: said };
       },
     }),
 
@@ -132,6 +147,15 @@ export function tasteTools(ctx: AgentContext): ToolSet {
       },
     }),
   };
+}
+
+/**
+ * The note a title already carries: the last quoted line on one of its `log`
+ * or `chat` episodes. Empty when it has never had one.
+ */
+async function lastNote(store: NonNullable<AgentContext["taste"]>, userId: string, imdbId: string): Promise<string> {
+  const rows = await store.listEpisodes(userId, { limit: 50 });
+  return notesFromEpisodes(rows.filter((r) => r.titleImdbId === imdbId)).get(imdbId) ?? "";
 }
 
 /** film | show, from the graph's title type. */

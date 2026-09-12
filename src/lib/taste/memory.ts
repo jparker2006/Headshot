@@ -4,6 +4,7 @@ import {
   type CrawlRow,
   type CrawlSource,
   type EpisodeInput,
+  type EpisodeKind,
   type EpisodeRow,
   type ImportSource,
   type MemoryInput,
@@ -86,7 +87,7 @@ export class MemoryTasteStore implements TasteStore {
 
   async getMemory(userId: string): Promise<MemoryRow | null> {
     const row = this.memoryByUser.get(userId);
-    return row ? { ...row } : null;
+    return row ? { ...row, dropped: [...row.dropped] } : null;
   }
 
   async setMemory(userId: string, input: MemoryInput): Promise<void> {
@@ -94,6 +95,8 @@ export class MemoryTasteStore implements TasteStore {
     this.memoryByUser.set(userId, {
       markdown: input.markdown ?? prev?.markdown ?? "",
       pinned: input.pinned ?? prev?.pinned ?? "",
+      dropped: input.dropped ?? prev?.dropped ?? [],
+      rowsHash: input.rowsHash ?? prev?.rowsHash ?? "",
       updatedAt: this.stamp(),
     });
   }
@@ -114,6 +117,19 @@ export class MemoryTasteStore implements TasteStore {
         text: row.text,
       });
     }
+  }
+
+  async deleteEpisodes(userId: string, opts: { titleImdbId?: string; kinds?: EpisodeKind[] } = {}): Promise<void> {
+    const list = this.episodesByUser.get(userId);
+    if (!list) return;
+    const kinds = opts.kinds;
+    this.episodesByUser.set(
+      userId,
+      list.filter((r) => {
+        const hit = (opts.titleImdbId === undefined || r.titleImdbId === opts.titleImdbId) && (!kinds || kinds.includes(r.kind));
+        return !hit;
+      }),
+    );
   }
 
   async listEpisodes(userId: string, opts: { limit?: number; since?: string; query?: string } = {}): Promise<EpisodeRow[]> {

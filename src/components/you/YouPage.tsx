@@ -22,6 +22,7 @@ import { useSessionUser, signInHref } from "@/components/auth/SignInGate";
 import { MemoryProse } from "./MemoryProse";
 import { barClass, barRank, barWidth, rowInk } from "./ledger";
 import { bumpLog, useLogVersion } from "./logBus";
+import { droppedParts } from "./memoryDropped";
 import { numbersSentence } from "./numbersRules";
 import { terseTime } from "./recent";
 import { useNumbers, type PersonWithFace } from "./useNumbers";
@@ -71,6 +72,8 @@ interface MemoryRow {
   pinned: string;
   /** Null until the rewrite job has written once. */
   updatedAt: string | null;
+  /** Titles the last rewrite took out of the prose because the log no longer has them. */
+  dropped?: string[];
 }
 
 /**
@@ -83,6 +86,8 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** The "no longer in your log" line is said once and then dismissed for good. */
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -112,6 +117,20 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
     }
   }, [draft]);
 
+  /**
+   * A rewrite that dropped titles says so once, under the header, and `ok`
+   * clears `dropped` server-side so it never comes back for the same removal.
+   */
+  const dropped = dismissed ? [] : (memory?.dropped ?? []);
+  const dismissDropped = useCallback(() => {
+    setDismissed(true);
+    void fetch("/api/taste/memory", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dismissDropped: true }),
+    }).catch(() => {});
+  }, []);
+
   // A **bold** name in the memory has no per-message entity index behind it,
   // so it resolves the way the chat's soft links do: through search.
   const lookup = (name: string) => void lookupName(name).then((id) => id && onSelectNode(id));
@@ -136,6 +155,21 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
           </button>
         )}
       </div>
+
+      {droppedParts(dropped).length > 0 && (
+        <p className="t-meta flex flex-wrap items-center gap-[10px]">
+          <span>
+            {droppedParts(dropped).map((part, i) => (
+              <span key={i} className={part.bold ? "text-ink" : undefined}>
+                {part.text}
+              </span>
+            ))}
+          </span>
+          <button type="button" onClick={dismissDropped} className="tap">
+            <span className="t-link">ok</span>
+          </button>
+        </p>
+      )}
 
       {editing ? (
         <div className="flex max-w-[880px] flex-col gap-[12px]">

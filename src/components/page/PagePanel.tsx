@@ -36,6 +36,8 @@ import { requireSignIn } from "@/components/auth/SignInGate";
 import { ScoreRow } from "@/components/log/ScoreRow";
 import { formatScore } from "@/components/log/scoreRules";
 import { factsLine } from "./facts";
+import { commitsRemove, nextRemoveState, removeLabel, type RemoveEvent, type RemoveState } from "./removeState";
+import { bumpLog } from "@/components/you/logBus";
 
 interface Neighbor {
   imdbId: string;
@@ -136,6 +138,8 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const [showTrailer, setShowTrailer] = useState(false);
   /** Optimistic row after the user taps; null means "whatever the server said". */
   const [mine, setMine] = useState<Mine | null>(null);
+  /** The two-step behind "remove from log" (`removeState.ts`). */
+  const [removing, setRemoving] = useState<RemoveState>("idle");
 
   // Names on the page that link: the subject and its neighbors.
   const pageEntities = useMemo<EntityIndex>(
@@ -236,6 +240,29 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
       { ...current, state: current.state ?? "seen", season },
     );
 
+  /**
+   * Remove the row: `DELETE /api/taste/log { imdbId }` drops it, its logging
+   * episodes and the memory's claim about it. The drawer then reads as it does
+   * for anything never logged, and the Log and You re-fetch through `logBus`.
+   */
+  const onRemove = (event: RemoveEvent) => {
+    if (signedOut) return requireSignIn(`/?open=${imdbId}`);
+    const commit = commitsRemove(removing, event);
+    setRemoving(nextRemoveState(removing, event));
+    if (!commit) return;
+    void fetch("/api/taste/log", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        setMine({ state: null, score: null, season: null });
+        setData((d) => (d && d.taste ? { ...d, taste: { ...d.taste, state: null, score: null, season: null } } : d));
+        setRemoving("idle");
+        bumpLog();
+      })
+      .catch(() => setRemoving("error"));
+  };
+  /** Only a title with a row can be removed from the log. */
+  const logged = !isPerson && current.state !== null;
+
   const facts = data
     ? factsLine({
         kind: data.node.kind,
@@ -311,6 +338,19 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                       </button>
                     )}
                   </div>
+                  {/* removing a row is irreversible, so it asks once — the same
+                      two-step Settings uses on `delete account`. */}
+                  {logged && (
+                    <div className="flex flex-wrap items-center gap-[16px]">
+                      <button type="button" onClick={() => onRemove("click")} onBlur={() => onRemove("blur")} className="tap self-start">
+                        <span className={`t-link ${removing === "confirm" ? "text-danger" : ""}`}>
+                          {removing === "error" ? "remove from log" : removeLabel(removing)}
+                        </span>
+                      </button>
+                      {removing === "error" && <span className="t-meta text-danger">{removeLabel("error")}</span>}
+                      {removing === "confirm" && <span className="t-meta">the row and what I said about it. no undo.</span>}
+                    </div>
+                  )}
                 </div>
               )}
 

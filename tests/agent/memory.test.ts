@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import { MemoryTasteStore } from "@/lib/taste/memory";
-import { GUARD_MS, memoryText, PINNED_HEADING, rewriteMemory } from "@/lib/memory";
-import { extractEpisodes, looksLikeTaste, parseEpisodes, titleCandidates } from "@/lib/memory";
+import { memoryText, PINNED_HEADING, rewriteMemory } from "@/lib/memory";
 import { collect, fixtureGraph, ofType, scriptedModel, userMessage } from "./helpers";
 import { MemoryBrain } from "@/lib/brain";
 import { MEMORY_HEADING, runAgent } from "@/lib/agent";
@@ -33,7 +32,8 @@ describe("memory rewrite", () => {
     await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: "liked Apollo 13 (1995)" }]);
 
     const model = textModel("## What you love\n- space procedurals, **Apollo 13** most of all.");
-    const markdown = await rewriteMemory({ store, graph, model }, "u1");
+    const result = await rewriteMemory({ store, graph, model }, "u1");
+    const markdown = result!.markdown;
 
     expect(markdown).toContain("space procedurals");
     expect(markdown).toContain(PINNED_HEADING);
@@ -45,7 +45,10 @@ describe("memory rewrite", () => {
     // The model saw the pinned block as context but was told not to rewrite it.
     const prompt = JSON.stringify(model.doGenerateCalls[0].prompt);
     expect(prompt).toContain("never watch a musical");
-    expect(prompt).toContain("liked Apollo 13");
+    // v5.2: the rows are the prompt's primary input, not the log episode.
+    expect(prompt).toContain("Apollo 13 (1995)");
+    expect(prompt).toContain("8/10");
+    expect(prompt).toContain("This is the truth");
   });
 
   it("caps the body at 40 lines before the pinned block", async () => {
@@ -55,7 +58,7 @@ describe("memory rewrite", () => {
     await store.setMemory("u1", { pinned: "pinned line" });
     await store.addEpisodes("u1", [{ kind: "log", text: "liked Apollo 13" }]);
     const long = Array.from({ length: 80 }, (_, i) => `- line ${i + 1}`).join("\n");
-    const markdown = (await rewriteMemory({ store, graph, model: textModel(long) }, "u1"))!;
+    const markdown = (await rewriteMemory({ store, graph, model: textModel(long) }, "u1"))!.markdown;
     const [body, pinned] = markdown.split(`\n\n${PINNED_HEADING}\n`);
     expect(body.split("\n")).toHaveLength(40);
     expect(body).toContain("- line 40");
@@ -63,29 +66,31 @@ describe("memory rewrite", () => {
     expect(pinned).toBe("pinned line");
   });
 
-  it("skips when the row was just written and nothing is newer", async () => {
+  it("skips when the rows are the ones it already wrote about", async () => {
     const graph = await fixtureGraph();
     // A clock that ticks a second per write, so the row and the episodes never
     // land in the same millisecond.
     let tick = Date.parse("2026-09-11T20:00:00.000Z");
-    const clock = () => new Date((tick += 1000));
-    const store = new MemoryTasteStore({ now: clock });
+    const store = new MemoryTasteStore({ now: () => new Date((tick += 1000)) });
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
-    await store.addEpisodes("u1", [{ kind: "log", text: "liked Apollo 13" }]);
-    await store.setMemory("u1", { markdown: "notes" });
     const model = textModel("new notes");
-    const now = () => new Date(tick);
-    expect(await rewriteMemory({ store, graph, model, now }, "u1")).toBeNull();
-    expect(model.doGenerateCalls).toHaveLength(0);
 
-    // An episode newer than the row is new evidence: the guard lets it through.
-    await store.addEpisodes("u1", [{ kind: "chat", text: "loved Forrest Gump" }]);
-    expect(await rewriteMemory({ store, graph, model, now }, "u1")).toContain("new notes");
+    expect((await rewriteMemory({ store, graph, model }, "u1"))!.markdown).toContain("new notes");
+    expect(model.doGenerateCalls).toHaveLength(1);
 
-    // The row is fresh again and nothing is newer: the second request of a
-    // double-fire does nothing, whether it is inside the guard window or past it.
-    expect(await rewriteMemory({ store, graph, model, now }, "u1")).toBeNull();
-    expect(await rewriteMemory({ store, graph, model, now: () => new Date(tick + GUARD_MS * 2) }, "u1")).toBeNull();
+    // Same rows, nothing said since: the second request of a double-fire does
+    // nothing at all.
+    expect(await rewriteMemory({ store, graph, model }, "u1")).toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(1);
+
+    // Something said in chat is new evidence: the rewrite runs again.
+    await store.addEpisodes("u1", [{ kind: "chat", text: "i love a slow burn" }]);
+    expect((await rewriteMemory({ store, graph, model }, "u1"))!.markdown).toContain("new notes");
+    expect(model.doGenerateCalls).toHaveLength(2);
+
+    // A `log` episode is not evidence any more — the row already said it.
+    await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: "rated Apollo 13 (1995) 8/10" }]);
+    expect(await rewriteMemory({ store, graph, model }, "u1")).toBeNull();
   });
 
   it("never throws when the model fails", async () => {
@@ -103,62 +108,6 @@ describe("memory rewrite", () => {
     expect(await memoryText(store, "u1")).toBe(`notes\n\n${PINNED_HEADING}\ni hate musicals`);
     await store.setMemory("u1", { markdown: `notes\n\n${PINNED_HEADING}\ni hate musicals` });
     expect(await memoryText(store, "u1")).toBe(`notes\n\n${PINNED_HEADING}\ni hate musicals`);
-  });
-});
-
-describe("episode extraction", () => {
-  it("knows which messages are worth a model call", () => {
-    expect(looksLikeTaste("i loved it, honestly")).toBe(true);
-    expect(looksLikeTaste("watched forrest gump last night")).toBe(true);
-    expect(looksLikeTaste("Apollo 13 is my favourite")).toBe(true);
-    expect(looksLikeTaste('that "the bear" episode broke me')).toBe(true);
-    expect(looksLikeTaste("how is she connected to him")).toBe(false);
-    expect(looksLikeTaste("who is that guy")).toBe(false);
-    expect(looksLikeTaste("ok")).toBe(false);
-  });
-
-  it("skips the model entirely when the message has nothing in it", async () => {
-    const model = textModel("{}");
-    expect(await extractEpisodes(model, "how is she connected to him")).toEqual([]);
-    expect(model.doGenerateCalls).toHaveLength(0);
-  });
-
-  it("returns statements and maps titles to ids when unambiguous", async () => {
-    const graph = await fixtureGraph();
-    const message = "i loved Apollo 13, and I dropped Good Series after season 1";
-    const known = titleCandidates(graph, message);
-    expect(known.map((k) => k.imdbId)).toContain(APOLLO);
-    const model = textModel(
-      '{"text":"loved Apollo 13","title":"Apollo 13"}\n{"text":"dropped Good Series after season 1","title":"Good Series"}\n{"text":"wants something like The Nonexistent Film","title":"The Nonexistent Film"}',
-    );
-    const out = await extractEpisodes(model, message, { knownTitles: known });
-    // Each statement also carries what it is worth out of ten (SPEC v5):
-    // "loved" is a 9, and a statement with no opinion in it has no score.
-    expect(out).toEqual([
-      { text: "loved Apollo 13", titleImdbId: APOLLO, score: 9 },
-      { text: "dropped Good Series after season 1", titleImdbId: "tt0000009", score: null },
-      { text: "wants something like The Nonexistent Film", titleImdbId: null, score: null },
-    ]);
-    expect(model.doGenerateCalls).toHaveLength(1);
-  });
-
-  it("returns nothing when the model fails or says nothing", async () => {
-    const bad = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("boom"); } });
-    await expect(extractEpisodes(bad, "i loved Apollo 13")).resolves.toEqual([]);
-    await expect(extractEpisodes(textModel("nothing worth keeping"), "i loved Apollo 13")).resolves.toEqual([]);
-  });
-
-  it("parses a JSON array, trims to 140 characters, and refuses ambiguous titles", () => {
-    const long = "x".repeat(200);
-    const known = [
-      { imdbId: APOLLO, name: "Apollo 13", year: 1995 },
-      { imdbId: GUMP, name: "Twin", year: 1990 },
-      { imdbId: "tt0000003", name: "Twin", year: 1999 },
-    ];
-    const out = parseEpisodes(`[{"text":"${long}","title":"Twin"},{"text":"liked it","title":"apollo 13"}]`, known);
-    expect(out[0].text).toHaveLength(140);
-    expect(out[0].titleImdbId).toBeNull();
-    expect(out[1].titleImdbId).toBe(APOLLO);
   });
 });
 
@@ -197,14 +146,14 @@ describe("memory in the chat", () => {
     expect(filtered.map((e) => e.text)).toEqual(["loved Forrest Gump"]);
   });
 
-  it("after the turn: the message becomes episodes and the memory is rewritten", async () => {
+  it("after the turn: no extraction call, one rewrite from the rows", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     const model = scriptedModel([{ text: "nice." }]);
-    // The background half runs on the side model: extraction first, then the rewrite.
-    let call = 0;
-    const side = textModel(() => (++call === 1 ? '{"text":"loved Apollo 13","title":"Apollo 13"}' : "## What you love\n- space procedurals"));
+    // v5.2: the side model is called exactly once, for the rewrite. A chat turn
+    // that logs nothing writes no episode at all.
+    const side = textModel("## What you love\n- space procedurals");
     const jobs: Promise<void>[] = [];
 
     await collect(
@@ -223,11 +172,9 @@ describe("memory in the chat", () => {
     );
     await Promise.all(jobs);
 
-    expect((await store.listEpisodes("u1")).map((e) => ({ kind: e.kind, text: e.text, titleImdbId: e.titleImdbId }))).toEqual([
-      { kind: "chat", text: "loved Apollo 13", titleImdbId: APOLLO },
-    ]);
+    expect(await store.listEpisodes("u1")).toEqual([]);
     expect((await store.getMemory("u1"))?.markdown).toContain("space procedurals");
-    expect(side.doGenerateCalls).toHaveLength(2);
+    expect(side.doGenerateCalls).toHaveLength(1);
   });
 
   it("log writes an episode as well as the row", async () => {
@@ -238,5 +185,86 @@ describe("memory in the chat", () => {
       runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("i loved forrest gump")], followups: false, userId: "u1", taste: store, memory: false }),
     );
     expect((await store.listEpisodes("u1")).map((e) => e.text)).toEqual(['rated Forrest Gump (1994) 9/10: "still cries at the bench"']);
+  });
+
+  it("remember writes one titleless chat episode", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    const model = scriptedModel([{ tool: "remember", input: { text: "i love a slow burn" } }, { text: "noted." }]);
+    await collect(
+      runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("i love a slow burn")], followups: false, userId: "u1", taste: store, memory: false }),
+    );
+    expect((await store.listEpisodes("u1")).map((e) => ({ kind: e.kind, titleImdbId: e.titleImdbId, text: e.text }))).toEqual([
+      { kind: "chat", titleImdbId: null, text: "i love a slow burn" },
+    ]);
+  });
+
+  it("logging the same title again with no note keeps the note", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    const first = scriptedModel([{ tool: "log", input: { imdbId: GUMP, score: 9, note: "still cries at the bench" } }, { text: "noted." }]);
+    const again = scriptedModel([{ tool: "log", input: { imdbId: GUMP, score: 8 } }, { text: "updated." }]);
+    const run = (model: ReturnType<typeof scriptedModel>, text: string) =>
+      collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage(text)], followups: false, userId: "u1", taste: store, memory: false }));
+    await run(first, "i loved forrest gump");
+    await run(again, "make that an 8");
+    expect((await store.listEpisodes("u1"))[0].text).toBe('rated Forrest Gump (1994) 8/10: "still cries at the bench"');
+  });
+});
+
+describe("rewrite from the rows", () => {
+  it("builds the prompt from the rows and reports what the log no longer holds", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    // The log holds Apollo 13 only; the prose still names Forrest Gump.
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
+    await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: 'rated Apollo 13 (1995) 8/10: "the countdown"' }]);
+    await store.setMemory("u1", { markdown: "## What you love\n**Apollo 13** at 8, and **Forrest Gump** was a 9." });
+
+    const model = textModel("## What you love\n**Apollo 13** at 8.");
+    const result = (await rewriteMemory({ store, graph, model }, "u1"))!;
+    expect(result.dropped).toEqual(["Forrest Gump"]);
+    expect(result.markdown).not.toContain("Forrest Gump");
+    expect((await store.getMemory("u1"))!.dropped).toEqual(["Forrest Gump"]);
+
+    const prompt = JSON.stringify(model.doGenerateCalls[0].prompt);
+    // The row line carries the score, the kind, the note and the source.
+    expect(prompt).toContain("Apollo 13 (1995)");
+    expect(prompt).toContain("8/10");
+    expect(prompt).toContain("the countdown");
+    // The `log` episode itself is not evidence any more: the row says it.
+    expect(prompt).not.toContain("[log]");
+  });
+
+  it("a re-rated row puts its new score in the prompt", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 4, source: "log" }]);
+    const model = textModel("## What you avoid\n**Apollo 13** was a 4.");
+    await rewriteMemory({ store, graph, model }, "u1");
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 9.7, source: "chat" }]);
+    await rewriteMemory({ store, graph, model }, "u1");
+    const prompt = JSON.stringify(model.doGenerateCalls[1].prompt);
+    expect(prompt).toContain("9.7/10");
+    expect(prompt).not.toContain("4/10");
+  });
+
+  it("unchanged rows with nothing said is a no-op", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
+    const model = textModel("## What you love\n**Apollo 13**.");
+    expect(await rewriteMemory({ store, graph, model }, "u1")).not.toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(1);
+
+    // Same rows, nothing said: no second call.
+    expect(await rewriteMemory({ store, graph, model }, "u1")).toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(1);
+
+    // A deleted row changes the rendering, so the rewrite runs again.
+    await store.deleteWatched("u1", APOLLO);
+    await store.upsertWatched("u1", [{ titleImdbId: GUMP, rating: "rated", score: 9, source: "log" }]);
+    expect(await rewriteMemory({ store, graph, model }, "u1")).not.toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(2);
   });
 });

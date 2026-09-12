@@ -21,5 +21,6 @@ export async function rewriteMemoryNow(userId: string): Promise<string | null> {
   const model = memoryModelFromEnv();
   if (!model) return null;
   const [graph, store] = await Promise.all([getIndustryGraph(), getTasteStore()]);
-  return rewriteMemory({ store, graph, model, log: (m) => console.log(m) }, userId);
+  const result = await rewriteMemory({ store, graph, model, log: (m) => console.log(m) }, userId);
+  return result?.markdown ?? null;
 }
