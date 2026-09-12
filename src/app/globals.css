@@ -485,21 +485,34 @@ body {
    bottom, and focus deepens the hairline. The send control lives at the right. */
 .composer-lg {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 10px;
   min-height: 52px;
-  padding-block: 8px;
-  border-bottom: 1px solid var(--line-input);
-  transition: border-color 120ms;
+  padding: 10px 10px 10px 18px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  transition: border-color 120ms, background-color 120ms;
 }
-/* Focus deepens the hairline. **Deviation** from the brief's `--line-strong`:
-   at 0.16 it is *fainter* than the resting `--line-input` at 0.22, so focus
-   would have dimmed the line. `--ink-faint` is the next step up and is the
-   only value that reads as "this is where you are typing". */
-.composer-lg:focus-within { border-bottom-color: var(--ink-faint); }
+/* A filled, rounded box like any chat product's — the field is the object,
+   not a line under the page (Jake, 2026-09-12: "it looks like a terminal"). */
+.composer-lg:focus-within { border-color: var(--ink-faint); }
 @media (min-width: 768px) {
-  .composer-lg { gap: 14px; min-height: 56px; }
+  .composer-lg { gap: 12px; min-height: 56px; padding: 12px 12px 12px 20px; }
 }
+.send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  flex: none;
+  transition: background-color 120ms, color 120ms, opacity 120ms;
+}
+.send-btn-on { background: var(--ink); color: var(--bg); }
+.send-btn-on:hover { opacity: 0.85; }
+.send-btn-off { background: var(--bg-raised); color: var(--ink-ghost); cursor: default; }
 
 /* The composer sits at the bottom of every page: a rule, a prompt, a field. */
 .composer {

@@ -241,9 +241,6 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
             ask(input);
           }}
         >
-          <span className="font-mono text-[15px] leading-none text-ink-ghost" aria-hidden>
-            &gt;
-          </span>
           <textarea
             ref={boxRef}
             value={input}
@@ -260,8 +257,8 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
             rows={rowsFor(input, maxRows)}
             disabled={status === "submitted"}
             aria-label="ask"
-            placeholder="ask anything, or log what you just watched"
-            className="scrollbar-thin min-h-[22px] flex-1 resize-none self-center border-0 bg-transparent p-0 text-[15px] leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:opacity-60"
+            placeholder="Ask anything, or log what you just watched"
+            className="scrollbar-thin min-h-[22px] flex-1 resize-none self-center border-0 bg-transparent p-0 py-[5px] text-[15px] leading-[22px] text-ink outline-none placeholder:text-ink-faint disabled:opacity-60"
           />
           <SendControl state={sendKind} onStop={stop} />
         </form>
@@ -283,9 +280,7 @@ function SendControl({ state, onStop }: { state: "stop" | "send" | "disabled"; o
       onClick={stopping ? onStop : undefined}
       disabled={state === "disabled"}
       aria-label={stopping ? "stop" : "send"}
-      className={`ml-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] ${
-        state === "send" ? "text-ink hover:bg-[color:var(--row-hover)]" : stopping ? "text-ink hover:bg-[color:var(--row-hover)]" : "cursor-default text-ink-ghost"
-      }`}
+      className={`send-btn ml-auto ${state === "disabled" ? "send-btn-off" : "send-btn-on"}`}
     >
       {stopping ? (
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
