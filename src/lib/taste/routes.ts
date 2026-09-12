@@ -31,7 +31,10 @@ import type { ImportSource, TasteStore, WatchedRating, WatchedRow } from "./type
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
-import { fromLegacyBucket } from "./score";
+import { isValidScore } from "./score";
+// TODO(v5-B): the log field and the review screen still speak the old bucket
+// words. Chunk B replaces them with the row of ten; then this import goes.
+import { fromLegacyBucket, isLegacyBucket } from "./legacy";
 
 /**
  * The graph slice these routes need: name lookup, single-id resolution, and
@@ -71,9 +74,41 @@ export interface TasteDeps {
 /** Longest pinned block the Edit control accepts. */
 export const MAX_PINNED_CHARS = 2000;
 
-/** The four buckets a log field offers. `unseen` is a swipe verb, not a log one. */
-const LOG_RATINGS = ["liked", "meh", "want", "seen"] as const;
-type LogRating = (typeof LOG_RATINGS)[number];
+/**
+ * What one log write says (SPEC v5): a score of 1–10, or a state with no
+ * score. `{ score }` alone means `rated`; `{ state: "want" | "seen" |
+ * "unseen" }` says the other three things a row can be.
+ */
+type LogWrite = { rating: WatchedRating; score: number | null };
+
+const LOG_STATES = ["want", "seen", "unseen"] as const;
+
+/**
+ * The body's rating, in either vocabulary.
+ *
+ * TODO(v5-B): drop the `rating` branch when the bucket-word log field is gone;
+ * `score` and `state` are the shape v5 speaks.
+ */
+function parseLogWrite(body: { score?: unknown; state?: unknown; rating?: unknown }): LogWrite | null {
+  if (body.score !== undefined) return isValidScore(body.score) ? { rating: "rated", score: body.score } : null;
+  if (typeof body.state === "string") return (LOG_STATES as readonly string[]).includes(body.state) ? { rating: body.state as WatchedRating, score: null } : null;
+  if (isLegacyBucket(body.rating)) return fromLegacyBucket(body.rating);
+  return null;
+}
+
+/** How a written row reads back in the episode line. */
+function logEpisodeVerb(write: LogWrite): string {
+  switch (write.rating) {
+    case "rated":
+      return `rated`;
+    case "want":
+      return "want";
+    case "seen":
+      return "seen";
+    default:
+      return "never seen";
+  }
+}
 
 /** movie | series from the graph's title type. */
 function kindOf(node: NodeInfo | undefined): "movie" | "series" {
@@ -376,14 +411,16 @@ export function createTasteHandlers(deps: TasteDeps) {
      * seasons attached when the titles cache already holds them — never a
      * TMDB round trip, because this runs on every keystroke.
      *
-     * `{ imdbId, rating, season?, text? }` writes the row (source "log") and
-     * one episode. The optional line is stored verbatim inside the episode
-     * text; nothing is paraphrased on the way in.
+     * `{ imdbId, score?, state?, season?, text? }` writes the row (source
+     * "log") and one episode: a `score` of 1–10 is a rating, `state` is one of
+     * want / seen / unseen. The optional line is stored verbatim inside the
+     * episode text; nothing is paraphrased on the way in. An old client's
+     * bucket word is still accepted and translated (TODO(v5-B)).
      */
     async log(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      let body: { query?: unknown; imdbId?: unknown; rating?: unknown; season?: unknown; text?: unknown };
+      let body: { query?: unknown; imdbId?: unknown; score?: unknown; state?: unknown; rating?: unknown; season?: unknown; text?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {
@@ -413,8 +450,8 @@ export function createTasteHandlers(deps: TasteDeps) {
 
       const imdbId = typeof body.imdbId === "string" ? body.imdbId : "";
       if (!/^tt\d+$/.test(imdbId)) return badRequest("query or imdbId required");
-      const rating = String(body.rating) as LogRating;
-      if (!LOG_RATINGS.includes(rating)) return badRequest("rating must be liked, meh, want or seen");
+      const write = parseLogWrite(body);
+      if (!write) return badRequest("score must be an integer 1-10, or state one of want, seen, unseen");
       const season = typeof body.season === "number" && body.season > 0 ? Math.trunc(body.season) : null;
       const line = typeof body.text === "string" ? body.text.trim() : "";
 
@@ -425,16 +462,14 @@ export function createTasteHandlers(deps: TasteDeps) {
       const year = cached.get(imdbId)?.year ?? (node?.year || null);
 
       const at = new Date().toISOString();
-      await store.upsertWatched(who.userId, [
-        // The log field still offers the old four words; the store wants a
-        // state plus a score, so the bucket is translated on the way in.
-        { titleImdbId: imdbId, ...fromLegacyBucket(rating), source: "log", watchedAt: at, season },
-      ]);
+      await store.upsertWatched(who.userId, [{ titleImdbId: imdbId, ...write, source: "log", watchedAt: at, season }]);
       await store.addEpisodes(who.userId, [
         {
           kind: "log",
           titleImdbId: imdbId,
-          text: `${rating} ${name}${year ? ` (${year})` : ""}${line ? `: "${line}"` : ""}`,
+          // "rated Heat (1995) 8/10: "the diner scene"" — the score is the
+          // point of the line, so it reads the way they said it.
+          text: `${logEpisodeVerb(write)} ${name}${year ? ` (${year})` : ""}${write.score != null ? ` ${write.score}/10` : ""}${line ? `: "${line}"` : ""}`,
           at,
         },
       ]);
@@ -496,11 +531,14 @@ export function createTasteHandlers(deps: TasteDeps) {
             titleImdbId: fix.imdbId,
             // The corrected row keeps the bucket it already had; only a row
             // that never matched needs the client to say which bucket it is.
+            // A corrected row keeps the state and score it already had; a row
+            // that never matched takes what the client says, and failing that
+            // lands in `seen` — watched, no opinion, no number invented.
             ...(prev
               ? { rating: prev.rating, score: prev.score }
               : fix.rating
                 ? { rating: fix.rating, score: fix.score ?? null }
-                : fromLegacyBucket(source === "netflix" ? "seen" : "meh")),
+                : { rating: "seen" as WatchedRating, score: null }),
             source,
             watchedAt: prev?.watchedAt ?? null,
             season: prev?.season ?? null,

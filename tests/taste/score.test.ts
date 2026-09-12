@@ -1,20 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   LIKED_MIN,
-  bucketFromScore,
   clampScore,
-  fromLegacyBucket,
   isLiked,
   isMeh,
   isValidScore,
   isWatched,
-  legacyBucket,
-  scoreFromBucket,
   scoreFromImdb,
   scoreFromStars,
   scoreFromStatement,
   validateScore,
 } from "@/lib/taste/score";
+// TODO(v5-B): the bucket words live only in the route translators now.
+import { bucketFromScore, fromLegacyBucket, isLegacyBucket, legacyBucket, scoreFromBucket } from "@/lib/taste/legacy";
 import type { WatchedRating } from "@/lib/taste/types";
 
 const row = (rating: WatchedRating, score: number | null = null) => ({ rating, score });
@@ -85,7 +83,12 @@ describe("score validity", () => {
   });
 });
 
-describe("the buckets, while they are still spoken", () => {
+describe("the buckets, while the clients still speak them", () => {
+  it("isLegacyBucket knows the five old words and nothing else", () => {
+    for (const b of ["liked", "meh", "want", "seen", "unseen"]) expect(isLegacyBucket(b)).toBe(true);
+    for (const b of ["rated", "", 8, null, undefined]) expect(isLegacyBucket(b)).toBe(false);
+  });
+
   it("scoreFromBucket is the migration's mapping", () => {
     expect(scoreFromBucket("liked")).toBe(8);
     expect(scoreFromBucket("meh")).toBe(5);

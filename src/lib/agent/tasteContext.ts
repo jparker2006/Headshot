@@ -8,9 +8,10 @@ import type { TasteStore } from "@/lib/taste/types";
 import { providerName } from "@/lib/taste/providers";
 import { tasteFacts } from "@/lib/picks/engine";
 import { toEngineRows } from "@/lib/picks/service";
-import { isLiked, isMeh, legacyBucket, type LegacyBucket } from "@/lib/taste/score";
+import { isLiked, isMeh } from "@/lib/taste/score";
 
 export interface TasteSummary {
+  /** `liked` is score >= 7 and `meh` is score <= 6; the words are the model's, the rule is the score. */
   counts: { liked: number; meh: number; want: number; unseen: number };
   services: string[];
   people: { name: string; count: number }[];
@@ -18,8 +19,8 @@ export interface TasteSummary {
   tvShare: number | null;
   avgRuntimeFinished: number | null;
   genresAvoided: string[];
-  /** Most recently rated titles, newest first, with the bucket. */
-  recent: { name: string; year: number; rating: LegacyBucket }[];
+  /** Most recently rated titles, newest first, with the score they gave. */
+  recent: { name: string; year: number; score: number | null }[];
   /** Titles marked "want" (Later), newest first. */
   later: { name: string; year: number }[];
   /** Series the user is in the middle of. */
@@ -51,7 +52,7 @@ export async function tasteSummary(graph: IndustryGraph, store: TasteStore, user
     recent: byRecent
       .filter((r) => r.rating === "rated")
       .slice(0, 20)
-      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId), rating: legacyBucket(r) })),
+      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId), score: r.score })),
     later: byRecent
       .filter((r) => r.rating === "want")
       .slice(0, 12)
@@ -69,16 +70,16 @@ export function formatTasteContext(t: TasteSummary): string {
     .join(", ");
   const lines = [
     `This user is signed in and has told you their taste (explicit ratings only; never infer beyond them):`,
-    `- Rated: ${t.counts.liked} liked, ${t.counts.meh} meh, ${t.counts.unseen} never seen, ${t.counts.want} in Later.`,
+    `- Rated 1-10: ${t.counts.liked} at 7 or more, ${t.counts.meh} at 6 or less, ${t.counts.unseen} never seen, ${t.counts.want} in Later.`,
     t.services.length ? `- Pays for: ${t.services.join(", ")}.` : `- Streaming services: unknown.`,
-    t.people.length ? `- Keeps watching (people across their liked titles): ${t.people.map((p) => `${p.name} (${p.count})`).join(", ")}.` : "",
+    t.people.length ? `- Keeps watching (people across the titles they rated 7+): ${t.people.map((p) => `${p.name} (${p.count})`).join(", ")}.` : "",
     decades ? `- Decades they like: ${decades}.` : "",
-    t.tvShare !== null ? `- TV share of what they liked: ${Math.round(t.tvShare * 100)}%.` : "",
-    t.genresAvoided.length ? `- Genres only in their meh pile: ${t.genresAvoided.join(", ")}.` : "",
-    t.recent.length ? `- Recently rated: ${t.recent.map((r) => `${r.name}${r.year ? ` (${r.year})` : ""} → ${r.rating}`).join("; ")}.` : "",
+    t.tvShare !== null ? `- TV share of what they watched: ${Math.round(t.tvShare * 100)}%.` : "",
+    t.genresAvoided.length ? `- Genres only in their 6-and-under pile: ${t.genresAvoided.join(", ")}.` : "",
+    t.recent.length ? `- Recently rated: ${t.recent.map((r) => `${r.name}${r.year ? ` (${r.year})` : ""} → ${r.score ?? "?"}/10`).join("; ")}.` : "",
     t.later.length ? `- Later list: ${t.later.map((r) => r.name).join(", ")}.` : "",
     t.watching.length ? `- Mid-series: ${t.watching.map((w) => `${w.name} (season ${w.season}, ${w.episodesWatched} episodes in)`).join("; ")}.` : "",
-    `Use this when they ask what they like, whether they would like something, or what to watch. For "what should I watch tonight" call tonight_picks. When they tell you they watched or liked something, call rate. Talk about their taste in specifics (names, titles, patterns), never in generic genre labels alone.`,
+    `Use this when they ask what they like, whether they would like something, or what to watch. For "what should I watch tonight" call tonight_picks. When they tell you they watched or rated something, call log with the score (7 and up is a like, 6 and under is not). Talk about their taste in specifics (names, titles, patterns), never in generic genre labels alone.`,
   ];
   return lines.filter(Boolean).join("\n");
 }

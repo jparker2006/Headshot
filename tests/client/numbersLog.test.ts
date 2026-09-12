@@ -7,6 +7,8 @@ const row = (over: Partial<NumbersLogRow>): NumbersLogRow => ({
   name: "Apollo 13",
   year: 1995,
   kind: "movie",
+  state: "rated",
+  score: 8,
   rating: "liked",
   watchedAt: "2026-09-02T20:00:00.000Z",
   source: "log",

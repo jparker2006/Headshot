@@ -29,7 +29,9 @@ import { terseTime } from "./recent";
 import { isNewAccount } from "./swipeRules";
 import { useNumbers } from "./useNumbers";
 import type { WatchedRow } from "@/lib/taste/types";
-import { isLiked, legacyBucket } from "@/lib/taste/score";
+import { isLiked } from "@/lib/taste/score";
+// TODO(v5-B): this list still shows a bucket word; Chunk B shows the score.
+import { legacyBucket } from "@/lib/taste/legacy";
 
 interface Props {
   /** Open a person or title in the drawer. */

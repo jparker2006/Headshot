@@ -3,9 +3,18 @@
  * always. The client renders from this state and posts committed swipes to
  * the taste store; nothing the user did not tap changes taste.
  */
-import type { Bucket } from "./engine";
+import type { WatchedRating } from "@/lib/taste/types";
 
-export type SwipeAction = Bucket; // liked | meh | unseen | want
+/**
+ * What one card can say (SPEC v5): a state, and a 1–10 score when the state is
+ * `rated`. The old four words are gone — "liked" is `{ rating: "rated", score:
+ * 8 }` and the card's own row of ten writes whatever number they tapped.
+ */
+export interface SwipeAction {
+  rating: WatchedRating;
+  /** 1–10, and set exactly when `rating` is `rated`. */
+  score?: number | null;
+}
 
 export interface Swipe {
   imdbId: string;
@@ -57,8 +66,8 @@ export function swipeReducer(state: SwipeState, event: SwipeEvent): SwipeState {
 }
 
 /** The rows to persist: one per title, last action wins (an undo removes it). */
-export function committedRows(state: SwipeState): { imdbId: string; rating: Bucket }[] {
-  const by = new Map<string, Bucket>();
+export function committedRows(state: SwipeState): { imdbId: string; rating: WatchedRating; score: number | null }[] {
+  const by = new Map<string, SwipeAction>();
   for (const s of state.swipes) by.set(s.imdbId, s.action);
-  return [...by].map(([imdbId, rating]) => ({ imdbId, rating }));
+  return [...by].map(([imdbId, action]) => ({ imdbId, rating: action.rating, score: action.score ?? null }));
 }

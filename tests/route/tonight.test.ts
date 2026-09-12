@@ -104,9 +104,10 @@ describe("tonight routes", () => {
   });
 
   it("swipe stores committed rows with last action wins, ignoring junk", async () => {
-    const res = await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "liked" }, { imdbId: "bad", rating: "liked" }, { imdbId: GUMP, rating: "nope" }] }));
+    const res = await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, score: 9 }, { imdbId: "bad", score: 9 }, { imdbId: GUMP, score: 99 }] }));
     expect(await res.json()).toEqual({ ok: true, saved: 1 });
-    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" });
+    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "rated", score: 9, source: "swipe" });
+    // TODO(v5-B): the deck still posts bucket words; they are translated here.
     await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "meh" }] }));
     expect((await store.listWatched("user-1"))[0].score).toBe(5);
     // The drawer's swipe keeps scheduling the rewrite in the background; it never awaits one.
@@ -118,9 +119,9 @@ describe("tonight routes", () => {
     const res = await handlers.session(
       post("/api/taste/swipe/session", {
         rows: [
-          { imdbId: APOLLO, rating: "liked" },
-          { imdbId: GUMP, rating: "meh" },
-          { imdbId: "bad", rating: "liked" },
+          { imdbId: APOLLO, score: 9 },
+          { imdbId: GUMP, score: 4 },
+          { imdbId: "bad", score: 9 },
         ],
       }),
     );
@@ -128,12 +129,12 @@ describe("tonight routes", () => {
     const body = (await res.json()) as { before: string; after: string; diff: { added: string[]; removed: string[] }; rewritten: boolean };
 
     expect((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r.score, r.source])).toEqual([
-      [APOLLO, 8, "swipe"],
-      [GUMP, 5, "swipe"],
+      [APOLLO, 9, "swipe"],
+      [GUMP, 4, "swipe"],
     ]);
     const episodes = await store.listEpisodes("user-1");
     expect(episodes).toHaveLength(1);
-    expect(episodes[0]).toMatchObject({ kind: "swipe", text: "swiped: liked Apollo 13; meh Forrest Gump" });
+    expect(episodes[0]).toMatchObject({ kind: "swipe", text: "swiped: rated 9: Apollo 13; 4: Forrest Gump" });
 
     // One rewrite, and it is the awaited one: the scheduled seam must stay quiet.
     expect(rewrites.awaited).toEqual(["user-1"]);

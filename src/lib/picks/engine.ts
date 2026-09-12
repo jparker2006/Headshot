@@ -7,27 +7,35 @@
  * never a pick.
  */
 import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
+import type { WatchedRating } from "@/lib/taste/types";
+import { isLiked, isWatched } from "@/lib/taste/score";
 
 /**
- * v4 adds `seen` (watched, no opinion) — the Netflix import and a neutral log
- * both land there. The scorer treats it like any other rating it has no
- * preference signal from.
+ * A row of the user's log as the engine reads it (SPEC v5): a state plus, when
+ * the state is `rated`, the 1–10 score. "Liked" is not a word any more — it is
+ * `score >= 7` (`isLiked`), and "you already watched this" is `rated | seen`
+ * (`isWatched`), which is what keeps a title out of the picks and the deck.
+ * `want` is a plan, so it stays a candidate and Later drains.
  */
-export type Bucket = "liked" | "meh" | "unseen" | "want" | "seen";
-
-/**
- * Buckets that mean "you already watched this": it is never picked and never
- * dealt again. `seen` (a Netflix/IMDb import or a neutral log) counts here —
- * finished, no opinion — while "want" stays a candidate so Later drains.
- */
-const WATCHED_BUCKETS = new Set<Bucket>(["liked", "meh", "seen"]);
-
 export interface WatchedRow {
   imdbId: string;
-  rating: Bucket;
+  rating: WatchedRating;
+  /** 1–10, and non-null exactly when `rating` is `rated`. */
+  score: number | null;
   /** Series the user marked as watching: the season they are on. */
   season?: number | null;
   episodesWatched?: number;
+}
+
+/**
+ * The set the reason rule walks from: what they rated 7 or better, plus what
+ * they saved for later (a want is an opinion about wanting it).
+ */
+function likedIds(graph: IndustryGraph, watched: WatchedRow[]): number[] {
+  return watched
+    .filter((w) => isLiked(w) || w.rating === "want")
+    .map((w) => graph.idOf(w.imdbId))
+    .filter((id): id is number => id !== undefined);
 }
 
 export interface TasteFacts {
@@ -88,8 +96,6 @@ export interface PickInputs {
   /** IMDb ids the user swiped away; never picked again. */
   dismissed?: Iterable<string>;
   filters?: Filters | null;
-  /** Names of people that count as "liked" via titles (default: liked and want). */
-  likedBuckets?: Bucket[];
 }
 
 export interface PickResult {
@@ -180,11 +186,10 @@ function ordinal(n: number): string {
  * on the user's liked titles, ranked by how many liked titles they share.
  * Availability is unknown here; the caller merges provider data.
  */
-export function walkCandidates(graph: IndustryGraph, watched: WatchedRow[], opts: { limit?: number; likedBuckets?: Bucket[] } = {}): { imdbId: string; proximity: number }[] {
-  const likedBuckets = new Set(opts.likedBuckets ?? ["liked", "want"]);
+export function walkCandidates(graph: IndustryGraph, watched: WatchedRow[], opts: { limit?: number } = {}): { imdbId: string; proximity: number }[] {
   // Only things actually watched are off the table; a Later title ("want") stays a candidate so the list drains.
-  const seen = new Set(watched.filter((w) => WATCHED_BUCKETS.has(w.rating)).map((w) => w.imdbId));
-  const liked = watched.filter((w) => likedBuckets.has(w.rating)).map((w) => graph.idOf(w.imdbId)).filter((id): id is number => id !== undefined);
+  const seen = new Set(watched.filter(isWatched).map((w) => w.imdbId));
+  const liked = likedIds(graph, watched);
   const scores = new Map<number, number>();
   for (const w of watched) {
     if (w.rating !== "want") continue;
@@ -245,9 +250,8 @@ function continuePicks(graph: IndustryGraph, watched: WatchedRow[], services: nu
  */
 export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: number } = {}): PickResult {
   const { graph, watched, services } = input;
-  const likedBuckets = new Set(input.likedBuckets ?? ["liked", "want"]);
-  const liked = new Set(watched.filter((w) => likedBuckets.has(w.rating)).map((w) => graph.idOf(w.imdbId)).filter((id): id is number => id !== undefined));
-  const seen = new Set(watched.filter((w) => WATCHED_BUCKETS.has(w.rating)).map((w) => w.imdbId));
+  const liked = new Set(likedIds(graph, watched));
+  const seen = new Set(watched.filter(isWatched).map((w) => w.imdbId));
   const dismissed = new Set(input.dismissed ?? []);
   const filters = input.filters ?? {};
   const vector = input.taste?.vector ?? null;
@@ -324,18 +328,19 @@ export function pickTonight(input: PickInputs, opts: { picks?: number; deck?: nu
  * decades, TV share. Pure over the graph and the watched set.
  */
 export function tasteFacts(graph: IndustryGraph, watched: WatchedRow[], opts: { runtimes?: Map<string, number> } = {}): TasteFacts {
-  const liked = watched.filter((w) => w.rating === "liked");
+  const liked = watched.filter(isLiked);
   const counts = new Map<number, number>();
   const eras: Record<string, number> = {};
   let tv = 0;
   let titles = 0;
   let runtimeSum = 0;
   let runtimeN = 0;
-  // People and decades come from likes only — a taste signal. Finished-style
-  // facts (film vs TV, runtime) also count `seen`: watched, no opinion.
+  // People and decades come from what they rated 7 or better — a taste signal.
+  // Finished-style facts (film vs TV, runtime) count everything they watched,
+  // whatever the score, plus `seen`: watched, no opinion.
   for (const w of watched) {
-    const like = w.rating === "liked";
-    if (!like && w.rating !== "seen") continue;
+    const like = isLiked(w);
+    if (!isWatched(w)) continue;
     const id = graph.idOf(w.imdbId);
     if (id === undefined) continue;
     const node = graph.node(id);
@@ -360,7 +365,7 @@ export function tasteFacts(graph: IndustryGraph, watched: WatchedRow[], opts: { 
     .slice(0, 12)
     .map(([id, count]) => ({ imdbId: graph.node(id).imdbId, name: graph.node(id).name, count }));
   const mehGenres = new Map<string, number>();
-  for (const w of watched.filter((x) => x.rating === "meh")) {
+  for (const w of watched.filter((x) => x.rating === "rated" && !isLiked(x))) {
     const node = graph.nodeByImdbId(w.imdbId);
     for (const g of node?.genres.split(",").filter(Boolean) ?? []) mehGenres.set(g, (mehGenres.get(g) ?? 0) + 1);
   }

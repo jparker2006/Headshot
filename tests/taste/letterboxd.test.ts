@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  bucketFor,
   matchToGraph,
   parseCsv,
   parseLetterboxd,
+  scoreFor,
   toWatchedInputs,
   worstMatches,
   type LetterboxdRow,
@@ -80,16 +80,18 @@ describe("parseLetterboxd", () => {
   });
 });
 
-describe("bucket mapping", () => {
-  it("uses four buckets and nothing else", () => {
+describe("score mapping", () => {
+  it("doubles the stars, half stars rounding up", () => {
     const base = { name: "x", year: 2000, watchedAt: null } as const;
-    expect(bucketFor({ ...base, rating: 5, list: "watched" })).toBe("liked");
-    expect(bucketFor({ ...base, rating: 3.5, list: "watched" })).toBe("liked");
-    expect(bucketFor({ ...base, rating: 3, list: "watched" })).toBe("meh");
-    expect(bucketFor({ ...base, rating: 0.5, list: "watched" })).toBe("meh");
-    // Watched but unrated counts as seen, not liked.
-    expect(bucketFor({ ...base, rating: null, list: "watched" })).toBe("meh");
-    expect(bucketFor({ ...base, rating: null, list: "watchlist" })).toBe("want");
+    expect(scoreFor({ ...base, rating: 5, list: "watched" })).toEqual({ rating: "rated", score: 10 });
+    expect(scoreFor({ ...base, rating: 4, list: "watched" })).toEqual({ rating: "rated", score: 8 });
+    // 3.5 stars was the old "liked" line and is still liked as a 7.
+    expect(scoreFor({ ...base, rating: 3.5, list: "watched" })).toEqual({ rating: "rated", score: 7 });
+    expect(scoreFor({ ...base, rating: 3, list: "watched" })).toEqual({ rating: "rated", score: 6 });
+    expect(scoreFor({ ...base, rating: 0.5, list: "watched" })).toEqual({ rating: "rated", score: 1 });
+    // Watched but unrated is `seen`: no number is put in their mouth.
+    expect(scoreFor({ ...base, rating: null, list: "watched" })).toEqual({ rating: "seen", score: null });
+    expect(scoreFor({ ...base, rating: null, list: "watchlist" })).toEqual({ rating: "want", score: null });
   });
 });
 
@@ -120,12 +122,14 @@ describe("matchToGraph", () => {
     const { matched } = matchToGraph(graph, parseLetterboxd(files()));
     const rows = new Map(toWatchedInputs(matched).map((r) => [r.titleImdbId, r]));
 
-    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 8, source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
-    expect(rows.get("tt0000002")?.score).toBe(5);
-    expect(rows.get("tt0000009")?.score).toBe(8);
+    // 4.5 stars is a 9; 3.0 a 6; 5.0 a 10; 4.0 an 8; 2.5 a 5.
+    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 9, source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
+    expect(rows.get("tt0000002")?.score).toBe(6);
+    expect(rows.get("tt0000009")?.score).toBe(10);
     expect(rows.get("tt0000006")?.score).toBe(8);
     expect(rows.get("tt0000003")?.score).toBe(5);
-    expect(rows.get("tt0000004")).toMatchObject({ rating: "rated", score: 5, watchedAt: "2024-06-20T00:00:00.000Z" });
+    // Watched with no star: `seen`, no score.
+    expect(rows.get("tt0000004")).toMatchObject({ rating: "seen", score: null, watchedAt: "2024-06-20T00:00:00.000Z" });
     expect(rows.get("tt0000011")).toMatchObject({ rating: "want", watchedAt: null });
   });
 });

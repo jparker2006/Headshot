@@ -12,7 +12,7 @@ const TALK_SHOW = "tt0000003"; // 2001 talk show: never dealt
 const LONG_RUNNER = "tt0000004"; // 1990 series, 3k votes: Bill Paxton, Gus Guest
 const TV_MOVIE = "tt0000011"; // 2008 TV movie, 2k votes: Wes Director, Gus Guest
 
-const liked = (imdbId: string): WatchedRow => ({ imdbId, rating: "liked" });
+const liked = (imdbId: string): WatchedRow => ({ imdbId, rating: "rated", score: 8 });
 
 describe("deck source: cold start", () => {
   it("falls back to the onboarding deck below five liked titles, and says so", async () => {
@@ -56,10 +56,10 @@ describe("deck source: lore", () => {
     const graph = await fixtureGraph();
     const watched: WatchedRow[] = [
       liked(GOOD_SERIES),
-      { imdbId: GUMP, rating: "seen" },
-      { imdbId: APOLLO, rating: "meh" },
-      { imdbId: LONG_RUNNER, rating: "want" },
-      { imdbId: TV_MOVIE, rating: "unseen" },
+      { imdbId: GUMP, rating: "seen", score: null },
+      { imdbId: APOLLO, rating: "rated", score: 5 },
+      { imdbId: LONG_RUNNER, rating: "want", score: null },
+      { imdbId: TV_MOVIE, rating: "unseen", score: null },
     ];
     const ids = deckSource(graph, watched, { size: 30, minLiked: 1 }).cards.map((c) => c.imdbId);
     for (const rated of [GOOD_SERIES, GUMP, APOLLO, LONG_RUNNER, TV_MOVIE]) expect(ids).not.toContain(rated);

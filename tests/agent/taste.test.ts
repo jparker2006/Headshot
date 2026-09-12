@@ -33,16 +33,16 @@ describe("taste in the chat", () => {
     expect(block).toContain("Later list: Mini Series");
   });
 
-  it("the model sees the block when signed in, and rate writes a chat-sourced row", async () => {
+  it("the model sees the block when signed in, and log writes a chat-sourced row", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
-    const model = scriptedModel([{ tool: "rate", input: { imdbId: GUMP, rating: "liked" } }, { text: "noted, **Forrest Gump** in the liked pile." }]);
+    const model = scriptedModel([{ tool: "log", input: { imdbId: GUMP, score: 8 } }, { text: "noted, **Forrest Gump** at an 8." }]);
     const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("i loved forrest gump")], followups: false, userId: "u1", taste: store }));
     const system = String(model.doStreamCalls[0].prompt.find((m) => m.role === "system")?.content);
     expect(system).toContain("This user is signed in");
     expect(system).toContain("Apollo 13");
-    expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ ok: true, rating: "liked" });
+    expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ ok: true, state: "rated", score: 8 });
     expect((await store.listWatched("u1")).find((r) => r.titleImdbId === GUMP)).toMatchObject({ rating: "rated", score: 8, source: "chat" });
   });
 

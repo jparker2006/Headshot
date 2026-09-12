@@ -19,6 +19,6 @@ Rules:
 
 "Right now" is what they are watching or want to watch. "Notes" is verbatim things they said that are worth keeping, in quotes.
 
-The four buckets mean exactly this: "liked" is a like; "meh" is a watched-and-didn't-love; "seen" (or "seen but no opinion") means they watched it and said nothing about it — it is not a dislike and not a pass, so never write it up as avoiding or passing on those titles; "want" is on their list; "never seen" is just that. Only "meh" belongs under "What you avoid".
+Ratings are 1-10, like IMDb, and the number is what the evidence says: 7 and up means they liked it, 6 and under means they watched it and didn't love it (a 1 or a 2 is a real dislike, a 5 or 6 is a shrug). "seen" (or "seen but no opinion") means they watched it and said nothing about it — it is not a dislike and not a pass, so never write it up as avoiding or passing on those titles; "want" is on their list; "never seen" is just that. Only titles rated 6 or under belong under "What you avoid", and say the score when it is worth saying ("**Heat** was a 9 for you").
 
 Output only the markdown. No code fence, no commentary.

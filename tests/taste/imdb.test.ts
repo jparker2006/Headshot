@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { bucketForImdb, matchImdb, parseImdb, toImdbInputs } from "@/lib/taste/imdb";
+import { matchImdb, parseImdb, scoreForImdb, toImdbInputs } from "@/lib/taste/imdb";
 import { MemoryTasteStore } from "@/lib/taste/memory";
 import { fixtureGraph } from "../agent/helpers";
 
@@ -42,12 +42,15 @@ describe("parseImdb", () => {
   });
 });
 
-describe("bucketForImdb", () => {
-  it("splits at 7 and uses no third bucket", () => {
-    expect(bucketForImdb(10)).toBe("liked");
-    expect(bucketForImdb(7)).toBe("liked");
-    expect(bucketForImdb(6)).toBe("meh");
-    expect(bucketForImdb(1)).toBe("meh");
+describe("scoreForImdb", () => {
+  it("keeps the number the user chose", () => {
+    expect(scoreForImdb(10)).toBe(10);
+    expect(scoreForImdb(7)).toBe(7);
+    expect(scoreForImdb(6)).toBe(6);
+    expect(scoreForImdb(1)).toBe(1);
+    // Out of range is clamped rather than written as junk.
+    expect(scoreForImdb(0)).toBe(1);
+    expect(scoreForImdb(11)).toBe(10);
   });
 });
 
@@ -69,18 +72,18 @@ describe("matchImdb", () => {
     expect(skipped.map((r) => r.imdbId)).toEqual(["tt8888888", "tt9999999"]);
   });
 
-  it("writes the rows with the threshold applied and the rated date", async () => {
+  it("writes the rows with the user's own number and the rated date", async () => {
     const graph = await fixtureGraph();
     const { matched } = matchImdb(graph, parseImdb(CSV));
     const rows = new Map(toImdbInputs(matched).map((r) => [r.titleImdbId, r]));
 
     expect([...rows.values()].every((r) => r.source === "imdb")).toBe(true);
-    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 8, watchedAt: "2026-02-01T00:00:00.000Z" });
-    expect(rows.get("tt0000003")?.score).toBe(8);
-    expect(rows.get("tt0000009")?.score).toBe(8);
+    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 9, watchedAt: "2026-02-01T00:00:00.000Z" });
+    expect(rows.get("tt0000003")?.score).toBe(7);
+    expect(rows.get("tt0000009")?.score).toBe(10);
     expect(rows.get("tt0000006")?.score).toBe(8);
-    expect(rows.get("tt0000002")?.score).toBe(5);
-    expect(rows.get("tt0000004")?.score).toBe(5);
+    expect(rows.get("tt0000002")?.score).toBe(6);
+    expect(rows.get("tt0000004")?.score).toBe(4);
   });
 });
 

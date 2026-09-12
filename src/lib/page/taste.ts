@@ -14,7 +14,11 @@ import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
 import { graphReason, sharedPeople } from "@/lib/picks/engine";
 import { normalizeProviderIds, providerName } from "@/lib/taste/providers";
 import type { TasteStore } from "@/lib/taste/types";
-import { isLiked, legacyBucket, type LegacyBucket } from "@/lib/taste/score";
+import { isLiked } from "@/lib/taste/score";
+import type { WatchedRating } from "@/lib/taste/types";
+// TODO(v5-B): the drawer still draws the four bucket words. When it draws the
+// row of ten, `rating` below goes and this import with it.
+import { legacyBucket, type LegacyBucket } from "@/lib/taste/legacy";
 
 export interface PageReason {
   /** One line, plain text. The client bolds the names it can link. */
@@ -32,7 +36,11 @@ export interface PageTaste {
    * ring them: people for a title page, titles for a person page.
    */
   likedPeople: string[];
-  /** The user's bucket for this title, when they have one. */
+  /** The user's state for this title, when they have a row for it. */
+  state: WatchedRating | null;
+  /** Their score, 1–10, when they rated it. */
+  score: number | null;
+  /** TODO(v5-B): the same row in the old bucket word, for the current drawer. */
   rating: LegacyBucket | null;
   /** Names of the streaming services this is on that the user actually pays for. */
   onYourServices: string[];
@@ -99,7 +107,6 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
 
   const [watched, services] = await Promise.all([store.listWatched(userId), store.getServices(userId)]);
   const found = watched.find((w) => w.titleImdbId === node.imdbId);
-  const rating = found ? legacyBucket(found) : null;
 
   // The pick engine's liked set: what you finished and loved, plus what you saved for later.
   const likedIds = new Set(
@@ -143,7 +150,9 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
   return {
     reason,
     likedPeople,
-    rating,
+    state: found?.rating ?? null,
+    score: found?.score ?? null,
+    rating: found ? legacyBucket(found) : null,
     onYourServices: onYourServices(extras?.providers?.flatrate ?? [], services?.providerIds ?? []),
   };
 }

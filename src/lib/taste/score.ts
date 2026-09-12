@@ -70,16 +70,6 @@ export function validateScore(row: { titleImdbId?: string; rating: WatchedRating
   return null;
 }
 
-/** The migration's mapping, in code: the old two opinion buckets as scores. */
-export function scoreFromBucket(old: "liked" | "meh"): number {
-  return old === "liked" ? 8 : 5;
-}
-
-/** The inverse, for the places that still speak buckets during the move. */
-export function bucketFromScore(score: number): "liked" | "meh" {
-  return score >= LIKED_MIN ? "liked" : "meh";
-}
-
 /**
  * Letterboxd stars (0.5–5, half steps) → 1–10. Doubling is the obvious map;
  * a half star lands between two integers and rounds up, so 3.5 stars (the old
@@ -99,7 +89,9 @@ const STATEMENTS: { score: number; patterns: RegExp[] }[] = [
   { score: 9, patterns: [/\bloved\b/, /\blove\b/, /\bfavou?rite\b/, /\bbest\b/] },
   { score: 2, patterns: [/\bhated\b/, /\bhate\b/, /\bawful\b/, /\bterrible\b/, /\bworst\b/] },
   { score: 4, patterns: [/n['o]?t like\b/, /\bnot for me\b/, /\bboring\b/, /\bdisliked\b/] },
-  { score: 8, patterns: [/\bliked\b/, /\blike\b/, /\bgood\b/, /\bgreat\b/] },
+  // "like" only as a verb they own ("i like it"): a bare "like" is usually a
+  // comparison ("something like Heat"), which says nothing about a score.
+  { score: 8, patterns: [/\bliked\b/, /\b(?:i|we)(?:\s+\w+)? like\b/, /\bgood\b/, /\bgreat\b/] },
   { score: 6, patterns: [/\bfine\b/, /\bokay\b/, /\bok\b/, /\balright\b/, /\ball right\b/] },
 ];
 
@@ -112,31 +104,4 @@ export function scoreFromStatement(text: string): number | null {
   const t = text.toLowerCase();
   for (const { score, patterns } of STATEMENTS) if (patterns.some((p) => p.test(t))) return score;
   return null;
-}
-
-/** The old four-plus-one vocabulary. Only the shim below still speaks it. */
-export type LegacyBucket = "liked" | "meh" | "want" | "seen" | "unseen";
-
-/**
- * A v5 row in the old words.
- *
- * @deprecated Scaffolding for the 1–10 move only: it exists so call sites can
- * be converted one at a time instead of in one unreviewable diff. Every use
- * must be gone by the end of Chunk A — read the score instead.
- */
-export function legacyBucket(row: ScoredRow): LegacyBucket {
-  return row.rating === "rated" ? bucketFromScore(row.score ?? 0) : row.rating;
-}
-
-/**
- * The inverse of {@link legacyBucket}: a bucket a caller still produces, as
- * the state/score pair the store now wants.
- *
- * @deprecated Same scaffolding, same deadline: producers (imports, the swipe,
- * the chat tools) should hand over a real score of their own.
- */
-export function fromLegacyBucket(bucket: LegacyBucket): { rating: WatchedRating; score: number | null } {
-  return bucket === "liked" || bucket === "meh"
-    ? { rating: "rated", score: scoreFromBucket(bucket) }
-    : { rating: bucket, score: null };
 }

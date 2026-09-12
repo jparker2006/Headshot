@@ -2,34 +2,40 @@
  * Swipe as lore (SPEC v4): where a swipe session's thirty cards come from once
  * the log has something to say. Two sources, one deck:
  *
- *   (a) unrated neighbours of the people on the user's liked titles, ranked by
- *       how many of those liked people a title shares, then by votes;
+ *   (a) unrated neighbours of the people on the user's favourite titles (score
+ *       >= 8), ranked by how many of those people a title shares, then votes;
  *   (b) popular unrated titles from the user's two strongest decades, by votes.
  *
  * Interleaved roughly 2:1 (a is the signal, b is the breadth), deduped, and
- * with everything the user has already rated — under any bucket, including
+ * with everything the user has already answered for — any state, including
  * `seen` and `want` — removed. Film and series are both eligible.
  *
  * Pure over the graph and the watched set: no network, no model, no store.
- * Below five liked titles there is nothing to walk from, so the deck falls
+ * Below five liked titles (score >= 7) there is nothing to walk from, so the deck falls
  * back to the fixed onboarding deck and says so (`mode: "cold"`).
  */
 import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
-import type { Bucket, WatchedRow } from "./engine";
+import type { WatchedRow } from "./engine";
+import { isLiked } from "@/lib/taste/score";
 import { deckEligible, onboardingDeck, type DeckCardData } from "./onboarding";
 
 /** The deck the client asks for by default. */
 export const DEFAULT_DECK_SIZE = 30;
 /** Hard cap, so `?size=` cannot ask for the whole graph. */
 export const MAX_DECK_SIZE = 50;
-/** Liked titles needed before the walk beats the fixed deck. */
+/** Liked titles (score >= 7) needed before the walk beats the fixed deck. */
 export const MIN_LIKED_FOR_LORE = 5;
+
+/**
+ * SPEC v5, "probably seen": the walk starts from the people on the titles they
+ * rated *eight* or better, not merely liked. A favourite is a stronger signal
+ * than a like, and the deck is guessing at what they have already watched.
+ */
+export const DECK_PEOPLE_MIN_SCORE = 8;
 
 export interface DeckSourceOptions {
   /** Cards wanted; clamped to `MAX_DECK_SIZE`. */
   size?: number;
-  /** Buckets whose people count as "liked people" (default liked + want). */
-  likedBuckets?: Bucket[];
   /** Cold-start threshold; the spec's five. Lowered by tests. */
   minLiked?: number;
 }
@@ -60,11 +66,11 @@ export function deckCard(node: NodeInfo): DeckCardData {
 
 export function deckSource(graph: IndustryGraph, watched: WatchedRow[], opts: DeckSourceOptions = {}): DeckSourceResult {
   const size = Math.min(opts.size ?? DEFAULT_DECK_SIZE, MAX_DECK_SIZE);
-  const likedBuckets = new Set<Bucket>(opts.likedBuckets ?? ["liked", "want"]);
-  // Anything with a row is rated: it never comes back in a deck, whatever the bucket.
+  // Anything with a row has been answered: it never comes back in a deck,
+  // whatever the state.
   const rated = new Set(watched.map((w) => w.imdbId));
   const liked = watched
-    .filter((w) => w.rating === "liked")
+    .filter(isLiked)
     .map((w) => graph.idOf(w.imdbId))
     .filter((id): id is number => id !== undefined);
 
@@ -77,10 +83,11 @@ export function deckSource(graph: IndustryGraph, watched: WatchedRow[], opts: De
     return node.kind === "title" && !rated.has(node.imdbId) && deckEligible(node) ? node : null;
   };
 
-  // (a) Neighbours of the liked people, by how many liked people they share.
+  // (a) Neighbours of their favourite people (titles rated >= 8, plus what
+  // they saved for later), by how many of those people a title shares.
   const likedTitles = new Set(
     watched
-      .filter((w) => likedBuckets.has(w.rating))
+      .filter((w) => (w.score ?? 0) >= DECK_PEOPLE_MIN_SCORE || w.rating === "want")
       .map((w) => graph.idOf(w.imdbId))
       .filter((id): id is number => id !== undefined),
   );

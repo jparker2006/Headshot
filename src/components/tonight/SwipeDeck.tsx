@@ -38,22 +38,30 @@ export interface DeckCard {
 interface Props {
   cards: DeckCard[];
   /** The committed rows after every change; the caller decides when to persist. */
-  onCommit?: (rows: { imdbId: string; rating: SwipeAction }[]) => void;
+  onCommit?: (rows: CommittedRow[]) => void;
   onSelectNode?: (imdbId: string) => void;
   /**
    * End of session: the deck ran out, or the user said "done for now". The
    * rows are handed over again so the caller never has to remember them.
    */
-  onFinish?: (rows: { imdbId: string; rating: SwipeAction }[]) => void;
+  onFinish?: (rows: CommittedRow[]) => void;
 }
 
-/** The buckets in the log field's order and words. No colour, no accent. */
-const ACTIONS: { action: SwipeAction; label: string; key: string }[] = [
-  { action: "liked", label: "liked", key: "1" },
-  { action: "meh", label: "meh", key: "2" },
-  { action: "want", label: "want", key: "3" },
-  { action: "unseen", label: "seen", key: "4" },
+/**
+ * The four buttons, in the log field's order and words.
+ *
+ * TODO(v5-B): the deck's card becomes "seen it" → a row of ten (SPEC v5). Until
+ * then the four words stand and each one carries the score it used to mean.
+ */
+const ACTIONS: { id: string; action: SwipeAction; label: string; key: string }[] = [
+  { id: "liked", action: { rating: "rated", score: 8 }, label: "liked", key: "1" },
+  { id: "meh", action: { rating: "rated", score: 5 }, label: "meh", key: "2" },
+  { id: "want", action: { rating: "want" }, label: "want", key: "3" },
+  { id: "unseen", action: { rating: "unseen" }, label: "seen", key: "4" },
 ];
+
+/** A committed row as the swipe routes take it. */
+type CommittedRow = ReturnType<typeof committedRows>[number];
 
 export function SwipeDeck({ cards, onCommit, onSelectNode, onFinish }: Props) {
   const [state, dispatch] = useReducer(swipeReducer, cards.map((c) => c.imdbId), initialSwipeState);
@@ -70,7 +78,7 @@ export function SwipeDeck({ cards, onCommit, onSelectNode, onFinish }: Props) {
 
   // The deck ends itself exactly once: a re-render must not re-post a session.
   const finished = useRef(false);
-  const finish = (rows: { imdbId: string; rating: SwipeAction }[]) => {
+  const finish = (rows: CommittedRow[]) => {
     if (finished.current) return;
     finished.current = true;
     onFinish?.(rows);
@@ -123,7 +131,7 @@ export function SwipeDeck({ cards, onCommit, onSelectNode, onFinish }: Props) {
   const shown = leaving?.card ?? top;
   const flight = !leaving
     ? ""
-    : leaving.action === "liked" || leaving.action === "want"
+    : (leaving.action.score ?? 0) >= 7 || leaving.action.rating === "want"
       ? "translate-x-12 rotate-2 opacity-0"
       : "-translate-x-12 -rotate-2 opacity-0";
 
@@ -160,7 +168,7 @@ export function SwipeDeck({ cards, onCommit, onSelectNode, onFinish }: Props) {
       <div className="mt-[8px] flex w-full flex-col gap-[6px]">
         <div className="grid w-full grid-cols-4 gap-[8px]">
           {ACTIONS.map((a) => (
-            <button key={a.action} type="button" onClick={() => act(a.action)} className="btn btn-fill px-0">
+            <button key={a.id} type="button" onClick={() => act(a.action)} className="btn btn-fill px-0">
               {a.label}
             </button>
           ))}
@@ -169,7 +177,7 @@ export function SwipeDeck({ cards, onCommit, onSelectNode, onFinish }: Props) {
             rule the log field's `1 2 3 4` follows (Prompt.tsx). */}
         <div className="hidden w-full grid-cols-4 gap-[8px] sm:grid">
           {ACTIONS.map((a) => (
-            <span key={a.action} className="t-meta text-center">
+            <span key={a.id} className="t-meta text-center">
               {a.key}
             </span>
           ))}

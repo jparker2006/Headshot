@@ -8,10 +8,19 @@
  * call with reasoning off, and a failure returns nothing rather than throwing.
  */
 import { generateText, type LanguageModel } from "ai";
+import { scoreFromStatement } from "@/lib/taste/score";
 
 export interface ExtractedEpisode {
   text: string;
   titleImdbId?: string | null;
+  /**
+   * What the statement is worth out of ten (SPEC v5: loved 9, liked 8, fine 6,
+   * didn't like 4, hated 2), or null when it states no opinion at all — "i
+   * watched Heat last night" is evidence, not a rating. Nothing is written to
+   * the log from this: the score is here so the memory rewrite and the `log`
+   * tool read one statement the same way.
+   */
+  score?: number | null;
 }
 
 export interface KnownTitle {
@@ -99,10 +108,18 @@ export function parseEpisodes(raw: string, knownTitles: KnownTitle[] = []): Extr
     const text = typeof obj.text === "string" ? obj.text.trim().slice(0, MAX_EPISODE_CHARS) : "";
     if (!text) continue;
     const title = typeof obj.title === "string" ? obj.title : null;
-    out.push({ text, titleImdbId: title ? matchTitle(title, knownTitles) : null });
+    // Scored on the statement with its title taken out: "dropped Good Series"
+    // is not a "good", and a film called Awful is not a 2.
+    out.push({ text, titleImdbId: title ? matchTitle(title, knownTitles) : null, score: scoreFromStatement(withoutTitle(text, title)) });
     if (out.length >= MAX_EPISODES_PER_MESSAGE) break;
   }
   return out;
+}
+
+/** The statement with the title it is about removed, for scoring only. */
+function withoutTitle(text: string, title: string | null): string {
+  if (!title) return text;
+  return text.split(title).join(" ");
 }
 
 function tryJson(s: string): unknown {

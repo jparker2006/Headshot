@@ -28,7 +28,7 @@ describe("candidate pool", () => {
   it("walks the graph and merges availability, link, runtime, and poster from TMDB", async () => {
     const graph = await fixtureGraph();
     const calls: string[] = [];
-    const pool = await buildCandidates({ graph, tmdb: fakeTmdb(calls), watched: [{ imdbId: APOLLO, rating: "liked" }], services: [HULU] });
+    const pool = await buildCandidates({ graph, tmdb: fakeTmdb(calls), watched: [{ imdbId: APOLLO, rating: "rated", score: 8 }], services: [HULU] });
     const gump = pool.candidates.find((c) => c.imdbId === GUMP)!;
     expect(gump.availableOn).toEqual([HULU]);
     expect(gump.runtimeMin).toBe(142);
@@ -46,7 +46,7 @@ describe("candidate pool", () => {
 
   it("works without TMDB: graph walk only, nothing available", async () => {
     const graph = await fixtureGraph();
-    const pool = await buildCandidates({ graph, tmdb: null, watched: [{ imdbId: APOLLO, rating: "liked" }], services: [HULU] });
+    const pool = await buildCandidates({ graph, tmdb: null, watched: [{ imdbId: APOLLO, rating: "rated", score: 8 }], services: [HULU] });
     expect(pool.candidates.length).toBeGreaterThan(0);
     expect(pool.candidates.every((c) => c.availableOn.length === 0)).toBe(true);
     expect(pool.candidates.map((c) => c.imdbId)).not.toContain(APOLLO);

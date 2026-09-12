@@ -15,7 +15,10 @@ import { memoryText } from "@/lib/memory";
 import { tasteMap } from "@/lib/taste/map";
 import { tasteFacts } from "./engine";
 import { toEngineRows } from "./service";
-import { fromLegacyBucket } from "@/lib/taste/score";
+import { isValidScore } from "@/lib/taste/score";
+// TODO(v5-B): the deck still posts the old bucket words. Chunk B replaces it
+// with the catch-up deck's row of ten, and this translation goes with it.
+import { fromLegacyBucket, isLegacyBucket } from "@/lib/taste/legacy";
 
 export interface TonightRouteDeps {
   userId: (req: Request) => Promise<string | null>;
@@ -47,29 +50,49 @@ function parseFilters(body: Record<string, unknown>): Filters {
   return f;
 }
 
-/** The ratings a swipe can commit; `unseen` is a removal, handled by the store. */
-type SwipeRating = "liked" | "meh" | "unseen" | "want";
-
-/** The rows a swipe body actually carries, junk dropped. */
-function parseSwipeRows(rows: unknown[]): (WatchedInput & { source: "swipe"; bucket: SwipeRating })[] {
-  return rows
-    .filter((r): r is { imdbId: string; rating: SwipeRating } => {
-      const x = r as Record<string, unknown>;
-      return typeof x.imdbId === "string" && /^tt\d+$/.test(x.imdbId) && ["liked", "meh", "unseen", "want"].includes(String(x.rating));
-    })
-    // The deck still speaks buckets; the store wants a state plus a score.
-    .map((r) => ({ titleImdbId: r.imdbId, ...fromLegacyBucket(r.rating), bucket: r.rating, source: "swipe" as const }));
+/**
+ * One card's verdict, in either vocabulary: v5's `{ imdbId, score }` or
+ * `{ imdbId, rating: "want" | "seen" | "unseen" }`, and — until Chunk B
+ * replaces the deck — an old bucket word, translated here at the boundary.
+ *
+ * TODO(v5-B): drop the bucket branch when the deck posts scores.
+ */
+function parseSwipeRow(raw: unknown): (WatchedInput & { source: "swipe" }) | null {
+  const x = raw as Record<string, unknown>;
+  if (typeof x?.imdbId !== "string" || !/^tt\d+$/.test(x.imdbId)) return null;
+  const titleImdbId = x.imdbId;
+  if (x.score !== undefined && x.score !== null) {
+    return isValidScore(x.score) ? { titleImdbId, rating: "rated", score: x.score, source: "swipe" } : null;
+  }
+  if (x.rating === "rated") return null; // a rated row without a score says nothing
+  if (x.rating === "want" || x.rating === "seen" || x.rating === "unseen") return { titleImdbId, rating: x.rating, score: null, source: "swipe" };
+  if (isLegacyBucket(x.rating)) return { titleImdbId, ...fromLegacyBucket(x.rating), source: "swipe" };
+  return null;
 }
 
-/** One episode per session, not per card: "swiped: liked X, Y; meh Z". */
-function swipeEpisodeText(graph: IndustryGraph, rows: { titleImdbId: string; bucket: SwipeRating }[]): string {
+/** The rows a swipe body actually carries, junk dropped. */
+function parseSwipeRows(rows: unknown[]): (WatchedInput & { source: "swipe" })[] {
+  return rows.map(parseSwipeRow).filter((r): r is WatchedInput & { source: "swipe" } => r !== null);
+}
+
+/** One episode per session, not per card: "swiped: rated 8: X; 5: Y; seen Z". */
+function swipeEpisodeText(graph: IndustryGraph, rows: (WatchedInput & { source: "swipe" })[]): string {
   const name = (id: string) => graph.nodeByImdbId(id)?.name ?? id;
-  const parts = ([["liked", "liked"], ["meh", "meh"], ["seen", "seen but no opinion"], ["unseen", "never seen"], ["want", "want"]] as const)
-    .map(([rating, label]) => {
-      const names = rows.filter((r) => r.bucket === rating).map((r) => name(r.titleImdbId));
-      return names.length ? `${label} ${names.join(", ")}` : "";
-    })
-    .filter(Boolean);
+  const parts: string[] = [];
+  const rated = rows.filter((r) => r.rating === "rated").sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  if (rated.length) {
+    const byScore = new Map<number, string[]>();
+    for (const r of rated) {
+      const list = byScore.get(r.score!) ?? [];
+      list.push(name(r.titleImdbId));
+      byScore.set(r.score!, list);
+    }
+    parts.push(`rated ${[...byScore].map(([score, names]) => `${score}: ${names.join(", ")}`).join("; ")}`);
+  }
+  for (const [state, label] of [["seen", "seen"], ["want", "want"], ["unseen", "never seen"]] as const) {
+    const names = rows.filter((r) => r.rating === state).map((r) => name(r.titleImdbId));
+    if (names.length) parts.push(`${label} ${names.join(", ")}`);
+  }
   return `swiped: ${parts.join("; ")}`.slice(0, 400);
 }
 

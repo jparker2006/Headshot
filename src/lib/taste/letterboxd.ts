@@ -11,8 +11,8 @@
  */
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { NodeKind } from "@/lib/graph/format";
-import type { WatchedInput } from "./types";
-import { fromLegacyBucket, type LegacyBucket } from "./score";
+import type { WatchedInput, WatchedRating } from "./types";
+import { scoreFromStars } from "./score";
 
 /** One parsed row, before it has been matched to anything. */
 export interface LetterboxdRow {
@@ -195,26 +195,28 @@ export function parseLetterboxd(files: LetterboxdFiles): LetterboxdRow[] {
   return [...byKey.values()];
 }
 
-// ---- buckets --------------------------------------------------------------
+// ---- scores ---------------------------------------------------------------
 
 /**
- * Four buckets, per SPEC v3, and no fifth one invented here.
+ * One Letterboxd row as a v5 state plus a score (SPEC v5, "Ratings").
  *
- * A watched row with no rating is the lossy case: Letterboxd knows only that
- * you logged it. Calling that "liked" would put words in the user's mouth, so
- * it lands in `meh` — seen, not endorsed — and the review screen says so.
+ * Stars double, half stars rounding up, so 3.5★ — the old "liked" line — is a
+ * 7 and still liked. A watched row with no rating is the lossy case:
+ * Letterboxd knows only that you logged it, so it lands in `seen` (watched, no
+ * opinion) rather than having a number put in the user's mouth. A watchlist
+ * row is `want`.
  */
-export function bucketFor(row: LetterboxdRow): LegacyBucket {
-  if (row.list === "watchlist") return "want";
-  if (row.rating === null) return "meh";
-  return row.rating >= 3.5 ? "liked" : "meh";
+export function scoreFor(row: LetterboxdRow): { rating: WatchedRating; score: number | null } {
+  if (row.list === "watchlist") return { rating: "want", score: null };
+  if (row.rating === null) return { rating: "seen", score: null };
+  return { rating: "rated", score: scoreFromStars(row.rating) };
 }
 
 /** Matched rows as taste-store input. `replaceImport` stamps the source. */
 export function toWatchedInputs(matched: MatchedRow[]): WatchedInput[] {
   return matched.map((m) => ({
     titleImdbId: m.imdbId,
-    ...fromLegacyBucket(bucketFor(m.row)),
+    ...scoreFor(m.row),
     source: "letterboxd" as const,
     watchedAt: m.row.watchedAt ? `${m.row.watchedAt}T00:00:00.000Z` : null,
   }));

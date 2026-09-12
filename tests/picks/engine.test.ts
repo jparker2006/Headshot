@@ -43,11 +43,11 @@ describe("pick engine (pure)", () => {
 
   it("walks the graph for unseen candidates ranked by shared people", async () => {
     const graph = await fixtureGraph();
-    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }];
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "rated", score: 8 }];
     const out = walkCandidates(graph, watched);
     expect(out.map((c) => c.imdbId)).not.toContain(APOLLO);
     // A Later title is a candidate even with no graph link, so the list drains.
-    const withLater = walkCandidates(graph, [{ imdbId: GOOD_SERIES, rating: "liked" }, { imdbId: MINI, rating: "want" }]);
+    const withLater = walkCandidates(graph, [{ imdbId: GOOD_SERIES, rating: "rated", score: 8 }, { imdbId: MINI, rating: "want", score: null }]);
     expect(withLater.find((c) => c.imdbId === MINI)?.proximity).toBeGreaterThanOrEqual(0.5); // no shared people with Good Series, still a candidate
     expect(out[0].imdbId).toBe(GUMP); // Hanks + Sinise, strong tier
     expect(out.find((c) => c.imdbId === LATE_NIGHT)!.proximity).toBeLessThan(out[0].proximity); // weak tier counts half
@@ -56,8 +56,8 @@ describe("pick engine (pure)", () => {
   it("picks three with reasons, at most one continue, available-first, rent price kept for the rest", async () => {
     const graph = await fixtureGraph();
     const watched: WatchedRow[] = [
-      { imdbId: APOLLO, rating: "liked" },
-      { imdbId: GOOD_SERIES, rating: "liked", season: 2, episodesWatched: 3 },
+      { imdbId: APOLLO, rating: "rated", score: 8 },
+      { imdbId: GOOD_SERIES, rating: "rated", score: 8, season: 2, episodesWatched: 3 },
     ];
     const r = pickTonight({
       graph,
@@ -87,7 +87,7 @@ describe("pick engine (pure)", () => {
 
   it("never re-picks dismissed or seen titles and honours runtime and energy filters", async () => {
     const graph = await fixtureGraph();
-    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: MINI, rating: "meh" }];
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "rated", score: 8 }, { imdbId: MINI, rating: "rated", score: 5 }];
     const r = pickTonight({
       graph,
       watched,
@@ -108,7 +108,7 @@ describe("pick engine (pure)", () => {
   it("an imported `seen` title is watched: never walked, never picked, never dealt", async () => {
     const graph = await fixtureGraph();
     // Netflix import: Forrest Gump was watched, with no opinion attached.
-    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: GUMP, rating: "seen" }];
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "rated", score: 8 }, { imdbId: GUMP, rating: "seen", score: null }];
     expect(walkCandidates(graph, watched).map((c) => c.imdbId)).not.toContain(GUMP);
     const r = pickTonight({
       graph,
@@ -123,7 +123,7 @@ describe("pick engine (pure)", () => {
 
   it("the taste vector moves the ranking when candidates carry vectors", async () => {
     const graph = await fixtureGraph();
-    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "liked" }, { imdbId: GUMP, rating: "liked" }];
+    const watched: WatchedRow[] = [{ imdbId: APOLLO, rating: "rated", score: 8 }, { imdbId: GUMP, rating: "rated", score: 8 }];
     const base = { graph, watched, services: [HULU], candidates: [cand(MINI, { vector: [1, 0] }), cand(LATE_NIGHT, { vector: [0, 1] })] };
     const a = pickTonight({ ...base, taste: { vector: [1, 0] } });
     const b = pickTonight({ ...base, taste: { vector: [0, 1] } });
@@ -134,17 +134,19 @@ describe("pick engine (pure)", () => {
   it("derives taste facts: people you keep watching, decades, tv share, avoided genres", async () => {
     const graph = await fixtureGraph();
     const watched: WatchedRow[] = [
-      { imdbId: APOLLO, rating: "liked" },
-      { imdbId: GUMP, rating: "liked" },
-      { imdbId: GOOD_SERIES, rating: "liked" },
-      { imdbId: LATE_NIGHT, rating: "meh" },
-      { imdbId: MINI, rating: "meh" },
+      { imdbId: APOLLO, rating: "rated", score: 8 },
+      { imdbId: GUMP, rating: "rated", score: 8 },
+      { imdbId: GOOD_SERIES, rating: "rated", score: 8 },
+      { imdbId: LATE_NIGHT, rating: "rated", score: 5 },
+      { imdbId: MINI, rating: "rated", score: 5 },
     ];
     const f = tasteFacts(graph, watched, { runtimes: new Map([[APOLLO, 140], [GUMP, 142]]) });
     expect(f.people.slice(0, 2).map((p) => p.name).sort()).toEqual(["Gary Sinise", "Tom Hanks"]);
     expect(f.people[0].count).toBe(2);
     expect(f.eras).toEqual({ "1990s": 2, "2010s": 1 });
-    expect(f.tvShare).toBeCloseTo(1 / 3, 2);
+    // Finished facts count everything rated, not only the 7-and-ups: three of
+    // the five are series (Good Series, Late Night, Mini Series).
+    expect(f.tvShare).toBeCloseTo(3 / 5, 2);
     expect(f.avgRuntimeFinished).toBe(141);
     expect(f.genresAvoided).toEqual(expect.arrayContaining(["Talk-Show"]));
   });
@@ -152,9 +154,9 @@ describe("pick engine (pure)", () => {
   it("`seen` is finished with no opinion: it counts for tv share and runtime, never for people or eras", async () => {
     const graph = await fixtureGraph();
     const watched: WatchedRow[] = [
-      { imdbId: APOLLO, rating: "liked" },
-      { imdbId: GUMP, rating: "liked" },
-      { imdbId: MINI, rating: "seen" }, // a 2010 series, Gary Sinise, imported
+      { imdbId: APOLLO, rating: "rated", score: 8 },
+      { imdbId: GUMP, rating: "rated", score: 8 },
+      { imdbId: MINI, rating: "seen", score: null }, // a 2010 series, Gary Sinise, imported
     ];
     const f = tasteFacts(graph, watched, { runtimes: new Map([[APOLLO, 140], [GUMP, 142], [MINI, 60]]) });
     // Sinise is in all three, but the seen row is no evidence of taste.

@@ -132,10 +132,12 @@ describe("episode extraction", () => {
       '{"text":"loved Apollo 13","title":"Apollo 13"}\n{"text":"dropped Good Series after season 1","title":"Good Series"}\n{"text":"wants something like The Nonexistent Film","title":"The Nonexistent Film"}',
     );
     const out = await extractEpisodes(model, message, { knownTitles: known });
+    // Each statement also carries what it is worth out of ten (SPEC v5):
+    // "loved" is a 9, and a statement with no opinion in it has no score.
     expect(out).toEqual([
-      { text: "loved Apollo 13", titleImdbId: APOLLO },
-      { text: "dropped Good Series after season 1", titleImdbId: "tt0000009" },
-      { text: "wants something like The Nonexistent Film", titleImdbId: null },
+      { text: "loved Apollo 13", titleImdbId: APOLLO, score: 9 },
+      { text: "dropped Good Series after season 1", titleImdbId: "tt0000009", score: null },
+      { text: "wants something like The Nonexistent Film", titleImdbId: null, score: null },
     ]);
     expect(model.doGenerateCalls).toHaveLength(1);
   });
@@ -228,13 +230,13 @@ describe("memory in the chat", () => {
     expect(side.doGenerateCalls).toHaveLength(2);
   });
 
-  it("rate writes an episode as well as the row", async () => {
+  it("log writes an episode as well as the row", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    const model = scriptedModel([{ tool: "rate", input: { imdbId: GUMP, rating: "liked" } }, { text: "noted." }]);
+    const model = scriptedModel([{ tool: "log", input: { imdbId: GUMP, score: 9, note: "still cries at the bench" } }, { text: "noted." }]);
     await collect(
       runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("i loved forrest gump")], followups: false, userId: "u1", taste: store, memory: false }),
     );
-    expect((await store.listEpisodes("u1")).map((e) => e.text)).toEqual(["liked Forrest Gump (1994)"]);
+    expect((await store.listEpisodes("u1")).map((e) => e.text)).toEqual(['rated Forrest Gump (1994) 9/10: "still cries at the bench"']);
   });
 });

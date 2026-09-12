@@ -14,7 +14,7 @@
  */
 import { parseTable } from "./letterboxd";
 import type { WatchedInput } from "./types";
-import { fromLegacyBucket, type LegacyBucket } from "./score";
+import { scoreFromImdb } from "./score";
 
 /** One rated title, straight from the export. */
 export interface ImdbRow {
@@ -82,9 +82,9 @@ export function parseImdb(text: string): ImdbRow[] {
   return [...byId.values()];
 }
 
-/** SPEC v4: 7 and up is liked, below it is meh. No third bucket. */
-export function bucketForImdb(rating: number): LegacyBucket {
-  return rating >= 7 ? "liked" : "meh";
+/** SPEC v5: IMDb already rates 1–10, so the number the user chose is kept. */
+export function scoreForImdb(rating: number): number {
+  return scoreFromImdb(rating);
 }
 
 /** Resolve every id against the graph; the misses come back as `skipped`. */
@@ -103,7 +103,8 @@ export function matchImdb(graph: TitleById, rows: ImdbRow[]): ImdbMatchResult {
 export function toImdbInputs(matched: ImdbMatch[]): WatchedInput[] {
   return matched.map((m) => ({
     titleImdbId: m.imdbId,
-    ...fromLegacyBucket(bucketForImdb(m.row.rating)),
+    rating: "rated" as const,
+    score: scoreForImdb(m.row.rating),
     source: "imdb" as const,
     watchedAt: m.row.ratedAt ? `${m.row.ratedAt}T00:00:00.000Z` : null,
   }));

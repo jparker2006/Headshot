@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useImages } from "@/components/chat/useImages";
 import { SwipeDeck, type DeckCard } from "@/components/tonight/SwipeDeck";
-import type { SwipeAction } from "@/lib/picks/swipe";
+import type { WatchedRating } from "@/lib/taste/types";
 import { MemoryDiff } from "./MemoryDiff";
 import { bumpLog } from "./logBus";
 import { SESSION_SIZE, deckBlurb, type DeckMode, type MemoryDiffLines } from "./swipeRules";
@@ -52,7 +52,7 @@ type Phase =
   | { kind: "failed" };
 
 /** What the session route takes: one row per card the user actually rated. */
-type Row = { imdbId: string; rating: SwipeAction };
+type Row = { imdbId: string; rating: WatchedRating; score: number | null };
 
 /**
  * A wait, in the one grammar the app already has for it: the line plus the

@@ -10,12 +10,13 @@ import { describe } from "../context";
 import { loadTonight } from "@/lib/picks/service";
 import { tasteSummary } from "../tasteContext";
 import { memoryText } from "@/lib/memory";
-import { fromLegacyBucket, legacyBucket } from "@/lib/taste/score";
+import { isValidScore } from "@/lib/taste/score";
+import type { WatchedRating } from "@/lib/taste/types";
 
 const imdbTitle = z.string().regex(/^tt\d+$/, "an IMDb title id like tt0113277");
 
-/** How a bucket reads back in the record. */
-const VERB: Record<string, string> = { liked: "liked", meh: "meh on", unseen: "never seen", want: "wants to watch" };
+/** How a state with no score reads back in the record. */
+const VERB: Record<string, string> = { unseen: "never seen", want: "wants to watch", seen: "watched (no opinion)" };
 
 export function tasteTools(ctx: AgentContext): ToolSet {
   const store = ctx.taste;
@@ -43,28 +44,44 @@ export function tasteTools(ctx: AgentContext): ToolSet {
     }),
 
     have_i_seen: tool({
-      description: "Whether the user has rated a title, and how (liked, meh, unseen, want = in Later), plus series progress.",
+      description: "Whether the user has a row for a title: the state (rated, want = in Later, seen = watched with no opinion, unseen = never seen), their 1-10 score when they rated it, and series progress.",
       inputSchema: z.object({ imdbId: imdbTitle }),
       execute: async ({ imdbId }) => {
         const row = (await store.listWatched(userId)).find((r) => r.titleImdbId === imdbId);
         const node = ctx.graph.nodeByImdbId(imdbId);
-        return row ? { title: node ? describe(node) : imdbId, rating: legacyBucket(row), score: row.score, season: row.season, episodesWatched: row.episodesWatched, source: row.source } : { title: node ? describe(node) : imdbId, rating: null };
+        const title = node ? describe(node) : imdbId;
+        if (!row) return { title, state: null, score: null };
+        return { title, state: row.rating, score: row.score, season: row.season, episodesWatched: row.episodesWatched, source: row.source };
       },
     }),
 
-    rate: tool({
-      description: "Record what the user just told you about a title: liked, meh (seen, not for them), unseen, or want (add to Later). Only when they actually said it. Use find_entities first if you only have a name.",
-      inputSchema: z.object({ imdbId: imdbTitle, rating: z.enum(["liked", "meh", "unseen", "want"]) }),
-      execute: async ({ imdbId, rating }) => {
-        const node = ctx.graph.nodeByImdbId(imdbId);
-        if (!node || node.kind !== "title") return { error: "unknown_title" };
-        // The tool still offers the old four words; the store wants a score.
-        await store.upsertWatched(userId, [{ titleImdbId: imdbId, ...fromLegacyBucket(rating), source: "chat" }]);
+    log: tool({
+      description:
+        "Log what the user just told you about a title: a score out of 10 (7 and up is a like, 6 and under is not), or a state with no score — want (add to Later), seen (watched, no opinion), unseen (never seen). Only when they actually said it. Pass imdbId when you have it, otherwise query with the name and it resolves against the graph.",
+      inputSchema: z.object({
+        imdbId: imdbTitle.optional(),
+        query: z.string().optional().describe("The title's name, when you do not have its id."),
+        score: z.number().int().min(1).max(10).optional().describe("Their rating out of 10. loved 9, liked 8, fine 6, didn't like 4, hated 2."),
+        state: z.enum(["want", "seen", "unseen"]).optional(),
+        note: z.string().optional().describe("What they said about it, in their words."),
+      }),
+      execute: async ({ imdbId, query, score, state, note }) => {
+        const node = imdbId ? ctx.graph.nodeByImdbId(imdbId) : (ctx.graph.searchByName(query ?? "", 1, "title")[0] ?? undefined);
+        if (!node || node.kind !== "title") return { error: "unknown_title", query: query ?? imdbId ?? null };
+        if (score != null && !isValidScore(score)) return { error: "score must be an integer 1-10" };
+        if (score == null && !state) return { error: "say a score out of 10 or a state (want, seen, unseen)" };
+        const write: { rating: WatchedRating; score: number | null } = score != null ? { rating: "rated", score } : { rating: state as WatchedRating, score: null };
+        await store.upsertWatched(userId, [{ titleImdbId: node.imdbId, ...write, source: "chat" }]);
         // Every write is evidence: the memory rewrite reads episodes, not rows.
+        const said = note?.trim() ? `: "${note.trim()}"` : "";
         await store.addEpisodes(userId, [
-          { kind: "chat", titleImdbId: imdbId, text: `${VERB[rating]} ${node.name}${node.year ? ` (${node.year})` : ""}` },
+          {
+            kind: "chat",
+            titleImdbId: node.imdbId,
+            text: write.rating === "rated" ? `rated ${node.name}${node.year ? ` (${node.year})` : ""} ${write.score}/10${said}` : `${VERB[write.rating]} ${node.name}${node.year ? ` (${node.year})` : ""}${said}`,
+          },
         ]);
-        return { ok: true, title: describe(node), rating };
+        return { ok: true, title: describe(node), state: write.rating, score: write.score };
       },
     }),
 

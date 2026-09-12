@@ -207,7 +207,7 @@ describe("taste routes: import — Netflix", () => {
 describe("taste routes: import — IMDb", () => {
   const body = () => json({ source: "imdb", file: readImport("imdb.csv") });
 
-  it("maps ids and thresholds, and reports the ids the graph lacks", async () => {
+  it("keeps the user's own 1-10 numbers, and reports the ids the graph lacks", async () => {
     const res = await handlers.importCsv(body());
     expect(res.status).toBe(200);
     const out = await res.json();
@@ -219,10 +219,10 @@ describe("taste routes: import — IMDb", () => {
 
     const rows = new Map((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r]));
     expect([...rows.values()].every((r) => r.source === "imdb")).toBe(true);
-    expect(rows.get("tt0000001")?.score).toBe(8);
-    expect(rows.get("tt0000003")?.score).toBe(8);
-    expect(rows.get("tt0000002")?.score).toBe(5);
-    expect(rows.get("tt0000004")?.score).toBe(5);
+    expect(rows.get("tt0000001")?.score).toBe(9);
+    expect(rows.get("tt0000003")?.score).toBe(7);
+    expect(rows.get("tt0000002")?.score).toBe(6);
+    expect(rows.get("tt0000004")?.score).toBe(4);
     expect(rows.get("tt0000001")?.watchedAt).toBe("2026-02-01T00:00:00.000Z");
   });
 
@@ -335,7 +335,7 @@ describe("taste routes: log", () => {
   });
 
   it("writes the watched row and one episode with the line verbatim", async () => {
-    const res = await handlers.log(json({ imdbId: "tt0000001", rating: "liked", text: 'the "reentry" bit still gets me' }));
+    const res = await handlers.log(json({ imdbId: "tt0000001", score: 8, text: 'the "reentry" bit still gets me' }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -347,25 +347,37 @@ describe("taste routes: log", () => {
     expect(episodes).toHaveLength(1);
     expect(episodes[0]).toMatchObject({ kind: "log", titleImdbId: "tt0000001" });
     // The user's own words, unparaphrased.
-    expect(episodes[0].text).toBe('liked Apollo 13 (1995): "the \"reentry\" bit still gets me"');
+    expect(episodes[0].text).toBe('rated Apollo 13 (1995) 8/10: "the \"reentry\" bit still gets me"');
 
     // The titles cache is warmed in the background, never on the way out.
     await Promise.all(scheduled);
     expect((await titles.getMany(["tt0000001"])).get("tt0000001")).toMatchObject({ name: "Apollo 13", year: 1995 });
   });
 
-  it("logs a season of a show, and the neutral `seen` bucket", async () => {
-    await handlers.log(json({ imdbId: "tt0000003", rating: "seen", season: 2 }));
+  it("logs a season of a show, and the neutral `seen` state", async () => {
+    await handlers.log(json({ imdbId: "tt0000003", state: "seen", season: 2 }));
     expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000003", rating: "seen", season: 2, source: "log" }]);
     expect((await store.listEpisodes("user-1"))[0].text).toBe("seen Late Night Show (2001)");
   });
 
-  it("refuses a bucket the log does not offer and a body that says nothing", async () => {
-    expect((await handlers.log(json({ imdbId: "tt0000001", rating: "unseen" }))).status).toBe(400);
-    expect((await handlers.log(json({ imdbId: "nm0000001", rating: "liked" }))).status).toBe(400);
+  it("refuses a score off the scale, a junk state, and a body that says nothing", async () => {
+    expect((await handlers.log(json({ imdbId: "tt0000001", score: 0 }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "tt0000001", score: 11 }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "tt0000001", score: 7.5 }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "tt0000001", state: "loved" }))).status).toBe(400);
+    expect((await handlers.log(json({ imdbId: "nm0000001", score: 8 }))).status).toBe(400);
     expect((await handlers.log(json({}))).status).toBe(400);
     expect(await store.listWatched("user-1")).toEqual([]);
     expect(await store.listEpisodes("user-1")).toEqual([]);
+  });
+
+  // TODO(v5-B): the bucket-word log field is replaced in Chunk B; until then
+  // the route still takes its four words and translates them.
+  it("still accepts the old bucket words from the current client", async () => {
+    await handlers.log(json({ imdbId: "tt0000001", rating: "liked" }));
+    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "rated", score: 8 }]);
+    await handlers.log(json({ imdbId: "tt0000002", rating: "want" }));
+    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000002")).toMatchObject({ rating: "want", score: null });
   });
 
   it("an import warms the titles cache for everything it matched", async () => {

@@ -179,7 +179,7 @@ export function runAgent(opts: RunAgentOptions) {
       if (opts.userId && opts.taste) {
         try {
           const t = await tasteSummary(opts.graph, opts.taste, opts.userId);
-          about = t ? formatTasteContext(t) : "This user is signed in but has not rated anything yet. If they ask about their taste, say so and point them to the deck or a Letterboxd import (they can also just tell you what they like and you call rate).";
+          about = t ? formatTasteContext(t) : "This user is signed in but has not rated anything yet. If they ask about their taste, say so and point them to the deck or a Letterboxd import (they can also just tell you what they like and you call log).";
         } catch (err) {
           console.warn("[agent] taste context failed:", err instanceof Error ? err.message : err);
         }
