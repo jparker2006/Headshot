@@ -117,19 +117,19 @@ export function eventFromPost(status: number, body: unknown): ImportEvent {
 export function importLine(state: ImportState): string {
   switch (state.kind) {
     case "idle":
-      return "your username, not the whole URL. we read the public pages.";
+      return "your username, not the whole URL. we read the public pages — the recent ones.";
     case "invalid":
       return "that is not a Letterboxd username.";
     case "importing":
       return "importing…";
     case "done":
-      return `done. ${state.imported} ${state.imported === 1 ? "title" : "titles"}.`;
+      return `done. ${state.imported} ${state.imported === 1 ? "title" : "titles"} from your diary, recent films and watchlist. the CSV brings everything.`;
     case "private":
       return "that profile is private. export the CSV instead.";
     case "not-found":
       return "no profile by that name.";
     case "failed":
-      return "letterboxd did not answer. try again in a minute.";
+      return "letterboxd would not let us read the pages. export the CSV instead.";
   }
 }
 

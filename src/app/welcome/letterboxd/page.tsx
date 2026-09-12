@@ -16,7 +16,7 @@ export default function WelcomeLetterboxd() {
   const started = state.kind === "importing" || state.kind === "done";
 
   return (
-    <WelcomeStep step="letterboxd" title="bring your letterboxd" line="type your username and your history appears. no export, no CSV.">
+    <WelcomeStep step="letterboxd" title="bring your letterboxd" line="type your username and your recent history appears. the CSV brings all of it, later, in settings.">
       <LetterboxdCrawl onState={setState} label="Import" />
       {started && (
         <div className="flex flex-wrap items-center gap-[16px]">

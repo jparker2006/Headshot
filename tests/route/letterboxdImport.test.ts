@@ -15,15 +15,18 @@ const DIR = path.join(__dirname, "..", "fixtures", "letterboxd");
 const read = (name: string) => fs.readFileSync(path.join(DIR, name), "utf8");
 
 const PAGES: Record<string, string | number> = {
-  "/jake/films/page/1/": read("films-1.html"),
-  "/jake/films/page/2/": read("films-2.html"),
-  "/jake/watchlist/page/1/": read("watchlist-1.html"),
+  "/jake/films/": read("films-1.html"),
+  // Letterboxd answers a server 403 on every films/diary page past the first.
+  "/jake/films/page/2/": 403,
+  "/jake/watchlist/": read("watchlist-1.html"),
   "/jake/watchlist/page/2/": read("watchlist-2.html"),
-  "/jake/films/diary/page/1/": read("diary-1.html"),
-  "/jake/films/diary/page/2/": read("diary-2.html"),
-  "/shy/films/page/1/": read("private.html"),
-  "/nobody/films/page/1/": 404,
-  "/broken/films/page/1/": 500,
+  "/jake/diary/": read("diary-1.html"),
+  "/jake/diary/page/2/": 403,
+  "/jake/rss/": read("rss.xml"),
+  "/shy/films/": read("private.html"),
+  "/nobody/films/": 404,
+  "/broken/films/": 500,
+  "/walled/films/": 403,
 };
 
 let store: MemoryTasteStore;
@@ -105,13 +108,26 @@ describe("POST /api/taste/import/letterboxd", () => {
     const byId = new Map(rows.map((r) => [r.titleImdbId, r]));
     expect(byId.get("tt0000001")).toMatchObject({ rating: "rated", score: 9, source: "letterboxd", watchedAt: "2024-07-30T00:00:00.000Z" });
     expect(byId.get("tt0000002")).toMatchObject({ rating: "rated", score: 6 });
-    expect(byId.get("tt0000004")).toMatchObject({ rating: "seen", score: null });
-    expect(byId.get("tt0000006")).toMatchObject({ rating: "want" });
+    // The RSS feed's rating and date, on a film the grid showed unrated.
+    expect(byId.get("tt0000004")).toMatchObject({ rating: "rated", score: 7 });
+    expect(byId.get("tt0000011")).toMatchObject({ rating: "want" });
 
     expect(await store.getCrawl("user-1", "letterboxd")).toMatchObject({ status: "done", imported: rows.length });
     // The import is evidence, and the memory is rewritten once the rows land.
-    expect((await store.listEpisodes("user-1"))[0].text).toContain("imported");
+    // The line admits what Letterboxd would not show us.
+    expect((await store.listEpisodes("user-1"))[0].text).toBe(
+      `imported ${rows.length} of ~2,577 titles from Letterboxd (@jake); letterboxd only shows the recent pages`,
+    );
     expect(rewrites).toEqual(["user-1"]);
+  });
+
+  it("fails with the CSV fallback when Letterboxd blocks the page itself", async () => {
+    const res = await handlers.startLetterboxdCrawl(post({ username: "walled" }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "letterboxd_unavailable" });
+    // Blocked is not private: the profile is fine, the door is not.
+    expect(await store.getCrawl("user-1", "letterboxd")).toMatchObject({ status: "failed", error: "blocked" });
+    expect(requests).toEqual(["https://letterboxd.com/walled/films/"]);
   });
 
   it("says a private profile is private, inside the request, and imports nothing", async () => {
@@ -122,7 +138,7 @@ describe("POST /api/taste/import/letterboxd", () => {
     expect(await store.listWatched("user-1")).toEqual([]);
     expect(await store.getCrawl("user-1", "letterboxd")).toMatchObject({ username: "shy", status: "private", imported: 0 });
     // One request: page one told us everything.
-    expect(requests).toEqual(["https://letterboxd.com/shy/films/page/1/"]);
+    expect(requests).toEqual(["https://letterboxd.com/shy/films/"]);
   });
 
   it("404s an unknown user", async () => {

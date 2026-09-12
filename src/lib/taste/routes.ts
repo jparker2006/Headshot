@@ -135,6 +135,18 @@ function isImportSource(value: unknown): value is ImportSource {
   return typeof value === "string" && value in IMPORT_SOURCES;
 }
 
+/**
+ * What the crawl writes into the log. The `crawls` row has nowhere to keep
+ * "this was not everything" without a migration, so the episode carries it:
+ * Letterboxd serves a server only the first page of films and the diary, and
+ * the line says so rather than letting 96 of 2,577 look like the whole life.
+ */
+export function crawlEpisodeText(username: string, imported: number, partial: boolean, total: number | null): string {
+  const of = total !== null && total > imported ? ` of ~${total.toLocaleString("en-US")}` : "";
+  const head = `imported ${imported}${of} titles from Letterboxd (@${username})`;
+  return partial ? `${head}; letterboxd only shows the recent pages` : head;
+}
+
 /** One correction from the worst-matches review screen. */
 export interface ImportFix {
   name: string;
@@ -454,6 +466,12 @@ export function createTasteHandlers(deps: TasteDeps) {
         await store.finishCrawl(who.userId, "letterboxd", { username, status: "failed", error: message });
         return Response.json({ error: "letterboxd_unavailable" }, { status: 502 });
       }
+      if ("blocked" in probe) {
+        // Letterboxd refused a server, which is not the user's fault and not
+        // something waiting fixes: fail fast and offer the CSV.
+        await store.finishCrawl(who.userId, "letterboxd", { username, status: "failed", error: "blocked" });
+        return Response.json({ error: "letterboxd_unavailable" }, { status: 502 });
+      }
       if ("private" in probe) {
         await store.finishCrawl(who.userId, "letterboxd", { username, status: "private" });
         return Response.json({ private: true, username });
@@ -475,12 +493,16 @@ export function createTasteHandlers(deps: TasteDeps) {
             await store.finishCrawl(who.userId, "letterboxd", { username, status: "not_found" });
             return;
           }
+          if ("blocked" in result) {
+            await store.finishCrawl(who.userId, "letterboxd", { username, status: "failed", error: "blocked" });
+            return;
+          }
           const graph = await deps.graph();
           const { inputs } = crawlToInputs(graph, result.rows);
           await store.replaceImport(who.userId, "letterboxd", inputs);
           warmTitles(inputs.map((r) => r.titleImdbId), graph);
           await store.addEpisodes(who.userId, [
-            { kind: "log", titleImdbId: null, text: `imported ${inputs.length} titles from Letterboxd (@${username})` },
+            { kind: "log", titleImdbId: null, text: crawlEpisodeText(username, inputs.length, result.partial, result.total) },
           ]);
           await store.finishCrawl(who.userId, "letterboxd", { username, status: "done", imported: inputs.length });
           // New evidence, so the profile is rewritten — after the rows land,

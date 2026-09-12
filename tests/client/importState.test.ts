@@ -64,13 +64,13 @@ describe("the import state machine", () => {
     ]);
     expect(state).toEqual({ kind: "done", imported: 412 });
     expect(shouldPoll(state)).toBe(false);
-    expect(importLine(state)).toBe("done. 412 titles.");
+    expect(importLine(state)).toBe("done. 412 titles from your diary, recent films and watchlist. the CSV brings everything.");
   });
 
   it("answers a cached crawl with the count and no poll", () => {
     const state = run([{ type: "submit", username: "jake" }, { type: "cached", imported: 1 }]);
     expect(state).toEqual({ kind: "done", imported: 1 });
-    expect(importLine(state)).toBe("done. 1 title.");
+    expect(importLine(state)).toBe("done. 1 title from your diary, recent films and watchlist. the CSV brings everything.");
   });
 
   it("offers the CSV exactly when the crawl cannot do the job", () => {
@@ -99,8 +99,15 @@ describe("the import state machine", () => {
     });
   });
 
-  it("reports a failure without an apology or an exclamation", () => {
+  it("reports a failure without an apology or an exclamation, and sends you to the CSV", () => {
     const line = importLine({ kind: "failed" });
     expect(line).not.toMatch(/!|sorry/i);
+    // Letterboxd blocks a server on the paginated pages; the CSV is the way.
+    expect(line).toBe("letterboxd would not let us read the pages. export the CSV instead.");
+    expect(showCsvFallback({ kind: "failed" })).toBe(true);
+  });
+
+  it("says up front that the crawl only reaches the recent pages", () => {
+    expect(importLine({ kind: "idle" })).toContain("the recent ones");
   });
 });
