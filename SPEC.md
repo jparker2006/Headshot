@@ -529,3 +529,26 @@ Decided 2026-09-12 from Jake's first real chats after seeding his account. No gr
 ## Testing decisions (v5.1)
 
 Score seam: migration keeps old rows, 9.7 round-trips through both stores and the log route; `isLiked(6.9)` false. Log tool: kind preference, ambiguity, unscored → seen, season pointer. Tonight tool: kind/genre filters and unseen default on the fixture. Opener: provider-name cleaning. Client: composer rules (Enter/Shift+Enter, growth cap) as pure helpers; bubble collapsing of empty parts.
+
+# v5.2 — Memory from the log (items 1 and 3)
+
+Decided 2026-09-12 after walking through the architecture with Jake. Two changes to the memory pipeline so the prose is always consistent with the log and nothing said about a title gets lost.
+
+## Problem
+
+The memory prose is rewritten forward from episodes only. Delete or re-rate a row and the prose keeps the old claim until a later rewrite happens to drop it (The Wire stayed in the prose after its row was removed). Remarks made in chat go through a separate extractor model call that misses things ("Chernobyl was my favourite of the three" never became a note).
+
+## Decisions
+
+- **Prose is rebuilt from rows first.** `rewriteMemory` takes as its primary input a compact rendering of the current `watched` rows (title, kind, year, score or state, season, note, source, date), newest first, capped at 200 rows plus the full set of rows with notes, and second the episodes since the last rewrite (chat statements and swipe sessions only — logging episodes are redundant with rows). The prompt says: rows are the truth; a title not in the rows must not appear in the memory; a title's score in the memory is the row's score. Rewrite is triggered by every log write (chat tool, drawer, log field, imports, catch-up, deletes), with the existing 20-second guard. A rewrite with unchanged rows and no new episodes is a no-op.
+- **Notes come through the log tool, not an extractor.** `log` gains `note` as the one place a remark lands; the system prompt says every remark about a title goes on that title's `note` in the user's words, and a remark that applies to several titles goes on each. `extractEpisodes` and the per-turn extraction model call are deleted; a chat turn that logs nothing adds no episode. "I love slow burns" style statements with no title are written by the model through a new `remember` tool: `{ text }` → one `chat` episode in the user's words (the model is told to use it only for taste statements, never for questions).
+- **Row deletes exist.** `DELETE /api/taste/log { imdbId }` removes the row, its logging episodes for that title, and schedules a rewrite. The drawer gets a quiet "remove from log" link. `have_i_seen` and the log table reflect it immediately.
+- **The rewrite reports what it dropped.** `rewriteMemory` returns `{ markdown, dropped: string[] }` (titles that were in the old prose but not in the rows); logged, and shown once on You as "no longer in your log: X" if non-empty — a `t-meta` line under the memory header, dismissable.
+
+## Testing
+
+Rows seam: a rewrite with rows A,B and prose mentioning C produces prose without C and `dropped: ["C"]` (scripted model returns what it is given; the test asserts the prompt content and the drop detection which is deterministic string matching on bold names). A re-rated row's new score is in the prompt. Note seam: `log` with `note` stores the note and writes one episode carrying it; no extraction model call happens in a turn (the scripted model records zero side calls). `remember` writes one episode. Delete seam: route removes the row and its episodes, schedules rewrite, 401 signed out. Existing memory and agent tests updated.
+
+## Out of scope
+
+Semantic recall (embeddings over episodes), title embeddings for taste.
