@@ -65,7 +65,7 @@ describe("tonight on demand (v5)", () => {
       "tonight: **Forrest Gump** on max, because your 3rd Tom Hanks, after Heat and Apollo 13.",
     );
     // No providers: we say so rather than inventing one.
-    expect(openerLine({ ...pick, providerNames: [] } as PickView)).toContain("on nothing you pay for, because");
+    expect(openerLine({ ...pick, providerNames: [] } as PickView)).toMatch(/^tonight: \*\*[^*]+\*\*, because/);
   });
 
   it("GET /api/tonight/opener answers with the line and the pick, and stores nothing", async () => {

@@ -431,6 +431,17 @@ body {
   background: var(--row-hover);
 }
 
+/* The controls a session row hides until you want them. `display: none` rather
+   than a fade, so the title gets the whole 167px of the row instead of being
+   squeezed by two invisible buttons. A touch screen never hovers, so there they
+   are simply always there — otherwise rename and delete are unreachable. */
+.session-row .row-reveal { display: none; }
+.session-row:hover .row-reveal,
+.session-row:focus-within .row-reveal { display: inline-flex; }
+@media (hover: none) {
+  .session-row .row-reveal { display: inline-flex; }
+}
+
 /* One cell of the phone's bottom bar. */
 .tab-cell {
   display: flex;

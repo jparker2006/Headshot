@@ -35,9 +35,15 @@ interface Props {
   onSelectThread: (id: string) => void;
   onRenameThread: (id: string, title: string) => void;
   onDeleteThread: (id: string) => void;
+  /**
+   * `sheet` is the phone's `chats` panel. The three sections are the bottom
+   * tab bar there and the wordmark is in the top bar, so the sheet carries
+   * only what the phone board asks it to: the chats.
+   */
+  variant?: "rail" | "sheet";
 }
 
-export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, onSelectThread, onRenameThread, onDeleteThread }: Props) {
+export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, onSelectThread, onRenameThread, onDeleteThread, variant = "rail" }: Props) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const { user, loading } = useSessionUser();
@@ -46,33 +52,41 @@ export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, on
   const nav = navItems(surface, signedIn);
   const account = accountModel(user, loading);
   const signIn = () => requireSignIn(typeof window === "undefined" ? "/" : window.location.pathname);
+  const sheet = variant === "sheet";
+  // The sheet is opened from `chats`, so it lists chats whatever the shell
+  // thinks the surface is; the rail shows them under Ask and only there.
+  const showSessions = sheet ? signedIn : sessionsShown(surface, signedIn);
 
   return (
     // 232px is the rail; as a phone sheet it takes the width it is given.
     <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-line bg-bg px-[12px] pb-[18px] pt-[22px] md:w-[232px]" aria-label="Sidebar">
-      <button
-        onClick={() => onNavigate(signedIn ? "log" : "ask")}
-        className="mb-[22px] px-[12px] text-left text-[14px] font-bold leading-none tracking-[-0.02em] text-ink"
-      >
-        headshot
-      </button>
-
-      <nav className="flex flex-col gap-[2px]" aria-label="Sections">
-        {nav.map((n) => (
-          <button
-            key={n.key}
-            onClick={() => (n.key === "sign-in" ? signIn() : onNavigate(n.key as Section))}
-            className={`nav-row text-left ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"}`}
-          >
-            <SectionIcon name={n.key} />
-            <span className="t-ui truncate">{n.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      {sessionsShown(surface, signedIn) && (
+      {!sheet && (
         <>
-          <button onClick={onNewChat} className="session-row mt-[6px] gap-[9px] text-ink">
+          <button
+            onClick={() => onNavigate(signedIn ? "log" : "ask")}
+            className="mb-[22px] px-[12px] text-left text-[14px] font-bold leading-none tracking-[-0.02em] text-ink"
+          >
+            headshot
+          </button>
+
+          <nav className="flex flex-col gap-[2px]" aria-label="Sections">
+            {nav.map((n) => (
+              <button
+                key={n.key}
+                onClick={() => (n.key === "sign-in" ? signIn() : onNavigate(n.key as Section))}
+                className={`nav-row text-left ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"}`}
+              >
+                <SectionIcon name={n.key} />
+                <span className="t-ui truncate">{n.label}</span>
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
+
+      {showSessions && (
+        <>
+          <button onClick={onNewChat} className={`session-row gap-[9px] text-ink ${sheet ? "" : "mt-[6px]"}`}>
             <PlusIcon />
             <span className="truncate text-[13px] leading-none">new chat</span>
           </button>
@@ -101,7 +115,9 @@ export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, on
         </>
       )}
 
-      <div className="relative mt-auto border-t border-line pt-[12px]">
+      {/* Signed out the rail is `ask` and `sign in` and nothing else — a second
+          way in at the bottom would be the same control twice. */}
+      <div className={`relative mt-auto border-t border-line pt-[12px] ${account.kind === "signed-out" ? "hidden" : ""}`}>
         {menu && signedIn && (
           <div className="panel absolute bottom-full left-0 mb-[10px] w-[188px] p-[8px]" role="menu">
             <Link href="/settings" className="rail-row t-ui text-ink-dim transition-colors duration-[120ms] hover:text-ink" onClick={() => setMenu(false)}>
@@ -130,8 +146,14 @@ export function Sidebar({ surface, sessions, activeId, onNavigate, onNewChat, on
 }
 
 /**
- * One session: 28px, one line, truncating. Hover reveals `rename` and `×`;
- * a double click renames in place, which is what everyone already tries.
+ * One session: 28px, one line, truncating. Hover reveals `rename` and `×`
+ * (`.row-reveal` takes them out of flow until then, so the title gets the whole
+ * row, and a touch screen — which never hovers — simply always has them); a
+ * double click renames in place, which is what everyone already tries.
+ *
+ * Deleting a chat cannot be undone, so it asks once: the `×` becomes `delete?`
+ * at `--danger` and only the second click commits (DESIGN.md → Color, the one
+ * place the danger ink is allowed).
  */
 function SessionRow({
   session,
@@ -151,6 +173,7 @@ function SessionRow({
   onDelete: () => void;
 }) {
   const title = sessionTitle(session.title);
+  const [confirm, setConfirm] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (editing) ref.current?.select();
@@ -175,7 +198,7 @@ function SessionRow({
   }
 
   return (
-    <div className={`session-row group/row ${active ? "is-open" : ""}`}>
+    <div className={`session-row ${active ? "is-open" : ""}`} onMouseLeave={() => setConfirm(false)}>
       <button
         onClick={onOpen}
         onDoubleClick={onEdit}
@@ -184,20 +207,16 @@ function SessionRow({
       >
         {title}
       </button>
-      <button
-        onClick={onEdit}
-        className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
-        aria-label={`Rename ${title}`}
-      >
+      <button onClick={onEdit} className="row-reveal t-meta shrink-0 hover:text-ink" aria-label={`Rename ${title}`}>
         rename
       </button>
       <button
-        onClick={onDelete}
-        className="t-meta shrink-0 opacity-0 transition-opacity duration-[120ms] hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
-        aria-label={`Delete ${title}`}
-        title="Delete"
+        onClick={() => (confirm ? onDelete() : setConfirm(true))}
+        onBlur={() => setConfirm(false)}
+        className={`row-reveal t-meta -mx-[4px] shrink-0 justify-center px-[4px] ${confirm ? "text-danger" : "hover:text-ink"}`}
+        aria-label={confirm ? `Delete ${title} for good` : `Delete ${title}`}
       >
-        ×
+        {confirm ? "delete?" : "×"}
       </button>
     </div>
   );

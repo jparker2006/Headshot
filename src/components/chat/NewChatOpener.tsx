@@ -74,7 +74,7 @@ export function NewChatOpener({ signedIn, onSelectNode, onLookup }: Props) {
           )}
         </button>
         <span className="t-meta min-w-0 truncate sm:order-3 sm:whitespace-nowrap">{meta}</span>
-        {play && (
+        {play ? (
           <a
             href={play.url}
             target="_blank"
@@ -83,6 +83,16 @@ export function NewChatOpener({ signedIn, onSelectNode, onLookup }: Props) {
           >
             {play.label}
           </a>
+        ) : (
+          // Nowhere to send you: the row still has to do something, so it opens
+          // the title. Quiet, because the accent only ever means Play.
+          <button
+            type="button"
+            onClick={() => onSelectNode(pick.imdbId)}
+            className="btn btn-quiet col-span-2 w-full justify-center whitespace-nowrap sm:order-2 sm:w-auto"
+          >
+            Where to watch
+          </button>
         )}
       </div>
     </div>

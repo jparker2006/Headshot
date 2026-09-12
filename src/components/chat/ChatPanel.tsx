@@ -206,7 +206,9 @@ export function ChatPanel({ threadId, store, prefill, onSelectNode, signedIn, in
         </div>
       </div>
 
-      <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))] md:px-[34px] md:pb-[32px]">
+      {/* The tab bar sits under this on a phone and it carries
+          `env(safe-area-inset-bottom)`; adding it here too would pad twice. */}
+      <div className="px-4 pb-[16px] md:px-[34px] md:pb-[32px]">
         <form
           className="composer-lg mx-auto w-full max-w-[720px]"
           onSubmit={(e) => {
@@ -367,12 +369,29 @@ function ShareLink({ href }: { href: string }) {
   );
 }
 
+/**
+ * Chips are written the way every other label on board C is: sentence case,
+ * lowercase-leading (`what else is like Heat?`). The model capitalises its
+ * suggestions, so the opening word is lowered — and only when it is one of the
+ * words a question starts with, so a chip that opens on a name keeps it.
+ */
+const OPENERS = new Set([
+  "who", "what", "which", "why", "how", "when", "where", "did", "do", "does",
+  "is", "are", "was", "were", "can", "should", "would", "will", "have", "has",
+  "log", "show", "tell", "find", "play", "ask",
+]);
+
+export function chipCase(text: string): string {
+  const first = text.split(/\s+/, 1)[0] ?? "";
+  return OPENERS.has(first.toLowerCase()) ? text[0].toLowerCase() + text.slice(1) : text;
+}
+
 /** Model-suggested follow-ups when present; deterministic ones from the path otherwise. */
 function followUps(messages: HeadshotUIMessage[]): string[] {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
   if (!last) return [];
   const suggested = last.parts.find((p) => p.type === "data-followups");
-  if (suggested && suggested.type === "data-followups" && suggested.data.questions.length) return suggested.data.questions;
+  if (suggested && suggested.type === "data-followups" && suggested.data.questions.length) return suggested.data.questions.map(chipCase);
   const paths = last.parts.find((p) => p.type === "data-paths");
   if (!paths || paths.type !== "data-paths") return [];
   const p = paths.data.full?.paths[0];
@@ -380,10 +399,10 @@ function followUps(messages: HeadshotUIMessage[]): string[] {
   const chips: string[] = [];
   const titles = p.names.filter((_, i) => p.imdbIds[i].startsWith("tt"));
   const people = p.names.filter((_, i) => p.imdbIds[i].startsWith("nm"));
-  if (titles[0]) chips.push(`Who else was in ${titles[0]}?`);
-  if (people.length >= 2) chips.push(`What else have ${people[0]} and ${people[people.length - 1]} done?`);
+  if (titles[0]) chips.push(`who else was in ${titles[0]}?`);
+  if (people.length >= 2) chips.push(`what else have ${people[0]} and ${people[people.length - 1]} done?`);
   // A middle person on the path is a natural next hop: "who is this?"
   const middle = people.slice(1, -1)[0];
-  if (middle) chips.push(`What is ${middle} best known for?`);
+  if (middle) chips.push(`what is ${middle} best known for?`);
   return chips.slice(0, 3);
 }

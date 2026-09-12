@@ -80,7 +80,7 @@ export function graphTools(ctx: AgentContext) {
         const autoTier: "strong" | "full" = r.strong ? "strong" : "full";
         const autoSet = autoTier === "strong" ? r.strong : r.full;
         if (autoSet?.paths[0]) {
-          emitChosen(autoTier, 0, autoSet.paths[0], "Auto-selected: shortest route through real collaborations.");
+          emitChosen(autoTier, 0, autoSet.paths[0], "the shortest route through real collaborations");
           return { ...found, autoHighlighted: { tier: autoTier, index: 0 }, hint: "A path is already lit. Call highlight_path only if a different tied path is more interesting." };
         }
         return found;

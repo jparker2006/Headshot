@@ -183,26 +183,33 @@ export function HeadshotApp() {
     [signedIn, thread, server],
   );
 
-  const sidebar = (
-    <Sidebar
-      surface={surface}
-      sessions={signedIn ? server.threads : []}
-      activeId={opened?.id ?? null}
-      onNavigate={goTo}
-      onNewChat={() => newChat()}
-      onSelectThread={openThread}
-      onRenameThread={(id, title) => void server.rename(id, title)}
-      onDeleteThread={removeThread}
-    />
-  );
+  // The open chat is whichever thread the column is showing — a fresh one has
+  // no row yet, and the row it gets the moment it is asked something is the
+  // one the rail must mark. `opened` alone left every row dim.
+  const railProps = {
+    surface,
+    sessions: signedIn ? server.threads : [],
+    activeId: thread.id,
+    onNavigate: goTo,
+    onNewChat: () => newChat(),
+    onSelectThread: openThread,
+    onRenameThread: (id: string, title: string) => void server.rename(id, title),
+    onDeleteThread: removeThread,
+  };
+  const sidebar = <Sidebar {...railProps} />;
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-bg">
       <div className="hidden h-full md:block">{sidebar}</div>
+      {/* The phone's `chats` sheet. The three sections are the tab bar and the
+          wordmark is in the top bar, so the sheet is the chats and nothing
+          else — repeating the nav here would be the same control twice. */}
       {mobileNav && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="h-full">{sidebar}</div>
-          <button className="flex-1 bg-black/60" aria-label="Close menu" onClick={() => setMobileNav(false)} />
+          <div className="h-full">
+            <Sidebar {...railProps} variant="sheet" />
+          </div>
+          <button className="flex-1 bg-black/60" aria-label="Close chats" onClick={() => setMobileNav(false)} />
         </div>
       )}
 
@@ -291,15 +298,17 @@ function TopBar({
 }) {
   return (
     <div className="flex h-[44px] shrink-0 items-center gap-[10px] border-b border-line px-4 md:hidden">
-      <button onClick={() => onNavigate(signedIn ? "log" : "ask")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+      <button onClick={() => onNavigate(signedIn ? "log" : "ask")} className="flex h-[44px] items-center text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
         headshot
       </button>
       {surface === "ask" && signedIn && (
         <>
-          <button onClick={onChats} className="ml-auto text-[13px] leading-none text-ink-faint">
+          {/* Both controls keep the board's position and take a 44px hit area
+              around it — a 13px word and a 16px glyph are not a touch target. */}
+          <button onClick={onChats} className="ml-auto -mr-[6px] flex h-[44px] items-center px-[6px] text-[13px] leading-none text-ink-faint">
             chats
           </button>
-          <button onClick={onNewChat} aria-label="New chat" className="text-ink">
+          <button onClick={onNewChat} aria-label="New chat" className="-mr-[14px] flex h-[44px] w-[44px] items-center justify-center text-ink">
             <PlusIcon size={16} />
           </button>
         </>

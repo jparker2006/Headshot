@@ -50,11 +50,14 @@ const unauthorized = () => Response.json({ error: "sign_in_required" }, { status
  * person's name ("Tom Hanks, who you liked in Heat"), which stays as written.
  */
 export function openerLine(pick: PickView): string {
-  const service = pick.providerNames[0]?.toLowerCase() ?? "nothing you pay for";
+  // No service of theirs carries it: the line drops the "on …" clause rather
+  // than naming the gap; the Play row under it says where to rent.
+  const first = pick.providerNames[0]?.toLowerCase();
+  const on = first ? ` on ${first}` : "";
   const raw = pick.reason.text.trim().replace(/\.+$/, "");
   const opensWithAName = /^\p{Lu}[\p{L}'’.-]*\s\p{Lu}/u.test(raw);
   const reason = opensWithAName ? raw : raw.charAt(0).toLowerCase() + raw.slice(1);
-  return `tonight: **${pick.name}** on ${service}, because ${reason}.`;
+  return `tonight: **${pick.name}**${on}, because ${reason}.`;
 }
 
 function parseFilters(body: Record<string, unknown>): Filters {
