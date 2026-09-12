@@ -445,3 +445,61 @@ A) titles cache, log field, memory tables + rewrite job + recall, You page with 
 ## Out of scope (v4)
 
 Crawling, streaming-account logins (future), server-side conversation storage (revisit with real users), social/multiplayer, YouTube history, episode-level logging, a hosted agent harness, pricing.
+
+# v5 — Simpler (the log that can talk)
+
+Grilled 2026-09-12; record in `grilling/2026-09-12-v5-simpler.md`. Supersedes v4's surfaces and nav; v4's memory layers, titles cache, imports, engine and design tokens (board C) stay.
+
+## The problem and the solution
+
+v4 built the right things and arranged them confusingly: one prompt that logs or asks, a You page that is also the dashboard, the deck that is also onboarding, four rating words nobody thinks in. v5 says what the website is in one sentence — **a log of everything you've watched that can talk** — and gives it exactly three places: Log (the product), Ask (the interface to it), You (the receipt). Everything else is a setting. Ratings become 1–10. Chat looks like a chat.
+
+## Who it's for
+
+Film buffs with a Letterboxd account, starting with the owner and friends. The success check is a friend going from sign-in to a tonight pick in under two minutes with no help.
+
+## User stories (v5)
+
+71. As a viewer, I want three places, Log, Ask and You, and nothing else in the sidebar, so that I always know where I am.
+72. As a viewer, I want to rate things 1–10 like IMDb, so that rating is one tap and means what I think it means.
+73. As a viewer, I want Ask to look and behave like ChatGPT or Claude, with my past chats listed under it, so that talking to it feels normal.
+74. As a viewer, I want my chats to survive a new browser, so that history is real.
+75. As a viewer, I want to type my Letterboxd username and have my history appear, so that I never export a CSV.
+76. As a viewer, I want a catch-up deck of things it thinks I've probably seen, ten at a time, rated 1–10 or "not seen", with my profile visibly changing after each ten, so that recreating my history is quick and a little fun.
+77. As a viewer, I want a new chat to open with tonight's pick and why, with Play, so that the 9pm answer is one click away without a dashboard.
+78. As a viewer, I want my profile prose at the top of You, editable, so that the memory is visible and mine.
+79. As a viewer, I want services and imports in Settings, so that the You page is about me and not about plumbing.
+80. As the owner, I want the unused features deleted from the code, not hidden, so that the product is as simple as the screens say it is.
+
+## Implementation decisions (v5)
+
+- **Sidebar (Glox organisation, not its design).** 232px; wordmark; sections Log / Ask / You with icons; when Ask is active, "new chat" and the session list under it; footer is the account row opening a menu with Settings and Sign out. Signed out: Ask and Sign in only. Phone: bottom tab bar with the three sections; sessions inside Ask. Board C tokens and type remain; `DESIGN.md` gains a Sidebar (v5), Ask and Log section from the boards.
+- **Ask.** Centered 720px column, message rows (user right-aligned, assistant full width), a big composer with Enter-to-send, follow-up chips, receipts and face grid inside assistant rows. A new chat opens with one assistant line computed on demand: "tonight: **X** on Max, because …" plus a Play link (the existing engine + candidates, no cron, no stored rows). Threads are server-side for signed-in users: tables `threads` (id, user id, title, created at, updated at) and `messages` (id, thread id, role, parts jsonb, created at); the route saves both sides after each turn; the sidebar lists the user's threads by updated at. Signed-out trivia threads stay in localStorage and are not listed. CLAUDE.md's "conversations are never stored" becomes "signed-in conversations are stored per user; signed-out ones are not".
+- **Tools.** `log` (search + rate + note), `my_profile` (memory + facts), `recall`, `have_i_seen`, `tonight` (on-demand pick with runtime/energy/service filters), and the v2 trivia tools (path, costars, known-for, identify, find_by_constraints). `rate`, `mark_progress`, `tonight_picks`, `show_on_brain` are removed.
+- **Ratings.** `watched.rating` becomes a state: `rated | want | seen | unseen`; new `score` integer 1–10 nullable (set only when `rated`). "Liked" everywhere (engine, tasteFacts, memory facts, numbers, deck source) means `score >= 7`; "meh" means `score <= 6`. Migration 0005: liked → rated/8, meh → rated/5, want/seen/unseen unchanged. Imports: IMDb keeps its number; Letterboxd stars ×2 (half stars round up); Netflix stays `seen`. Chat statements map: loved/favorite → 9, liked → 8, fine/okay → 6, didn't like → 4, hated → 2.
+- **Log page.** Top: a search field ("what did you watch?") that resolves against the graph, then a row of ten (keys 1–0) and a one-line note; below: the log table (poster mark, title, year, kind, score, date, runtime) filterable by state/score/kind and text, newest first. "Catch up" button opens the deck inline. Later is the table filtered to `want`.
+- **Catch-up deck.** Source: unrated neighbours of the user's ≥8 people ranked by votes (famous things near favourites), then strongest-decade fill; ten cards per round; each card: "seen it" → 1–10 row, or "not seen" (unseen); undo; after each ten: one episode, one awaited rewrite, the memory diff, then "ten more" or "done". Never shown as onboarding; onboarding links to it.
+- **You page.** Memory prose at top (MemoryProse, Edit → pinned), "rewritten Nm ago"; one numbers sentence; people row and decades row (from `/api/taste/numbers`, trimmed to what You shows); the Later list (want rows). Nothing else.
+- **Settings page** `/settings`: account (email, sign out, delete account via `deleteUser`), services checklist, imports (Letterboxd username → crawl, or CSV; Netflix CSV; IMDb CSV), pinned notes editor.
+- **Letterboxd crawl.** `src/lib/taste/letterboxdCrawl.ts`: fetch `https://letterboxd.com/<user>/films/page/<n>/` (poster grid; each item carries the film slug, and the rating class when rated), `/watchlist/page/<n>/`, `/films/diary/page/<n>/` (dates); sequential requests, 300ms apart, real User-Agent, per-user cache 24h in a small `crawls` table or the titles cache; matched by slug-derived title + year through the existing matcher; written via `replaceImport(userId, "letterboxd", rows)`; a private profile (403/empty grid) returns `{ private: true }` and the UI offers the CSV path. Runs in the background from onboarding (`waitUntil`), with the Log page showing "importing from Letterboxd…" until done.
+- **Onboarding.** Sign in → services → Letterboxd username (or skip) → catch-up (ten cards; or skip) → Log. Steps are pages under `/welcome/*`, not inline in You. Under a minute.
+- **Delete list (in code, with tests).** `/api/cron/tonight` + the `vercel.json` schedule + `runNightly`; the `tonight` table and store methods + migration dropping it; `TonightPanel`, `LaterPanel`, `SwipeSession`/`Onboarding`-inside-You, `TastePanel` remnants, `tasteMap` + `/api/taste/map`, `/brain` + `BrainExplorer` + the canvas components not used by the drawer's chain graphic, the bucket-word components, the per-month/genre chart rows in Numbers (keep the pure `computeNumbers` for the You rows and the log table), `mark_progress`/`rate`/`tonight_picks`/`show_on_brain` tools.
+- **Design process.** `design/research-v5.md` (ChatGPT, Claude, Grok, Cursor chat surfaces; the Glox sidebar organisation) then two boards on the canvas (the shell with the Ask session list; the Log page) for Jake's approval before code. Tokens unchanged.
+
+## Testing decisions (v5)
+
+1. Ratings seam: migration maps buckets to scores; engine/tasteFacts/numbers/deck source use `score >= 7`; imports produce the right scores; chat statements map to scores.
+2. Threads seam: signed-in turns persist thread + messages; sidebar list order; signed-out persists nothing server-side.
+3. Crawl seam: fixture HTML for films/watchlist/diary pages parses slugs, ratings and dates; pagination stops on an empty page; private profile detected; polite pacing honoured (fake clock).
+4. Tonight-on-demand seam: a new chat's opener comes from the engine with a real graph reason and a Play link; no cron, no stored rows.
+5. Deck seam: probably-seen ranking, ten per round, one rewrite per round, diff.
+6. Delete seam: no route, table or component from the delete list exists; tests referencing them are gone; typecheck passes.
+7. Success check, manual: a friend with Letterboxd gets from sign-in to a tonight pick in under two minutes.
+
+## Build order
+
+A) research note + two boards (stop for Jake), then migration 0005 + score model through engine, imports, memory facts, numbers, deck source, tests. B) Log page (search, 1–10, note, table, catch-up) + drawer with the 1–10 row + delete of bucket words. C) Ask: sidebar with sessions, server-side threads, tonight opener, trimmed tool set, CLAUDE.md rule update. D) You + Settings + `/welcome` onboarding with the crawl + the delete list executed. Each chunk verified on production in the browser pane signed in as Jake.
+
+## Out of scope (v5)
+
+Streaming-account logins, social, YouTube history, episode-level logging, hosted agent harness, pricing, a taste map, a nightly job.
