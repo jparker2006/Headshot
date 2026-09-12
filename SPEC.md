@@ -552,3 +552,35 @@ Rows seam: a rewrite with rows A,B and prose mentioning C produces prose without
 ## Out of scope
 
 Semantic recall (embeddings over episodes), title embeddings for taste.
+
+# v5.3 — Memory you can read (claims with evidence)
+
+Grilled 2026-09-12, one round; record in `grilling/2026-09-12-memory-display.md`. Jake: "make memory display MUCH better, I don't understand it now."
+
+## Problem
+
+The memory is an essay with a bold name and a score in every sentence, laid out in two columns, with no reading order and no way to see where a line came from.
+
+## User stories (v5.3)
+
+86. As a viewer, I want one sentence that says what I like, so that I get myself in five seconds.
+87. As a viewer, I want each belief backed by the titles that prove it, with posters and scores, so that I can see why it thinks that and open any of them.
+88. As a viewer, I want to say "not me" to a claim and have it stay gone.
+89. As a viewer, I want what I am watching now and my Later list to come from my log, not from the model.
+90. As a viewer, I want the Log field to obviously be for logging, and rating a new title to look like a proper step.
+
+## Implementation decisions (v5.3)
+
+- **Storage.** `memory` gains `claims jsonb` (`{ sentence: string, claims: Claim[], rejected: { text: string }[] }`, `Claim = { id, text, evidence: string[], polarity: "love" | "avoid" }`); migration 0010, additive. `markdown` stays for one release as the fallback and for `my_profile`, then goes.
+- **Rewrite.** `rewriteMemory` asks the model for JSON (the rows rendering and chat/swipe episodes as today, plus the current claims and the rejected list). Code validates: every evidence id is a current row (others dropped; a claim with no evidence left is dropped), ≤8 claims, ≤2 `avoid`, text ≤12 words, sentence ≤20 words, no bold markers, rejected texts never reappear (case-insensitive substring on the rejected text). `dropped` keeps reporting titles that fell out. The prose block for the system prompt is rendered from the claims by code ("Crime with a long fuse: **Breaking Bad** 9.9, **The Sopranos** 10.") so the agent's context stays a short markdown.
+- **You page.** One column, in order: the sentence (`.t-prose` at 17px, no bold, no numbers); claims — each a row: text on the left (love at `--ink`, avoid at `--ink-dim` with a mono `avoid` tag), then three to five `.poster-mark`s with the score in mono under each (faces for a person claim, which is a claim whose evidence are `nm` ids: people in the log's people list), a `.t-link` "not me" revealed on hover / always on touch; "right now" — series with a season pointer from rows (poster, title, `s2 · 3 eps`) then the Later list; "in your words" — pinned lines and the newest six per-title notes as quotes with the title under each, "all notes" → Log filtered to noted rows. The `dropped` line stays. No two-column layout anywhere.
+- **"Not me".** `PUT /api/taste/memory { rejectClaim: id }` moves the claim to `rejected` and schedules a rewrite; the row disappears immediately.
+- **Log field.** Label above the field: "log something you just watched", placeholder "The title, then a score"; after a title is picked the rating step is a block: poster-mark-md, title, year · kind · runtime, the row of ten with the decimal field, the note field, and `log it`; the pick collapses back into the field afterwards with a `.t-meta` "logged Heat 9 · undo" line for ten seconds.
+
+## Testing decisions (v5.3)
+
+Rewrite seam: a scripted model returning claims with a stale evidence id → id dropped; a claim with only stale evidence → claim dropped; rejected text never reappears; caps enforced; prose rendered from claims is deterministic. Route: rejectClaim moves and schedules. Client: claim row helpers (evidence order by score desc, tag, truncation), the log-field state machine (idle → picked → logged → idle with undo).
+
+## Out of scope
+
+Semantic recall, title embeddings, Google sign-in.
