@@ -17,7 +17,7 @@ import { isFigureWord, ratingWord } from "./scoreRules";
 
 /** The board's seven columns; on a phone every row folds into two lines. */
 const COLS =
-  "grid-cols-[26px_minmax(0,1fr)_40px] gap-[12px] sm:grid-cols-[26px_minmax(0,340px)_48px_58px_48px_76px_minmax(0,1fr)] sm:gap-[16px]";
+  "grid-cols-[26px_minmax(0,1fr)_40px] gap-[12px] @2xl:grid-cols-[26px_minmax(0,340px)_48px_58px_48px_76px_minmax(0,1fr)] @2xl:gap-[16px]";
 
 interface Props {
   rows: NumbersLogRow[];
@@ -39,18 +39,18 @@ export function LogTable({ rows, onSelectNode, heading = "everything you have wa
   const shown = kept.slice(0, limit);
 
   return (
-    <section className="flex flex-col gap-[12px]" aria-label="the log">
+    <section className="@container flex flex-col gap-[12px]" aria-label="the log">
       <div className="section-head">
         {/* the phone board titles it `your log`: the long sentence would take two lines */}
         <h2 className="t-title">
-          <span className="sm:hidden" aria-hidden>your log</span>
-          <span className="hidden sm:inline">{heading}</span>
+          <span className="@2xl:hidden" aria-hidden>your log</span>
+          <span className="hidden @2xl:inline">{heading}</span>
         </h2>
         <span className="t-meta">
-          {rows.length} rows<span className="hidden sm:inline"> · {kept.length} shown</span>
+          {rows.length} rows<span className="hidden @2xl:inline"> · {kept.length} shown</span>
         </span>
         {onCatchUp && (
-          <button type="button" onClick={onCatchUp} className="t-link ml-auto sm:hidden">
+          <button type="button" onClick={onCatchUp} className="t-link ml-auto @2xl:hidden">
             Catch up
           </button>
         )}
@@ -59,8 +59,8 @@ export function LogTable({ rows, onSelectNode, heading = "everything you have wa
       {/* the six chips are one line on the phone board too: they scroll inside
           their own strip rather than wrapping into a ragged block, and the
           find-a-title field takes the line under them. */}
-      <div className="flex flex-col gap-[8px] sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="scrollbar-none -mx-[16px] flex gap-[8px] overflow-x-auto px-[16px] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+      <div className="flex flex-col gap-[8px] @2xl:flex-row @2xl:flex-wrap @2xl:items-center">
+        <div className="scrollbar-none -mx-[16px] flex gap-[8px] overflow-x-auto px-[16px] @2xl:mx-0 @2xl:flex-wrap @2xl:overflow-visible @2xl:px-0">
           {LOG_FILTERS.map((f) => (
             <button
               key={f}
@@ -84,17 +84,17 @@ export function LogTable({ rows, onSelectNode, heading = "everything you have wa
           }}
           aria-label="find a title in the log"
           placeholder="find a title"
-          className="h-[38px] min-w-0 flex-none border-b border-[color:var(--line-note)] bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-ghost sm:flex-1 sm:basis-[140px]"
+          className="h-[38px] min-w-0 flex-none border-b border-[color:var(--line-note)] bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-ghost @2xl:flex-1 @2xl:basis-[140px]"
         />
         {onCatchUp && (
-          <button type="button" onClick={onCatchUp} className="btn btn-quiet ml-auto hidden shrink-0 sm:inline-flex">
+          <button type="button" onClick={onCatchUp} className="btn btn-quiet ml-auto hidden shrink-0 @2xl:inline-flex">
             Catch up
           </button>
         )}
       </div>
 
       <div className="flex flex-col">
-        <div className={`hidden h-[24px] items-center sm:grid ${COLS}`}>
+        <div className={`hidden h-[24px] items-center @2xl:grid ${COLS}`}>
           <span />
           <span className="t-sub">title</span>
           <span className="t-sub">year</span>
@@ -135,7 +135,7 @@ function Row({ row, onSelectNode }: { row: NumbersLogRow; onSelectNode: (imdbId:
     <button
       type="button"
       onClick={() => onSelectNode(row.imdbId)}
-      className={`row h-[52px] w-full text-left sm:h-[38px] ${COLS}`}
+      className={`row h-[52px] w-full text-left @2xl:h-[38px] ${COLS}`}
     >
       {poster ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -147,33 +147,33 @@ function Row({ row, onSelectNode }: { row: NumbersLogRow; onSelectNode: (imdbId:
         <span className={`t-row block truncate ${pending ? "text-ink-dim" : ""}`}>
           {row.name}
           {row.season ? <span className="t-meta ml-[6px] text-ink-faint">s{row.season}</span> : null}
-          {row.year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{row.year}</span> : null}
+          {row.year ? <span className="t-meta ml-[6px] text-ink-faint @2xl:hidden">{row.year}</span> : null}
         </span>
         {/* the phone's second line: the whole row as one mono readout — or the
             line the user wrote, which is worth more than the readout */}
         {row.note ? (
-          <span className="block truncate text-[13px] leading-[1.3] text-ink-dim sm:hidden">“{row.note}”</span>
+          <span className="block truncate text-[13px] leading-[1.3] text-ink-dim @2xl:hidden">“{row.note}”</span>
         ) : (
-          <span className="t-meta block sm:hidden">
+          <span className="t-meta block @2xl:hidden">
             {[when, row.kind === "series" ? "show" : "film", runtime].filter(Boolean).join(" · ")}
           </span>
         )}
       </span>
-      <span className="t-meta hidden text-ink-faint sm:block">{row.year ?? ""}</span>
-      <span className="hidden text-[12.5px] leading-[1.2] text-ink-dim sm:block">{row.kind === "series" ? "show" : "film"}</span>
+      <span className="t-meta hidden text-ink-faint @2xl:block">{row.year ?? ""}</span>
+      <span className="hidden text-[12.5px] leading-[1.2] text-ink-dim @2xl:block">{row.kind === "series" ? "show" : "film"}</span>
       <span
         className={
           isFigureWord(row)
-            ? "tnum block text-right text-[13.5px] leading-[1.2] text-ink sm:text-left"
-            : "block text-right text-[12.5px] leading-[1.2] text-ink-dim sm:text-left"
+            ? "tnum block text-right text-[13.5px] leading-[1.2] text-ink @2xl:text-left"
+            : "block text-right text-[12.5px] leading-[1.2] text-ink-dim @2xl:text-left"
         }
       >
         {word}
       </span>
-      <span className="t-meta hidden sm:block">{when}</span>
+      <span className="t-meta hidden @2xl:block">{when}</span>
       {/* runtime, and after it the line the user wrote, quoted (the board's
           last column) */}
-      <span className="hidden min-w-0 items-baseline gap-[10px] sm:flex">
+      <span className="hidden min-w-0 items-baseline gap-[10px] @2xl:flex">
         {/* a fixed slot, so the quotes below each other start on one line even
             where a row has no runtime to print */}
         <span className="t-meta w-[42px] flex-none">{runtime}</span>
