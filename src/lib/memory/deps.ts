@@ -9,8 +9,17 @@ import { memoryModelFromEnv } from "@/lib/agent/provider";
 import { rewriteMemory } from "./rewrite";
 
 export async function rewriteMemoryForUser(userId: string): Promise<void> {
+  await rewriteMemoryNow(userId);
+}
+
+/**
+ * The same rewrite, awaited, handing back the new markdown (null when there is
+ * no model or the rewrite was skipped). The swipe-session route needs the
+ * result in the response, because the diff is the screen.
+ */
+export async function rewriteMemoryNow(userId: string): Promise<string | null> {
   const model = memoryModelFromEnv();
-  if (!model) return;
+  if (!model) return null;
   const [graph, store] = await Promise.all([getIndustryGraph(), getTasteStore()]);
-  await rewriteMemory({ store, graph, model, log: (m) => console.log(m) }, userId);
+  return rewriteMemory({ store, graph, model, log: (m) => console.log(m) }, userId);
 }

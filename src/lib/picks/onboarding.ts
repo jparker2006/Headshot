@@ -10,6 +10,20 @@ export interface DeckCardData {
   name: string;
   year: number;
   titleType: string;
+  /** What to call it on the card: a film or a show. */
+  kind: "film" | "show";
+}
+
+/** Genres a swipe deck should never deal: nothing to say about taste. */
+const JUNK_GENRES = new Set(["Talk-Show", "Reality-TV", "News", "Game-Show"]);
+
+/**
+ * Whether a title node belongs in any swipe deck: a real title, with a year,
+ * that is not a talk show. Shared by the onboarding deck and the lore deck.
+ */
+export function deckEligible(node: NodeInfo): boolean {
+  if (node.kind !== "title" || !node.year) return false;
+  return !node.genres.split(",").some((g) => JUNK_GENRES.has(g));
 }
 
 export function onboardingDeck(graph: IndustryGraph, opts: { size?: number; exclude?: Iterable<string> } = {}): DeckCardData[] {
@@ -18,8 +32,7 @@ export function onboardingDeck(graph: IndustryGraph, opts: { size?: number; excl
   const byDecade = new Map<number, { movies: NodeInfo[]; series: NodeInfo[] }>();
   for (let id = 0; id < graph.nodeCount; id++) {
     const n = graph.node(id);
-    if (n.kind !== "title" || !n.year || exclude.has(n.imdbId)) continue;
-    if (n.genres.split(",").some((g) => g === "Talk-Show" || g === "Reality-TV" || g === "News" || g === "Game-Show")) continue;
+    if (exclude.has(n.imdbId) || !deckEligible(n)) continue;
     const decade = Math.floor(n.year / 10) * 10;
     let bucket = byDecade.get(decade);
     if (!bucket) byDecade.set(decade, (bucket = { movies: [], series: [] }));
@@ -46,7 +59,7 @@ export function onboardingDeck(graph: IndustryGraph, opts: { size?: number; excl
         if (!n) continue;
         c[kind]++;
         progress = true;
-        out.push({ imdbId: n.imdbId, name: n.name, year: n.year, titleType: n.titleType });
+        out.push({ imdbId: n.imdbId, name: n.name, year: n.year, titleType: n.titleType, kind: n.titleType === "movie" || n.titleType === "tvMovie" ? "film" : "show" });
       }
     }
   }
