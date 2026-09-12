@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Headshot: raw IMDb TSVs and packed graph artifacts (uploaded to Blob, never committed)
 /data/
+.gstack/
