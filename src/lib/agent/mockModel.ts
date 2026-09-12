@@ -45,7 +45,6 @@ function plan(graph: IndustryGraph, options: LanguageModelV4CallOptions): Langua
   if (step === 0) return toolCall("find_entities", { query: a.name, kind: "person" });
   if (step === 1) return toolCall("shortest_path", { from: a.imdbId, to: b.imdbId });
   if (step === 2) return toolCall("highlight_path", { from: a.imdbId, to: b.imdbId, tier: "full", index: 0, reason: "First tied path (mock)." });
-  if (step === 3) return toolCall("write_page", { imdbId: a.imdbId, body: `${a.name} was connected to ${b.name} by the mock agent while answering: "${question}".` });
   return narrate(graph, a, b, question, "no model was called");
 }
 

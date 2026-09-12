@@ -9,7 +9,7 @@ const SINISE = "nm0000004";
 const JANE = "nm0000005";
 
 describe("agent loop (mocked model seam)", () => {
-  it("streams a deterministic Bacon number, path hops, and a page revision for a path question", async () => {
+  it("streams a deterministic Bacon number and path hops for a path question", async () => {
     const graph = await fixtureGraph();
     const brain = new MemoryBrain();
     const question = "How is Kevin Bacon connected to Gary Sinise?";
@@ -17,7 +17,6 @@ describe("agent loop (mocked model seam)", () => {
       { tool: "find_entities", input: { query: "Kevin Bacon", kind: "person" } },
       { tool: "shortest_path", input: { from: BACON, to: SINISE } },
       { tool: "highlight_path", input: { from: BACON, to: SINISE, tier: "full", index: 0, reason: "Only one path." } },
-      { tool: "write_page", input: { imdbId: BACON, body: "Kevin Bacon is one hop from Gary Sinise via Apollo 13 (1995)." } },
       { text: "Kevin Bacon → Apollo 13 → Gary Sinise. Bacon number 1." },
     ]);
 
@@ -25,7 +24,7 @@ describe("agent loop (mocked model seam)", () => {
     const chunks = await collect(runAgent({ model, graph, brain, tmdb: null, messages: [userMessage(question)], sessionId: "s1", fastPath: false }));
 
     // Model was called once per scripted step and saw tool results between steps.
-    expect(model.doStreamCalls).toHaveLength(5);
+    expect(model.doStreamCalls).toHaveLength(4);
     const secondPrompt = JSON.stringify(model.doStreamCalls[1].prompt);
     expect(secondPrompt).toContain("Kevin Bacon [nm0000001");
 
@@ -63,12 +62,6 @@ describe("agent loop (mocked model seam)", () => {
     expect(snap.nodes.map((n) => n.imdbId)).toEqual(expect.arrayContaining([BACON, "tt0000001", SINISE]));
     expect(await brain.sessionNodes("s1")).toEqual(expect.arrayContaining([BACON, SINISE]));
 
-    // The page write logged the triggering question.
-    const pageEvents = ofType(chunks, "data-page");
-    expect(pageEvents[0].data).toEqual({ imdbId: BACON, question, revision: 1 });
-    const page = await brain.readPage(BACON);
-    expect(page?.revisions).toHaveLength(1);
-    expect(page?.revisions[0].question).toBe(question);
 
     // Final narration streamed as text.
     const text = ofType(chunks, "text-delta").map((t) => t.delta).join("");
@@ -127,12 +120,12 @@ describe("agent loop (mocked model seam)", () => {
     expect(found.full.paths[0].names).toEqual(["Newbie Actor", "Apollo 13", "Kevin Bacon"]);
   });
 
-  it("refuses to write pages for unknown entities", async () => {
+  it("does not offer write_page to the model: pages come from the turn's page job", async () => {
     const graph = await fixtureGraph();
     const brain = new MemoryBrain();
     const model = scriptedModel([{ tool: "write_page", input: { imdbId: "nm0001234", body: "This person does not exist in any graph." } }, { text: "ok" }]);
     const chunks = await collect(runAgent({ model, graph, brain, tmdb: null, messages: [userMessage("q")] }));
-    expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ error: "unknown_entity" });
+    expect(ofType(chunks, "tool-output-available")).toHaveLength(0);
     expect(await brain.readPage("nm0001234")).toBeNull();
   });
 

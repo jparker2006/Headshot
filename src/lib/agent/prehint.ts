@@ -71,5 +71,5 @@ export function formatHints(hints: Hint[]): string {
     const meta = n.kind === "title" ? `${n.titleType}${n.year ? ` ${n.year}` : ""}` : `person${n.year ? ` b.${n.year}` : ""}`;
     return `- "${h.text}" → ${n.name} [${n.imdbId}, ${meta}, ${n.votes.toLocaleString()} votes]`;
   });
-  return `Entities already resolved from the question (exact name matches in the graph; use these ids directly and skip find_entities for them unless the user clearly means someone else):\n${lines.join("\n")}`;
+  return `## Entities already resolved\nExact name matches in the graph; use these ids directly and skip find_entities for them unless the user clearly means someone else.\n${lines.join("\n")}`;
 }

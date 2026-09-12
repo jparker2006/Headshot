@@ -78,7 +78,7 @@ export interface RunAgentOptions {
 }
 
 /** The heading the memory markdown arrives under in the system prompt. */
-export const MEMORY_HEADING = "## What you remember about this person (your own notes, keep them consistent)";
+export const MEMORY_HEADING = "## What you remember about this person";
 
 /** Adapts the UI stream writer to the tools' emitter interface, recording replayable events. */
 class WriterEmitter implements CanvasEmitter {
@@ -218,7 +218,7 @@ export function runAgent(opts: RunAgentOptions) {
       if (opts.userId && opts.taste) {
         try {
           const t = await tasteSummary(opts.graph, opts.taste, opts.userId);
-          about = t ? formatTasteContext(t) : "This user is signed in but has not rated anything yet. If they ask about their taste, say so and point them to the deck or a Letterboxd import (they can also just tell you what they like and you call log).";
+          about = `## About this user\n${t ? formatTasteContext(t) : "This user is signed in but has not rated anything yet. If they ask about their taste, say so and point them to the deck or a Letterboxd import (they can also just tell you what they like and you call log)."}`;
         } catch (err) {
           console.warn("[agent] taste context failed:", err instanceof Error ? err.message : err);
         }
@@ -231,7 +231,7 @@ export function runAgent(opts: RunAgentOptions) {
           }
         }
       }
-      const system = [SYSTEM_PROMPT, about, memory, hints, fast ? `Precomputed for this question (the user already sees it on the canvas):\n${fast.context}` : ""].filter(Boolean).join("\n\n");
+      const system = [SYSTEM_PROMPT, about, memory, hints, fast ? `## Precomputed for this question\nThe user already sees this on screen.\n${fast.context}` : ""].filter(Boolean).join("\n\n");
       const result = streamText({
         model: opts.model,
         system,

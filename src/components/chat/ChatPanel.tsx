@@ -65,7 +65,6 @@ const TOOL_LABELS: Record<string, string> = {
   tmdb_title: "reading a title",
   expand_node: "expanding the brain",
   read_page: "reading a page",
-  write_page: "writing a page",
   my_profile: "reading what I know about you",
   recall: "searching the record",
   have_i_seen: "checking your log",
