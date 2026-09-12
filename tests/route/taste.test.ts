@@ -63,6 +63,8 @@ describe("taste routes: sign-in", () => {
       handlers.log(json({ query: "Apollo" })),
       handlers.log(json({ imdbId: "tt0000001", score: 8 })),
       handlers.numbers(get()),
+      handlers.startLetterboxdCrawl(json({ username: "jake" })),
+      handlers.letterboxdCrawlStatus(get()),
     ];
     for (const res of await Promise.all(calls)) {
       expect(res.status).toBe(401);
@@ -421,7 +423,9 @@ describe("taste routes: numbers", () => {
     expect(body.totals).toMatchObject({ titles: 0, hours: 0 });
     expect(body.log).toEqual([]);
     expect(body.people).toEqual([]);
-    expect(body.months).toHaveLength(24);
+    // v5 dropped the month chart and the genre rows with the dashboard.
+    expect(body.months).toBeUndefined();
+    expect(body.genres).toBeUndefined();
   });
 
   it("computes the page from the watched rows and the titles cache", async () => {
@@ -440,9 +444,7 @@ describe("taste routes: numbers", () => {
     // 140 + 142 + (22 x 45) + (5 x 50) + 90 = 1612 minutes; the want row is not watching.
     expect(body.totals).toEqual({ titles: 6, films: 3, shows: 3, hours: 27, liked: 2, meh: 1, seen: 2, want: 1 });
     expect(body.undated).toBe(1);
-    expect(body.months.at(-1)).toMatchObject({ month: new Date().toISOString().slice(0, 7), films: 2, shows: 2 });
     expect(body.runtimeFinished).toBe(124);
-    expect(body.genres.find((g: { genre: string }) => g.genre === "War")).toBeUndefined();
     expect(body.log).toHaveLength(6);
     expect(body.log.at(-1).watchedAt).toBeNull();
     expect(body.log[0]).toMatchObject({ name: "Apollo 13", kind: "movie", state: "rated", score: 8, posterPath: "/a.jpg" });

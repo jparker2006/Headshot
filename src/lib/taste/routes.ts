@@ -16,6 +16,14 @@ import {
   type MatchedRow,
   type TitleSearch,
 } from "./letterboxd";
+import {
+  crawlLetterboxd,
+  crawlToInputs,
+  isFreshCrawl,
+  isValidUsername,
+  probeLetterboxd,
+  type CrawlDeps,
+} from "./letterboxdCrawl";
 import { matchImdb, parseImdb, toImdbInputs, type ImdbRow } from "./imdb";
 import {
   matchNetflix,
@@ -66,6 +74,12 @@ export interface TasteDeps {
    * that added episodes; absent in tests that do not care about the memory.
    */
   rewrite?: (userId: string) => Promise<void>;
+  /**
+   * What the Letterboxd crawl talks to the world with (`fetch`, and in tests a
+   * fake clock). Absent in tests that do not exercise the crawl: the import
+   * route then answers 503 rather than reaching for a global `fetch`.
+   */
+  crawl?: CrawlDeps;
 }
 
 /** Longest pinned block the Edit control accepts. */
@@ -395,6 +409,113 @@ export function createTasteHandlers(deps: TasteDeps) {
         skipped: unmatched.length,
         unmatched,
         review,
+      });
+    },
+
+    /**
+     * POST /api/taste/import/letterboxd { username, force? } — the v5 import:
+     * you type your username and your history appears (SPEC v5, story 75).
+     *
+     * Page one is fetched *inside* the request, so the two answers a human can
+     * act on come back immediately: a private profile (200 `{ private: true }`,
+     * and the UI offers the CSV) and an unknown user (404). Everything else is
+     * a promise: a `running` crawl row, the walk scheduled behind `waitUntil`,
+     * and 202. The Log page polls the GET below until the row says `done`.
+     *
+     * A username crawled successfully in the last 24 hours is not crawled
+     * again without `force`: it is someone else's server.
+     */
+    async startLetterboxdCrawl(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      let body: { username?: unknown; force?: unknown };
+      try {
+        body = (await req.json()) as typeof body;
+      } catch {
+        return badRequest("Invalid JSON");
+      }
+      const username = typeof body.username === "string" ? body.username.trim().replace(/^@/, "") : "";
+      if (!isValidUsername(username)) return badRequest("invalid_username");
+      if (!deps.crawl) return Response.json({ error: "crawl_unavailable" }, { status: 503 });
+      const crawl = deps.crawl;
+      const now = () => crawl.now?.() ?? new Date();
+
+      const store = await deps.store();
+      const previous = await store.getCrawl(who.userId, "letterboxd");
+      if (body.force !== true && isFreshCrawl(previous, username, now())) {
+        return Response.json({ cached: true, username: previous!.username, finishedAt: previous!.finishedAt, imported: previous!.imported });
+      }
+
+      let probe;
+      try {
+        probe = await probeLetterboxd(username, crawl);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await store.finishCrawl(who.userId, "letterboxd", { username, status: "failed", error: message });
+        return Response.json({ error: "letterboxd_unavailable" }, { status: 502 });
+      }
+      if ("private" in probe) {
+        await store.finishCrawl(who.userId, "letterboxd", { username, status: "private" });
+        return Response.json({ private: true, username });
+      }
+      if ("notFound" in probe) {
+        await store.finishCrawl(who.userId, "letterboxd", { username, status: "not_found" });
+        return Response.json({ error: "not_found", username }, { status: 404 });
+      }
+
+      await store.startCrawl(who.userId, "letterboxd", username);
+      schedule(async () => {
+        try {
+          const result = await crawlLetterboxd(username, crawl);
+          if ("private" in result) {
+            await store.finishCrawl(who.userId, "letterboxd", { username, status: "private" });
+            return;
+          }
+          if ("notFound" in result) {
+            await store.finishCrawl(who.userId, "letterboxd", { username, status: "not_found" });
+            return;
+          }
+          const graph = await deps.graph();
+          const { inputs } = crawlToInputs(graph, result.rows);
+          await store.replaceImport(who.userId, "letterboxd", inputs);
+          warmTitles(inputs.map((r) => r.titleImdbId), graph);
+          await store.addEpisodes(who.userId, [
+            { kind: "log", titleImdbId: null, text: `imported ${inputs.length} titles from Letterboxd (@${username})` },
+          ]);
+          await store.finishCrawl(who.userId, "letterboxd", { username, status: "done", imported: inputs.length });
+          // New evidence, so the profile is rewritten — after the rows land,
+          // never before, or the memory would describe the old log.
+          if (deps.rewrite) await deps.rewrite(who.userId);
+        } catch (err) {
+          await store.finishCrawl(who.userId, "letterboxd", {
+            username,
+            status: "failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+
+      return Response.json({ started: true, username }, { status: 202 });
+    },
+
+    /**
+     * GET /api/taste/import/letterboxd — how the last crawl went, which is what
+     * the Log page's "importing from Letterboxd…" line watches. `idle` means
+     * this user has never asked for one.
+     */
+    async letterboxdCrawlStatus(req: Request): Promise<Response> {
+      const who = await withUser(req);
+      if ("response" in who) return who.response;
+      const store = await deps.store();
+      const row = await store.getCrawl(who.userId, "letterboxd");
+      if (!row) return Response.json({ status: "idle" });
+      return Response.json({
+        status: row.status,
+        username: row.username,
+        imported: row.imported,
+        startedAt: row.startedAt,
+        finishedAt: row.finishedAt,
+        ...(row.status === "failed" && row.error ? { error: row.error } : {}),
       });
     },
 

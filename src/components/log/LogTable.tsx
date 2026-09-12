@@ -26,10 +26,12 @@ interface Props {
   heading?: string;
   /** Offered as "Catch up" — in the header on a phone, beside the chips on a laptop. */
   onCatchUp?: () => void;
+  /** The chip it opens on. You's Later list links here with `want`. */
+  initialFilter?: LogFilter;
 }
 
-export function LogTable({ rows, onSelectNode, heading = "everything you have watched", onCatchUp }: Props) {
-  const [filter, setFilter] = useState<LogFilter>("all");
+export function LogTable({ rows, onSelectNode, heading = "everything you have watched", onCatchUp, initialFilter = "all" }: Props) {
+  const [filter, setFilter] = useState<LogFilter>(initialFilter);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(LOG_PAGE);
 

@@ -39,7 +39,7 @@ export interface AccountModel {
  * no you — only Ask (trivia works for everyone) and the way in (SPEC v5 →
  * "Signed out: Ask and Sign in only").
  */
-export function navItems(surface: Surface, signedIn: boolean): NavItem[] {
+export function navItems(surface: Surface | null, signedIn: boolean): NavItem[] {
   if (!signedIn) {
     return [
       { key: "ask", label: "ask", active: surface === "ask" },
@@ -54,7 +54,7 @@ export function navItems(surface: Surface, signedIn: boolean): NavItem[] {
  * surface — the indent is what says whose they are. Signed-out threads live in
  * localStorage and are never listed (SPEC v5).
  */
-export function sessionsShown(surface: Surface, signedIn: boolean): boolean {
+export function sessionsShown(surface: Surface | null, signedIn: boolean): boolean {
   return surface === "ask" && signedIn;
 }
 

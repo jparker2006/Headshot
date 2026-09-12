@@ -41,8 +41,7 @@ describe("tonight on demand (v5)", () => {
     // The reason is the engine's own line, and it cites the titles it came from.
     expect(result!.pick.reason.text.length).toBeGreaterThan(0);
     expect(result!.pick.reason.viaImdbIds.length).toBeGreaterThan(0);
-    // Nothing is stored: no tonight row, no derived facts written.
-    expect(await store.getTonight("u1")).toBeNull();
+    // Nothing is stored: no derived facts written, and v5 has no row to write.
     expect(await store.getTaste("u1")).toBeNull();
   });
 
@@ -115,7 +114,7 @@ describe("tonight on demand (v5)", () => {
     // A Play target for the line's link; the fixture has no TMDB so it may be null, but the field is there.
     expect(body.pick).toHaveProperty("playUrl");
     expect(body.pick.reason.viaImdbIds.length).toBeGreaterThan(0);
-    expect(await store.getTonight("u1")).toBeNull();
+    expect(await store.getTaste("u1")).toBeNull();
   });
 
   it("the opener honours runtime and energy filters", async () => {

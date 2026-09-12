@@ -1,7 +1,7 @@
 /**
- * What the Tonight screen renders: a pick plus the things only TMDB knows
- * (link for Play, poster, provider names). Stored by the nightly job and
- * returned by /api/tonight, so the client never recomputes anything.
+ * What a pick looks like once the things only TMDB knows are attached (the
+ * Play link, the poster, the provider names). Computed on demand by `pickNow`
+ * and read by the chat opener and the `tonight` tool; nothing is stored.
  */
 import type { Pick } from "./engine";
 import type { CandidateMeta } from "./candidates";
@@ -21,18 +21,6 @@ export interface PickView {
   providerNames: string[];
   posterUrl: string | null;
   progress?: { season: number; episodesWatched: number };
-}
-
-/** Bump when the stored shape changes so old rows recompute on the next read. */
-export const TONIGHT_VERSION = 3;
-
-export interface TonightData {
-  version?: number;
-  picks: PickView[];
-  deck: PickView[];
-  generatedAt: string;
-  /** How many titles sit in Later (dismissed picks and the imported watchlist). */
-  laterCount: number;
 }
 
 export function toPickView(pick: Pick, meta: CandidateMeta | undefined, services: number[]): PickView {

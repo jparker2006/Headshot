@@ -26,9 +26,23 @@ import { type Section, type Surface } from "./navModel";
 import { useSessionUser } from "./auth/SignInGate";
 import { LogPage } from "./log/LogPage";
 import { YouPage } from "./you/YouPage";
+import type { LogFilter } from "./you/numbersRules";
+import { useWelcomeRedirect } from "./welcome/useWelcomeRedirect";
 import type { HeadshotUIMessage } from "@/lib/agent/events";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
 import { loadServerThread, useServerThreads } from "./chat/serverThreads";
+
+/** `/?surface=log|ask|you`, read after hydration so the server HTML stays stable. */
+function useLinkedSurface(): Surface | null {
+  return useSyncExternalStore(
+    () => () => {},
+    () => {
+      const want = new URLSearchParams(window.location.search).get("surface");
+      return want === "log" || want === "ask" || want === "you" ? want : null;
+    },
+    () => null,
+  );
+}
 
 export function HeadshotApp() {
   const store = useMemo(() => new BrainStore(), []);
@@ -54,8 +68,17 @@ export function HeadshotApp() {
   // no log, so Ask is the landing. `chosen` is null until someone navigates,
   // so the default can still change under it when the session resolves.
   const [chosen, setChosen] = useState<Surface | null>(null);
-  const surface: Surface = chosen ?? (signedIn ? "log" : "ask");
+  // `/?surface=ask` is how a page outside the shell (`/settings`) gets back to
+  // one. Read rather than stored: the moment anything here navigates, `chosen`
+  // wins, and a reload comes back to the surface the link named.
+  const linked = useLinkedSurface();
+  const surface: Surface = chosen ?? linked ?? (signedIn ? "log" : "ask");
   const [mobileNav, setMobileNav] = useState(false);
+  /** The chip the Log opens on, and a nonce so the same one can be asked twice. */
+  const [logFilter, setLogFilter] = useState<{ value: LogFilter; nonce: number } | null>(null);
+
+  // A brand-new account is sent through `/welcome` once, and only once.
+  useWelcomeRedirect(sessionUser?.id ?? null);
 
   const localId = localThreads[0]?.id;
   const thread = useMemo(
@@ -223,14 +246,22 @@ export function HeadshotApp() {
             {/* Log carries its own field at the top, so no composer is pinned
                 under it and the whole column scrolls with the table. */}
             <div className="w-full px-4 pb-[32px] pt-[22px] md:px-[34px]">
-              <LogPage onSelectNode={select} />
+              {/* keyed on the request so arriving from Later re-opens the table
+                  on its chip rather than leaving the old one selected */}
+              <LogPage key={logFilter?.nonce ?? "log"} onSelectNode={select} initialFilter={logFilter?.value} />
             </div>
           </div>
         )}
         {surface === "you" && (
           <div className="scrollbar-thin flex-1 overflow-y-auto">
             <div className="w-full px-4 pb-[40px] pt-[22px] md:px-[34px]">
-              <YouPage onSelectNode={select} onAsk={ask} />
+              <YouPage
+                onSelectNode={select}
+                onGoToLog={(filter) => {
+                  setLogFilter(filter ? { value: filter, nonce: Date.now() } : null);
+                  goTo("log");
+                }}
+              />
             </div>
           </div>
         )}

@@ -1,13 +1,17 @@
 /**
  * Numbers: the analytics Letterboxd never gave you (SPEC v4, story 64),
  * computed from the user's `watched` rows, the `titles` cache and the
- * industry graph. Pure and deterministic — no network, no model, no clock of
- * its own (`now` is passed in), so `tests/taste/numbers.test.ts` can pin every
- * figure to a fixture.
+ * industry graph. Pure and deterministic — no network, no model and, since v5
+ * dropped the month chart, no clock at all, so `tests/taste/numbers.test.ts`
+ * can pin every figure to a fixture.
+ *
+ * v5 trimmed this to what the You page and the log table actually draw: the
+ * totals behind the numbers sentence, the people row, the decades row and the
+ * log rows. The per-month and per-genre charts are gone with the dashboard.
  *
  * Two rules run through the whole file:
  *   - `want` is not watching. A wanted row counts in the totals and shows up
- *     in the log, and is invisible to months, hours, people, decades, genres.
+ *     in the log, and is invisible to hours, people and decades.
  *   - `unseen` is the swipe's removal verb ("I haven't seen this"), so it is
  *     not part of Numbers at all.
  */
@@ -44,27 +48,11 @@ export interface NumbersTotals {
   want: number;
 }
 
-export interface NumbersMonth {
-  /** YYYY-MM, UTC. */
-  month: string;
-  films: number;
-  shows: number;
-  /** Hours to one decimal. */
-  hours: number;
-}
-
 export interface NumbersPerson {
   imdbId: string;
   name: string;
   count: number;
   role: PersonRole;
-}
-
-export interface NumbersGenre {
-  genre: string;
-  liked: number;
-  meh: number;
-  seen: number;
 }
 
 export interface NumbersLogRow {
@@ -90,16 +78,13 @@ export interface NumbersLogRow {
 
 export interface NumbersData {
   totals: NumbersTotals;
-  /** The last 24 months including empty ones, oldest first. */
-  months: NumbersMonth[];
-  /** Watched rows with no date: they cannot sit in a month, so they are said out loud. */
+  /** Watched rows with no date at all, said out loud rather than guessed at. */
   undated: number;
   /** Top 12 people by credits across everything you have watched. */
   people: NumbersPerson[];
   decades: { decade: string; count: number }[];
   /** Average film runtime in minutes over what you have watched. */
   runtimeFinished: number | null;
-  genres: NumbersGenre[];
   /** Every row, newest first. */
   log: NumbersLogRow[];
 }
@@ -110,12 +95,8 @@ export interface ComputeNumbersInput {
   graph: NumbersGraph;
   /** Title id → the line the user typed when they logged it, if any. */
   notes?: Map<string, string>;
-  /** Defaults to the real clock; tests pin it. */
-  now?: Date;
 }
 
-/** How many months the chart shows, including the current one. */
-export const MONTHS_WINDOW = 24;
 const TOP_PEOPLE = 12;
 
 /** TMDB's `known_for_department` in the three shapes Numbers cares about. */
@@ -169,39 +150,15 @@ export function minutesOf(row: WatchedRow, title: TitleRow | undefined, kind: "m
   return 0;
 }
 
-/** YYYY-MM in UTC. */
-function monthKey(date: Date): string {
-  return date.toISOString().slice(0, 7);
-}
-
-/** The last `MONTHS_WINDOW` month keys ending at `now`, oldest first. */
-function monthWindow(now: Date): string[] {
-  const out: string[] = [];
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  for (let back = MONTHS_WINDOW - 1; back >= 0; back--) {
-    out.push(monthKey(new Date(Date.UTC(year, month - back, 1))));
-  }
-  return out;
-}
-
-const hoursOneDecimal = (minutes: number) => Math.round(minutes / 6) / 10;
-
 export function computeNumbers(input: ComputeNumbersInput): NumbersData {
   const { titles, graph } = input;
-  const now = input.now ?? new Date();
   // `unseen` is "take this off my list", not a data point.
   const rows = input.watched.filter((r) => r.rating !== "unseen");
 
   const totals: NumbersTotals = { titles: 0, films: 0, shows: 0, hours: 0, liked: 0, meh: 0, seen: 0, want: 0 };
-  const months = new Map<string, NumbersMonth>();
-  for (const key of monthWindow(now)) months.set(key, { month: key, films: 0, shows: 0, hours: 0 });
-  const monthMinutes = new Map<string, number>();
-
   const peopleCounts = new Map<number, number>();
   const peopleActed = new Set<number>();
   const decades = new Map<string, number>();
-  const genres = new Map<string, NumbersGenre>();
   const log: NumbersLogRow[] = [];
 
   let undated = 0;
@@ -246,17 +203,7 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
     const minutes = minutesOf(row, title, kind);
     totalMinutes += minutes;
 
-    if (row.watchedAt) {
-      const key = monthKey(new Date(row.watchedAt));
-      const bucket = months.get(key);
-      if (bucket) {
-        if (kind === "series") bucket.shows++;
-        else bucket.films++;
-        monthMinutes.set(key, (monthMinutes.get(key) ?? 0) + minutes);
-      }
-    } else {
-      undated++;
-    }
+    if (!row.watchedAt) undated++;
 
     if (kind === "movie" && title?.runtime) {
       runtimeSum += title.runtime;
@@ -266,14 +213,6 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
     if (year) {
       const decade = `${Math.floor(year / 10) * 10}s`;
       decades.set(decade, (decades.get(decade) ?? 0) + 1);
-    }
-
-    for (const genre of genresOf(title, node)) {
-      const g = genres.get(genre) ?? { genre, liked: 0, meh: 0, seen: 0 };
-      if (isLiked(row)) g.liked++;
-      else if (isMeh(row)) g.meh++;
-      else g.seen++;
-      genres.set(genre, g);
     }
 
     const titleId = graph.idOf(row.titleImdbId);
@@ -286,7 +225,6 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
   }
 
   totals.hours = Math.round(totalMinutes / 60);
-  for (const [key, minutes] of monthMinutes) months.get(key)!.hours = hoursOneDecimal(minutes);
 
   const people = [...peopleCounts]
     .sort((a, b) => b[1] - a[1] || graph.node(b[0]).votes - graph.node(a[0]).votes || a[0] - b[0])
@@ -300,14 +238,10 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
 
   return {
     totals,
-    months: [...months.values()],
     undated,
     people,
     decades: [...decades].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([decade, count]) => ({ decade, count })),
     runtimeFinished: runtimeN ? Math.round(runtimeSum / runtimeN) : null,
-    genres: [...genres.values()].sort(
-      (a, b) => b.liked + b.meh + b.seen - (a.liked + a.meh + a.seen) || (a.genre < b.genre ? -1 : 1),
-    ),
     // Newest first; a row with no date sits at the bottom, in the order the
     // store gave it (title id), so the table never reshuffles between reads.
     log: log.sort((a, b) => {

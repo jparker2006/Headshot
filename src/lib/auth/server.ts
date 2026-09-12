@@ -94,3 +94,40 @@ export async function currentUser(): Promise<{ id: string; email: string | null 
     return null;
   }
 }
+
+/**
+ * Delete the auth account itself (SPEC v5, Settings → delete account).
+ *
+ * Neon's server instance exposes Better Auth's whole method set, `deleteUser`
+ * included, but the endpoint only works when the project has user deletion
+ * enabled — so this reports what actually happened rather than claiming the
+ * row is gone. Either way the session is revoked, so the browser is signed out
+ * and nothing of theirs is reachable; `DELETE /api/me` has already emptied
+ * every table Headshot owns before this is called.
+ */
+export type AuthDeletion = "deleted" | "unsupported" | "failed";
+
+type DeletableAuth = {
+  deleteUser?: (options?: Record<string, unknown>) => Promise<{ error?: { message?: string } | null } | null>;
+  signOut?: (options?: Record<string, unknown>) => Promise<unknown>;
+};
+
+export async function deleteAuthUser(): Promise<AuthDeletion> {
+  const instance = getAuth() as unknown as DeletableAuth | null;
+  if (!instance) return "unsupported";
+  let outcome: AuthDeletion = "unsupported";
+  if (typeof instance.deleteUser === "function") {
+    try {
+      const result = await instance.deleteUser({});
+      outcome = result?.error ? "failed" : "deleted";
+      if (result?.error) console.warn("[auth] deleteUser refused:", result.error.message);
+    } catch (err) {
+      console.warn("[auth] deleteUser failed:", err);
+      outcome = "failed";
+    }
+  }
+  if (outcome !== "deleted" && typeof instance.signOut === "function") {
+    await instance.signOut({}).catch(() => {});
+  }
+  return outcome;
+}

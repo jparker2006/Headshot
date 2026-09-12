@@ -1,14 +1,17 @@
 "use client";
 /**
- * You — home, drawn to board C (`design/boards-v4/C-You.dc.html`).
+ * You — the receipt (SPEC v5 → You page). Five things and nothing else:
+ * the memory prose with `edit` and `rewritten Nm ago`, one sentence of
+ * numbers, the people row, the decades ledger, and Later.
  *
- * Order is fixed by DESIGN.md: memory, recently logged, tonight, numbers,
- * services, imports, later, the swipe button. Sections separate by 38px of
- * air and one hairline under each header — no card gets a border, no figure
- * gets a tile, and the only amber thing on the page is the first Play.
+ * Everything that was plumbing — services, imports, the swipe button — moved
+ * to `/settings`; tonight moved into Ask's empty state; recently logged and
+ * the charts are the Log page's job. This page is about you, not about the
+ * machine (story 79).
  *
- * There is no log box at the top: the one prompt lives at the bottom of every
- * screen (`Prompt`), and it tells this page through `logBus` when it writes.
+ * Board C grammar throughout: sections separate by air and one hairline under
+ * each header, rows carry no rule between them, figures are mono, and there is
+ * no accent anywhere on this screen.
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -16,33 +19,25 @@ import { lookupName } from "@/components/chat/lookup";
 import { useImages } from "@/components/chat/useImages";
 import { useNames } from "@/components/chat/useNames";
 import { useSessionUser, signInHref } from "@/components/auth/SignInGate";
-import { LaterPanel } from "@/components/tonight/LaterPanel";
-import { TonightPanel } from "@/components/tonight/TonightPanel";
-import { Numbers } from "./Numbers";
 import { MemoryProse } from "./MemoryProse";
-import { ServicesChecklist } from "./ServicesChecklist";
-import { Imports } from "./Imports";
-import { SwipeSession } from "./SwipeSession";
+import { barClass, barRank, barWidth, rowInk } from "./ledger";
 import { bumpLog, useLogVersion } from "./logBus";
+import { numbersSentence } from "./numbersRules";
 import { terseTime } from "./recent";
-import { useNumbers } from "./useNumbers";
+import { useNumbers, type PersonWithFace } from "./useNumbers";
+import { decadeRows, laterRows, peopleRow } from "./youRows";
 import type { WatchedRow } from "@/lib/taste/types";
-import { isLiked } from "@/lib/taste/score";
-import { watchedWord } from "@/components/log/scoreRules";
 
 interface Props {
   /** Open a person or title in the drawer. */
   onSelectNode: (imdbId: string) => void;
-  /** Put a question to the agent; the shell opens a thread with it. */
-  onAsk: (text: string) => void;
+  /** Go to the Log, optionally filtered — Later's "the whole list". */
+  onGoToLog?: (filter?: "want") => void;
 }
 
-export function YouPage({ onSelectNode, onAsk }: Props) {
+export function YouPage({ onSelectNode, onGoToLog }: Props) {
   const { user, loading } = useSessionUser();
   const version = useLogVersion();
-  const [allNumbers, setAllNumbers] = useState(false);
-  /** "you" is the page; "swipe" is the deck inline, in its place. No route. */
-  const [mode, setMode] = useState<"you" | "swipe">("you");
 
   if (loading) return <p className="t-meta">…</p>;
 
@@ -52,7 +47,7 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
         <p className="text-[26px] font-semibold leading-[1.25] tracking-[-0.02em] text-ink">
           I keep the log of everything you have watched, and I know what it says about you.
         </p>
-        <p className="t-meta">no password, ever. the chat below works without an account.</p>
+        <p className="t-meta">no password, ever. the chat works without an account.</p>
         <Link href={signInHref("/")} className="btn btn-outline">
           Sign in
         </Link>
@@ -60,25 +55,11 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
     );
   }
 
-  if (mode === "swipe") return <SwipeSession onDone={() => setMode("you")} onSelectNode={onSelectNode} />;
-
   return (
     <div className="flex flex-col gap-[28px] sm:gap-[38px]" aria-label="You">
       <Memory onSelectNode={onSelectNode} version={version} />
-      <RecentlyLogged onSelectNode={onSelectNode} version={version} onWholeLog={() => setAllNumbers(true)} />
-      <TonightPanel onSelectNode={onSelectNode} onAsk={onAsk} initial={1} />
-      <div id="numbers">
-        <Numbers onSelectNode={onSelectNode} version={version} open={allNumbers} onToggle={() => setAllNumbers((v) => !v)} />
-      </div>
-      <ServicesChecklist />
-      <Imports onDone={bumpLog} />
-      <LaterPanel onSelectNode={onSelectNode} />
-      <div>
-        {/* The deck is a state of this page, not a route (SPEC v4 → Surfaces). */}
-        <button type="button" onClick={() => setMode("swipe")} className="btn btn-quiet">
-          Swipe through ones you have probably seen
-        </button>
-      </div>
+      <NumbersLine onSelectNode={onSelectNode} version={version} />
+      <Later onSelectNode={onSelectNode} version={version} onGoToLog={onGoToLog} />
     </div>
   );
 }
@@ -179,107 +160,180 @@ function Memory({ onSelectNode, version }: { onSelectNode: (imdbId: string) => v
       ) : body ? (
         <MemoryProse markdown={body} onLookup={lookup} />
       ) : (
-        <p className="t-prose">nothing yet. log a few things below, or tell the chat what you love.</p>
+        <p className="t-prose">nothing yet. log a few things, or tell the chat what you love.</p>
       )}
     </section>
   );
 }
 
-// ---- recently logged -------------------------------------------------------
+// ---- numbers: one sentence, one people row, one decades ledger -------------
 
-const LIMIT = 10;
+/**
+ * What was a page of charts is one line of prose and two rows (SPEC v5). The
+ * counting still happens server-side in `/api/taste/numbers`; this draws.
+ */
+function NumbersLine({ onSelectNode, version }: { onSelectNode: (imdbId: string) => void; version: number }) {
+  const state = useNumbers(version);
 
-function RecentlyLogged({
+  return (
+    <section className="flex flex-col gap-[16px]" aria-label="Numbers">
+      <div className="section-head">
+        <h2 className="t-title">numbers</h2>
+        <span className="t-sub hidden sm:inline">everything Letterboxd never gave you</span>
+      </div>
+
+      {state.status === "loading" && <p className="t-meta">counting…</p>}
+      {state.status === "error" && <p className="t-prose">numbers are not answering right now.</p>}
+      {state.status === "signed-out" && <p className="t-prose">sign in to see your numbers.</p>}
+      {state.status === "ready" && (
+        <>
+          <p className="t-prose max-w-[880px]">{numbersSentence(state.data.totals, state.data.decades)}</p>
+          <PeopleRow people={peopleRow(state.data.people)} onSelectNode={onSelectNode} />
+          <DecadeLedger decades={decadeRows(state.data.decades)} />
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Who you keep watching: one row of twelve faces, name and count under each.
+ * No bars — the faces are the ranking, and a bar under a face would be the
+ * second ranking of the same fact. It scrolls sideways rather than wrapping
+ * into a wall (DESIGN.md → Rhythm: nothing but a table scrolls horizontally,
+ * and this row scrolls inside its own container, like one).
+ */
+function PeopleRow({ people, onSelectNode }: { people: PersonWithFace[]; onSelectNode: (imdbId: string) => void }) {
+  if (people.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <span className="t-sub">who you keep watching</span>
+      <div className="scrollbar-thin -mx-4 flex gap-[18px] overflow-x-auto px-4 pb-[4px] md:-mx-[12px] md:px-[12px]">
+        {people.map((p) => (
+          <button key={p.imdbId} type="button" onClick={() => onSelectNode(p.imdbId)} className="group flex w-[64px] shrink-0 flex-col gap-[6px] text-left">
+            {p.face ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.face} alt="" className="h-[64px] w-[64px] bg-raised object-cover" loading="lazy" />
+            ) : (
+              <span className="block h-[64px] w-[64px] bg-raised" />
+            )}
+            <span className="truncate text-[12.5px] leading-[1.25] text-ink-dim transition-colors duration-[120ms] group-hover:text-ink" title={p.name}>
+              {p.name}
+            </span>
+            <span className="tnum text-[11.5px] leading-none text-ink-ghost">{p.count}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** By decade: the ledger form, six rows, mono labels because a decade is a figure. */
+function DecadeLedger({ decades }: { decades: { decade: string; count: number }[] }) {
+  if (decades.length === 0) return null;
+  const peak = Math.max(...decades.map((d) => d.count), 1);
+  return (
+    <div className="flex flex-col gap-[7px]">
+      <span className="t-sub">by decade</span>
+      {decades.map((d, i) => (
+        <div key={d.decade} className="row row-fig grid-cols-[88px_44px_minmax(0,1fr)] sm:grid-cols-[108px_52px_minmax(0,1fr)]">
+          <span className={`tnum truncate text-[13.5px] ${rowInk(i, decades.length)}`}>{d.decade}</span>
+          <span className={`tnum text-[13.5px] leading-[1.2] ${rowInk(i, decades.length)}`}>{d.count.toLocaleString()}</span>
+          <span className={barClass(barRank(i, decades.length))} style={{ width: barWidth(d.count, peak) }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- later -----------------------------------------------------------------
+
+/**
+ * Later is the `want` rows, newest first, in the 38px log row form: poster
+ * mark, title, year. One quiet control per row — `seen it` writes the state
+ * through the same `POST /api/taste/log` every other write goes through — and
+ * the header links to the Log filtered to `want`, which is the same list with
+ * everything else the table can say about it.
+ */
+function Later({
   onSelectNode,
   version,
-  onWholeLog,
+  onGoToLog,
 }: {
   onSelectNode: (imdbId: string) => void;
   version: number;
-  onWholeLog: () => void;
+  onGoToLog?: (filter?: "want") => void;
 }) {
   const [rows, setRows] = useState<WatchedRow[] | null>(null);
-  const [total, setTotal] = useState(0);
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let alive = true;
     fetch("/api/taste/watched", { cache: "no-store" })
       .then(async (r) => (r.ok ? ((await r.json()) as { watched: WatchedRow[] }).watched : []))
-      .then((w) => {
-        if (!alive) return;
-        setTotal(w.length);
-        setRows([...w].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")).slice(0, LIMIT));
-      })
+      .then((w) => alive && setRows(laterRows(w)))
       .catch(() => alive && setRows([]));
     return () => {
       alive = false;
     };
   }, [version]);
 
-  const ids = (rows ?? []).map((r) => r.titleImdbId);
+  const kept = (rows ?? []).filter((r) => !gone.has(r.titleImdbId));
+  const ids = kept.map((r) => r.titleImdbId);
   const images = useImages(ids);
   const names = useNames(ids);
-  // The kind, the runtime and the episode count live in Numbers' own GET,
-  // which this page makes anyway — so the mono column borrows it rather than
-  // asking a second route for the same three facts.
-  const numbers = useNumbers(version);
-  const meta = new Map(
-    numbers.status === "ready" ? numbers.data.log.map((r) => [r.imdbId, r] as const) : [],
-  );
+
+  const seenIt = (imdbId: string) => {
+    setGone((g) => new Set(g).add(imdbId));
+    void fetch("/api/taste/log", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imdbId, state: "seen" }),
+    })
+      .then(() => bumpLog())
+      .catch(() => {});
+  };
 
   return (
-    <section className="flex flex-col gap-[12px]" aria-label="Recently logged">
+    <section className="flex flex-col gap-[12px]" aria-label="Later">
       <div className="section-head">
-        <h2 className="t-title">recently logged</h2>
-        {total > 0 && (
-          <span className="t-meta">
-            {Math.min(LIMIT, total)} of {total}
-          </span>
+        <h2 className="t-title">later</h2>
+        {kept.length > 0 && <span className="t-meta">{kept.length} saved</span>}
+        {onGoToLog && (
+          <button type="button" onClick={() => onGoToLog("want")} className="t-link ml-auto shrink-0">
+            the whole list
+          </button>
         )}
-        <button type="button" onClick={onWholeLog} className="t-link ml-auto shrink-0">
-          the whole log
-        </button>
       </div>
 
-      {rows === null && <p className="t-meta">reading the log…</p>}
-      {rows !== null && rows.length === 0 && <p className="t-prose">nothing logged yet. type a title below.</p>}
+      {rows === null && <p className="t-meta">reading later…</p>}
+      {rows !== null && kept.length === 0 && <p className="t-prose">nothing saved. log something as want and it lands here.</p>}
 
       <div className="flex flex-col">
-        {(rows ?? []).map((row) => {
+        {kept.map((row) => {
           const id = row.titleImdbId;
-          const m = meta.get(id);
-          const kind = m ? (m.kind === "series" ? "show" : "film") : "";
-          const tail = m ? [kind, m.kind === "series" ? null : m.runtime ? `${m.runtime}m` : null].filter(Boolean).join(" · ") : "";
-          const year = names[id]?.year || m?.year || "";
+          const year = names[id]?.year ?? "";
           return (
-            <button
-              key={`${id}-${row.season ?? 0}`}
-              type="button"
-              onClick={() => onSelectNode(id)}
-              className="row h-[52px] grid-cols-[26px_minmax(0,1fr)] text-left sm:h-[38px] sm:grid-cols-[88px_26px_minmax(0,320px)_48px_64px_minmax(0,1fr)]"
-            >
-              <span className="t-meta hidden sm:block">{terseTime(row.updatedAt)}</span>
-              {images[id]?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={images[id]!.url!} alt="" className="poster-mark" loading="lazy" />
-              ) : (
-                <span className="poster-mark" />
-              )}
-              <span className="min-w-0">
+            <div key={id} className="row grid-cols-[26px_minmax(0,1fr)_auto] sm:grid-cols-[26px_minmax(0,360px)_48px_minmax(0,1fr)]">
+              <button type="button" onClick={() => onSelectNode(id)} aria-label={names[id]?.name ?? id}>
+                {images[id]?.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={images[id]!.url!} alt="" className="poster-mark" loading="lazy" />
+                ) : (
+                  <span className="poster-mark" />
+                )}
+              </button>
+              <button type="button" onClick={() => onSelectNode(id)} className="min-w-0 text-left">
                 <span className="t-row block truncate">
-                  {names[id]?.name ?? m?.name ?? "…"}
-                  {row.season ? <span className="t-meta ml-[6px] text-ink-faint">s{row.season}</span> : null}
-                  {/* the phone row is two lines: poster + title + year, then the mono meta */}
+                  {names[id]?.name ?? "…"}
                   {year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{year}</span> : null}
                 </span>
-                <span className="t-meta block sm:hidden">
-                  {[terseTime(row.updatedAt), watchedWord(row), tail].filter(Boolean).join(" · ")}
-                </span>
-              </span>
+              </button>
               <span className="t-meta hidden text-ink-faint sm:block">{year}</span>
-              <span className={`hidden sm:block ${row.rating === "rated" ? "tnum text-[13.5px] leading-[1.2] text-ink" : `bucket ${isLiked(row) ? "bucket-on" : ""}`}`}>{watchedWord(row)}</span>
-              <span className="t-meta hidden truncate sm:block">{tail}</span>
-            </button>
+              <button type="button" onClick={() => seenIt(id)} className="t-link justify-self-end sm:justify-self-start">
+                seen it
+              </button>
+            </div>
           );
         })}
       </div>

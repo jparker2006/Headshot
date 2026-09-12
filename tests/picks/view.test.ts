@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toPickView, TONIGHT_VERSION } from "@/lib/picks/view";
+import { toPickView } from "@/lib/picks/view";
 import type { Pick } from "@/lib/picks/engine";
 import type { CandidateMeta } from "@/lib/picks/candidates";
 
@@ -49,9 +49,5 @@ describe("pick view", () => {
     const v = toPickView({ ...pick, onYourServices: false, availableOn: [] }, meta, [15]);
     expect(v.playLabel).toBe("Where to watch");
     expect(v.playUrl).toBe(meta.link);
-  });
-
-  it("the stored shape is versioned, so rows with the old playUrl recompute", () => {
-    expect(TONIGHT_VERSION).toBeGreaterThan(2);
   });
 });

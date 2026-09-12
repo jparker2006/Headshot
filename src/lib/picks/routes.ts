@@ -2,19 +2,16 @@
  * Tonight's routes as a factory over their dependencies (the same seam the
  * chat and taste routes use). Everything is behind sign-in with a 401.
  */
-import type { LanguageModel } from "ai";
 import type { IndustryGraph } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import type { TasteStore, WatchedInput } from "@/lib/taste/types";
 import type { TitlesStore } from "@/lib/titles";
 import type { Filters } from "./engine";
-import { computeTonight, loadTonight, pickNow } from "./service";
+import { pickNow } from "./service";
 import type { PickView } from "./view";
 import { deckSource, parseDeckSize } from "./deckSource";
 import { diffLines, type MemoryDiff } from "./sessionDiff";
 import { memoryText } from "@/lib/memory";
-import { tasteMap } from "@/lib/taste/map";
-import { tasteFacts } from "./engine";
 import { toEngineRows } from "./service";
 import { isValidScore } from "@/lib/taste/score";
 
@@ -26,7 +23,6 @@ export interface TonightRouteDeps {
   titles?: () => Promise<TitlesStore>;
   /** Background work that outlives the response (`waitUntil` on Vercel). */
   schedule?: (work: () => Promise<void>) => void;
-  model?: () => LanguageModel | null;
   log?: (m: string) => void;
   /** Rewrite this user's memory (v4), scheduled after a swipe episode. */
   rewrite?: (userId: string) => Promise<void>;
@@ -112,38 +108,7 @@ function swipeEpisodeText(graph: IndustryGraph, rows: (WatchedInput & { source: 
 }
 
 export function createTonightHandlers(deps: TonightRouteDeps) {
-  const build = async () => ({
-    graph: await deps.graph(),
-    tmdb: deps.tmdb(),
-    store: await deps.store(),
-    titles: deps.titles ? await deps.titles() : null,
-    schedule: deps.schedule,
-    model: deps.model?.() ?? null,
-    log: deps.log,
-  });
   return {
-    /** GET /api/tonight — stored picks, computed once when there are none. 404 until the user has rated something. */
-    async get(req: Request): Promise<Response> {
-      const userId = await deps.userId(req);
-      if (!userId) return unauthorized();
-      const data = await loadTonight(await build(), userId);
-      return data ? Response.json(data) : Response.json({ error: "no_taste_yet" }, { status: 404 });
-    },
-
-    /** POST /api/tonight/refresh { maxRuntimeMin?, energy? } — recompute now with tonight's filters. */
-    async refresh(req: Request): Promise<Response> {
-      const userId = await deps.userId(req);
-      if (!userId) return unauthorized();
-      let body: Record<string, unknown> = {};
-      try {
-        body = (await req.json()) as Record<string, unknown>;
-      } catch {
-        body = {};
-      }
-      const data = await computeTonight(await build(), userId, parseFilters(body));
-      return data ? Response.json(data) : Response.json({ error: "no_taste_yet" }, { status: 404 });
-    },
-
     /**
      * GET /api/tonight/opener?maxRuntimeMin=&energy= — the line a new chat
      * opens with, computed on demand from the engine: no model, no stored row.
@@ -175,33 +140,6 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       const watched = await store.listWatched(userId);
       const size = parseDeckSize(new URL(req.url).searchParams.get("size"));
       return Response.json(deckSource(graph, toEngineRows(watched), { size }));
-    },
-
-    /** GET /api/taste/map — the user's private ego graph plus the derived facts for the rail. */
-    async map(req: Request): Promise<Response> {
-      const userId = await deps.userId(req);
-      if (!userId) return unauthorized();
-      const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
-      const watched = await store.listWatched(userId);
-      const stored = await store.getTaste(userId);
-      const facts = stored?.facts ?? tasteFacts(graph, toEngineRows(watched));
-      return Response.json({ network: tasteMap(graph, watched), facts, rated: watched.filter((w) => w.rating === "rated").length, later: watched.filter((w) => w.rating === "want").length });
-    },
-
-    /** POST /api/taste/later { imdbId } — "not tonight": the title joins Later (bucket `want`). */
-    async later(req: Request): Promise<Response> {
-      const userId = await deps.userId(req);
-      if (!userId) return unauthorized();
-      let body: { imdbId?: unknown };
-      try {
-        body = (await req.json()) as typeof body;
-      } catch {
-        return Response.json({ error: "Invalid JSON" }, { status: 400 });
-      }
-      if (typeof body.imdbId !== "string" || !/^tt\d+$/.test(body.imdbId)) return Response.json({ error: "imdbId required" }, { status: 400 });
-      const store = await deps.store();
-      await store.upsertWatched(userId, [{ titleImdbId: body.imdbId, rating: "want", source: "swipe" }]);
-      return Response.json({ ok: true });
     },
 
     /** POST /api/taste/swipe { rows: [{imdbId, rating}] } — the deck's committed rows (last action wins; undo is a re-post). */

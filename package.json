@@ -21,18 +21,13 @@
     "@neondatabase/auth": "0.5.0-beta",
     "@neondatabase/serverless": "^1.1.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
-    "@sigma/node-image": "^3.0.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.7",
     "ai": "^7.0.97",
     "drizzle-orm": "^0.45.2",
-    "graphology": "^0.26.0",
-    "graphology-layout": "^0.6.1",
-    "graphology-layout-forceatlas2": "^0.10.1",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sigma": "^3.0.3",
     "zod": "^4.6.2"
   },
   "devDependencies": {

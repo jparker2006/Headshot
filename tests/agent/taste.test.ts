@@ -68,8 +68,8 @@ describe("taste in the chat", () => {
     expect(out.picks.length).toBeLessThanOrEqual(3);
     expect(out.picks.some((p) => p.title.startsWith("Forrest Gump"))).toBe(true);
     expect(out.picks[0].reason.length).toBeGreaterThan(0);
-    // On demand means on demand: the tonight row stays empty.
-    expect(await store.getTonight("u1")).toBeNull();
+    // On demand means on demand: nothing derived is written.
+    expect(await store.getTaste("u1")).toBeNull();
   });
 
   it("the tonight tool post-filters by the service the user named", async () => {

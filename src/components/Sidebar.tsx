@@ -26,7 +26,8 @@ export interface SessionItem {
 }
 
 interface Props {
-  surface: Surface;
+  /** Null on a page that is none of the three sections (`/settings`). */
+  surface: Surface | null;
   /** The signed-in person's threads, newest updated first. Empty signed out. */
   sessions: SessionItem[];
   activeId: string | null;

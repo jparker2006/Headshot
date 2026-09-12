@@ -19,6 +19,8 @@ import { bumpLog, useLogVersion } from "@/components/you/logBus";
 import { useNumbers } from "@/components/you/useNumbers";
 import type { WatchedRow } from "@/lib/taste/types";
 import { CatchUp } from "@/components/you/CatchUp";
+import { useCrawlStatus } from "@/components/imports/useCrawlStatus";
+import type { LogFilter } from "@/components/you/numbersRules";
 import { LogTable } from "./LogTable";
 import { ScoreRow } from "./ScoreRow";
 
@@ -34,14 +36,20 @@ export interface LogCandidate {
 interface Props {
   /** Open a person or title in the drawer. */
   onSelectNode: (imdbId: string) => void;
+  /** The chip the table opens on — You's Later links here with `want`. */
+  initialFilter?: LogFilter;
 }
 
 type PickedState = "want" | "seen";
 
-export function LogPage({ onSelectNode }: Props) {
+export function LogPage({ onSelectNode, initialFilter }: Props) {
   const version = useLogVersion();
   const numbers = useNumbers(version);
   const [catchUp, setCatchUp] = useState(false);
+  // A Letterboxd crawl writes rows from outside this tab, so the page says so
+  // while it runs and re-reads the log the moment it stops (SPEC v5).
+  const crawl = useCrawlStatus(true, bumpLog);
+  const importing = crawl.body?.status === "running";
 
   const rows = numbers.status === "ready" ? numbers.data.log : [];
   const totals = numbers.status === "ready" ? numbers.data.totals : null;
@@ -60,6 +68,8 @@ export function LogPage({ onSelectNode }: Props) {
         )}
       </div>
 
+      {importing && <p className="t-meta -mt-[18px]">importing from Letterboxd…</p>}
+
       <LogField onSelectNode={onSelectNode} />
 
       {catchUp ? (
@@ -75,6 +85,7 @@ export function LogPage({ onSelectNode }: Props) {
           rows={rows}
           onSelectNode={onSelectNode}
           onCatchUp={() => setCatchUp(true)}
+          initialFilter={initialFilter}
         />
       )}
     </div>

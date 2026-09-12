@@ -31,5 +31,8 @@ export const tasteHandlers = createTasteHandlers({
   // TMDB to see their own log line.
   // A log is new evidence: the memory is rewritten after the response.
   rewrite: rewriteMemoryForUser,
+  // The Letterboxd crawl's window on the world: the platform `fetch` and a
+  // real timer. Everything else about it is pure and injected in tests.
+  crawl: { fetch: (url, init) => fetch(url, init) },
   schedule: (work) => waitUntil(work().catch((err) => console.warn("[taste] background failed:", err))),
 });

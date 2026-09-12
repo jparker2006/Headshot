@@ -21,8 +21,49 @@ export interface Candidate {
   /** Credits on the mentioned titles, title order. */
   credits: { title: NodeInfo; character: string | null; tier: number }[];
   score: number;
+  /** The part of the score the role hint contributed (0 when it matched nothing). */
+  hintMatch: number;
   /** Why it scored, for the model and for tests. */
   reasons: string[];
+}
+
+/**
+ * The role hint is the question. A match on a character name ("priest" ↔ "The
+ * Priest") or on the person's own name has to dominate prominence (0..1) and
+ * the strong-tier bonus, so that one named role beats the top of the bill.
+ */
+export const CHARACTER_WEIGHT = 4;
+export const NAME_WEIGHT = 3;
+/**
+ * Scores within this of the best are "close": the question did not actually
+ * choose between them, so the user does. A whole hint token is worth
+ * CHARACTER_WEIGHT and half a token (a stem match) half of that, so this only
+ * ever ties people the hint treated the same way.
+ */
+export const TIE_EPSILON = 0.35;
+/** Never put more than this many faces in front of the user. Never the cast. */
+export const MAX_CHOICES = 4;
+
+export interface Selection {
+  /**
+   * `answer`: one person, shown as the answer with their face.
+   * `choose`: the hint genuinely fits these (and only these) — ask.
+   */
+  mode: "answer" | "choose";
+  matches: Candidate[];
+}
+
+/**
+ * Turn a scored list into what the user sees. One candidate clear of the field
+ * by more than TIE_EPSILON is the answer; otherwise the near-tied few (at most
+ * MAX_CHOICES) are the choice. Never the rest of the cast.
+ */
+export function selectMatches(candidates: Candidate[]): Selection {
+  if (candidates.length === 0) return { mode: "choose", matches: [] };
+  const top = candidates[0];
+  const tied = candidates.filter((c) => top.score - c.score <= TIE_EPSILON).slice(0, MAX_CHOICES);
+  if (tied.length <= 1) return { mode: "answer", matches: [top] };
+  return { mode: "choose", matches: tied };
 }
 
 const STOP = new Set(["the", "a", "an", "guy", "girl", "man", "woman", "who", "that", "one", "actor", "actress", "played", "plays", "play", "in", "on", "from", "of", "and", "with", "was", "is", "character", "role", "person", "lady", "dude", "kid", "boy"]);
@@ -78,6 +119,7 @@ export function findByConstraints(graph: IndustryGraph, c: Constraints): { candi
     });
     const reasons: string[] = [];
     let score = 0;
+    let hintMatch = 0;
     // Prominence: 0..1, log-scaled so the top of the bill does not drown the hint.
     const prominence = Math.log1p(node.votes) / Math.log1p(maxVotes);
     score += prominence;
@@ -89,7 +131,8 @@ export function findByConstraints(graph: IndustryGraph, c: Constraints): { candi
       const nameHits = tokenOverlap(tokens, node.name);
       if (charHits) reasons.push(`character matches "${c.roleHint}"`);
       if (nameHits) reasons.push(`name matches "${c.roleHint}"`);
-      score += charHits * 2 + nameHits * 1.5;
+      hintMatch = charHits * CHARACTER_WEIGHT + nameHits * NAME_WEIGHT;
+      score += hintMatch;
     }
     if (c.era && node.year) {
       const { from, to } = c.era;
@@ -99,7 +142,7 @@ export function findByConstraints(graph: IndustryGraph, c: Constraints): { candi
         reasons.push(`born ${node.year}`);
       } else score -= 1;
     }
-    return { node, credits, score, reasons };
+    return { node, credits, score, hintMatch, reasons };
   });
   scored.sort((a, b) => b.score - a.score || b.node.votes - a.node.votes || a.node.id - b.node.id);
   return { candidates: scored.slice(0, limit), total: scored.length };

@@ -1,5 +1,8 @@
 import {
   EMPTY_TASTE_FACTS,
+  type CrawlResultInput,
+  type CrawlRow,
+  type CrawlSource,
   type EpisodeInput,
   type EpisodeRow,
   type ImportSource,
@@ -25,7 +28,7 @@ export class MemoryTasteStore implements TasteStore {
   private watchedByUser = new Map<string, Map<string, WatchedRow>>();
   private servicesByUser = new Map<string, ServicesRow>();
   private tasteByUser = new Map<string, TasteRow>();
-  private tonightByUser = new Map<string, { data: Record<string, unknown>; generatedAt: string }>();
+  private crawlsByUser = new Map<string, Map<CrawlSource, CrawlRow>>();
   private memoryByUser = new Map<string, MemoryRow>();
   private episodesByUser = new Map<string, EpisodeRow[]>();
   private episodeSeq = 0;
@@ -172,13 +175,37 @@ export class MemoryTasteStore implements TasteStore {
     });
   }
 
-  async setTonight(userId: string, data: Record<string, unknown>): Promise<void> {
-    this.tonightByUser.set(userId, { data: structuredClone(data), generatedAt: this.stamp() });
+  private crawls(userId: string): Map<CrawlSource, CrawlRow> {
+    let m = this.crawlsByUser.get(userId);
+    if (!m) this.crawlsByUser.set(userId, (m = new Map()));
+    return m;
   }
 
-  async getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null> {
-    const row = this.tonightByUser.get(userId);
-    return row ? { data: structuredClone(row.data), generatedAt: row.generatedAt } : null;
+  async getCrawl(userId: string, source: CrawlSource): Promise<CrawlRow | null> {
+    const row = this.crawlsByUser.get(userId)?.get(source);
+    return row ? { ...row } : null;
+  }
+
+  async startCrawl(userId: string, source: CrawlSource, username: string): Promise<CrawlRow> {
+    const row: CrawlRow = { source, username, status: "running", imported: 0, startedAt: this.stamp(), finishedAt: null, error: null };
+    this.crawls(userId).set(source, row);
+    return { ...row };
+  }
+
+  async finishCrawl(userId: string, source: CrawlSource, result: CrawlResultInput): Promise<CrawlRow> {
+    const at = this.stamp();
+    const prev = this.crawlsByUser.get(userId)?.get(source);
+    const row: CrawlRow = {
+      source,
+      username: result.username ?? prev?.username ?? "",
+      status: result.status,
+      imported: result.imported ?? 0,
+      startedAt: prev?.startedAt ?? at,
+      finishedAt: at,
+      error: result.error ?? null,
+    };
+    this.crawls(userId).set(source, row);
+    return { ...row };
   }
 
   async activeUsers(since: Date): Promise<string[]> {
@@ -189,7 +216,7 @@ export class MemoryTasteStore implements TasteStore {
   }
 
   async deleteUser(userId: string): Promise<void> {
-    this.tonightByUser.delete(userId);
+    this.crawlsByUser.delete(userId);
     this.watchedByUser.delete(userId);
     this.servicesByUser.delete(userId);
     this.tasteByUser.delete(userId);

@@ -7,7 +7,11 @@ const node = (imdbId: string, kind: "person" | "title") =>
   ({ type: "data-node", data: { imdbId, name: imdbId, kind, titleType: "", year: 0, votes: 0, genres: "", inIndustryGraph: true } }) as Part;
 const chosen = (ids: string[]) => ({ type: "data-chosen", data: { from: ids[0], to: ids.at(-1)!, tier: "strong", index: 0, reason: "", path: { imdbIds: ids, names: ids } } }) as Part;
 const hop = { type: "data-path-hop", data: { from: "a", to: "b", via: null, index: 0, total: 1, tier: "strong" } } as Part;
-const faces = { type: "data-faces", data: { query: "q", candidates: [], total: 0 } } as Part;
+const faces = { type: "data-faces", data: { query: "q", candidates: [], total: 0, mode: "choose" } } as Part;
+const oneFace = {
+  type: "data-faces",
+  data: { query: "the priest in Fleabag", candidates: [{ imdbId: "nm5", name: "Andrew Scott", credit: "Fleabag", character: "The Priest" }], total: 1, mode: "answer" },
+} as Part;
 
 describe("ego view by default", () => {
   it("centers on the first person of the chosen path", () => {
@@ -16,9 +20,12 @@ describe("ego view by default", () => {
   it("falls back to the first person touched", () => {
     expect(egoDefaultFor([node("tt1", "title"), node("nm5", "person"), node("nm6", "person")])).toBe("nm5");
   });
-  it("keeps the whole brain for a face grid without a path", () => {
+  it("keeps the whole brain while a choose grid is still asking", () => {
     expect(egoDefaultFor([node("nm5", "person"), faces])).toBeNull();
     expect(egoDefaultFor([faces, chosen(["nm1", "tt1", "nm2"])])).toBe("nm1");
+  });
+  it("follows a single identified person, because that grid is the answer", () => {
+    expect(egoDefaultFor([node("nm5", "person"), oneFace])).toBe("nm5");
   });
   it("returns null with nothing to center on", () => {
     expect(egoDefaultFor([{ type: "text", text: "hi" }])).toBeNull();

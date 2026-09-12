@@ -22,6 +22,27 @@ export async function fixtureGraph(): Promise<IndustryGraph> {
   return new IndustryGraph(await fixturePacked());
 }
 
+/**
+ * A second, self-contained fixture built for identification: one series whose
+ * whole cast has character names (including "The Priest"), two of them also in
+ * a much bigger film so prominence differs, and two characters that share a
+ * word ("Bank Manager" / "Hotel Manager") so a vague hint really is ambiguous.
+ */
+export const IDENTIFY_FIXTURE = path.join(__dirname, "..", "fixtures", "identify");
+
+let identifyPromise: Promise<PackedGraph> | undefined;
+export function identifyPacked(): Promise<PackedGraph> {
+  return (identifyPromise ??= buildGraph({
+    inputDir: path.join(IDENTIFY_FIXTURE, "imdb"),
+    voteFloor: 1000,
+    buildId: "test-identify",
+    tmdb: loadCachedCredits(path.join(IDENTIFY_FIXTURE, "tmdb")),
+  }));
+}
+export async function identifyGraph(): Promise<IndustryGraph> {
+  return new IndustryGraph(await identifyPacked());
+}
+
 const usage = {
   inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
   outputTokens: { total: 5, text: 5, reasoning: undefined },

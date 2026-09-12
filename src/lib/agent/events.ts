@@ -69,11 +69,14 @@ export type HeadshotDataParts = {
    */
   fast: { shape: AnswerShape; imdbIds: string[]; cached: boolean; answerId?: string; stale?: boolean };
   /**
-   * Identification candidates as a face grid. The client resolves images.
-   * Tapping a face opens the page when the answer text after the grid is
-   * empty, otherwise posts "I mean <name>" as the next user turn.
+   * Identification result as faces. The client resolves images.
+   * `mode: "answer"` is one candidate — the person, shown with the answer;
+   * a tap opens their page. `mode: "choose"` is the two to four people the
+   * description genuinely fits (never the rest of the cast); tapping one
+   * opens the page when the answer text after it is empty, otherwise posts
+   * "I mean <name>" as the next user turn.
    */
-  faces: { query: string; candidates: FaceCandidate[]; total: number };
+  faces: { query: string; candidates: FaceCandidate[]; total: number; mode: "answer" | "choose" };
   /** The answer was stored; `public` answers get a permalink at /a/<slug>-<id>. */
   answer: { id: string; slug: string; public: boolean };
 };

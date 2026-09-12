@@ -12,7 +12,7 @@ import { SectionIcon } from "./navIcons";
 import { requireSignIn, useSessionUser } from "./auth/SignInGate";
 import { navItems, type Section, type Surface } from "./navModel";
 
-export function TabBar({ surface, onNavigate }: { surface: Surface; onNavigate: (section: Section) => void }) {
+export function TabBar({ surface, onNavigate }: { surface: Surface | null; onNavigate: (section: Section) => void }) {
   const { user } = useSessionUser();
   const items = navItems(surface, Boolean(user));
   return (

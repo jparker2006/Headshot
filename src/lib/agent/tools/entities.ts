@@ -7,12 +7,12 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { type AgentContext, describe, semanticCandidates, toCanvasNode, touch } from "../context";
-import { creditLabel, findByConstraints } from "../identify";
+import { creditLabel, findByConstraints, selectMatches } from "../identify";
 import type { FaceCandidate } from "../events";
 
 const imdbTitle = z.string().regex(/^tt\d+$/, "an IMDb title id like tt0112384");
 
-/** Run the constraint solver, touch the candidates, and emit the face grid when there is a real choice. */
+/** Run the constraint solver, touch what it found, and emit the faces: the one match, or the near-tied few. */
 export async function identifyAndEmit(ctx: AgentContext, input: { titles: string[]; roleHint?: string; era?: { from?: number; to?: number }; limit?: number }, query: string) {
   const titleIds = input.titles.map((t) => ctx.graph.idOf(t)).filter((id): id is number => id !== undefined);
   if (titleIds.length === 0) return { error: "unknown_title", hint: "Resolve the title with find_entities first, or expand_node it." };
@@ -23,30 +23,32 @@ export async function identifyAndEmit(ctx: AgentContext, input: { titles: string
     const titleNames = titleIds.map((id) => ctx.graph.node(id).name).join(", ");
     loose = (await semanticCandidates(ctx, `${input.roleHint} in ${titleNames}`, 6, "person")).map(describe);
   }
-  const faces: FaceCandidate[] = candidates.map((c) => ({
+  // What the user actually sees: the one match, or the near-tied few. Never the cast.
+  const { mode, matches } = selectMatches(candidates);
+  const faces: FaceCandidate[] = matches.map((c) => ({
     imdbId: c.node.imdbId,
     name: c.node.name,
     credit: c.credits.map(creditLabel).join("; "),
     character: c.credits[0]?.character ?? null,
     score: Number(c.score.toFixed(2)),
   }));
-  await touch(ctx, [...titleIds.map((id) => toCanvasNode(ctx.graph.node(id))), ...candidates.map((c) => toCanvasNode(c.node))]);
-  for (const c of candidates) for (const cr of c.credits) ctx.emit("edge", { personImdbId: c.node.imdbId, titleImdbId: cr.title.imdbId, tier: cr.tier });
-  // A grid only when the user has something to choose between.
-  const clear = faces.length === 1 || (faces.length > 1 && faces[0].score - faces[1].score >= 2);
-  if (faces.length >= 2 && !clear) ctx.emit("faces", { query, candidates: faces, total });
+  await touch(ctx, [...titleIds.map((id) => toCanvasNode(ctx.graph.node(id))), ...matches.map((c) => toCanvasNode(c.node))]);
+  for (const c of matches) for (const cr of c.credits) ctx.emit("edge", { personImdbId: c.node.imdbId, titleImdbId: cr.title.imdbId, tier: cr.tier });
+  // One face is the answer beside the text; several faces are the question.
+  if (faces.length > 0) ctx.emit("faces", { query, candidates: faces, total, mode });
   return {
+    mode,
     candidates: faces.map((f) => `${f.name} [${f.imdbId}] — ${f.credit}${f.score ? ` (score ${f.score})` : ""}`),
     total,
-    reasons: Object.fromEntries(candidates.filter((c) => c.reasons.length).map((c) => [c.node.imdbId, c.reasons])),
-    faceGridShown: faces.length >= 2 && !clear,
+    reasons: Object.fromEntries(matches.filter((c) => c.reasons.length).map((c) => [c.node.imdbId, c.reasons])),
+    faceGridShown: faces.length > 0,
     semanticGuesses: loose.length ? loose : undefined,
     hint:
       faces.length === 0
         ? "Nobody in the graph is credited on all of these titles. Try fewer titles, expand_node the title, or tmdb_search."
-        : clear
-          ? "One clear match. Name them and say what they played."
-          : "The user is looking at these faces now. Say in one line what the grid shows and ask which one, or name the top one if the hint clearly points at them.",
+        : mode === "answer"
+          ? "One match, and their face is already on screen next to your answer. Name that person in one line and say what they played. Do not ask the user who they meant and do not list anyone else."
+          : "These are the only people the description fits and their faces are on screen. Say in one line what they have in common and ask which one. Do not name one of them as the answer, and do not add anyone who is not in this list.",
   };
 }
 
@@ -54,7 +56,7 @@ export function entityTools(ctx: AgentContext) {
   return {
     find_by_constraints: tool({
       description:
-        "Identify a person from a title plus a vague description. Required whenever the question names at least one title and describes someone instead of naming them ('the bald guy in Severance', 'the villain in Heat', 'who played the astronaut in Apollo 13'). Intersects the casts of all titles given, scores by the role hint against character names, prominence, and era, and shows the user a grid of faces when several fit. Pass everything the question said about the person as roleHint.",
+        "Identify a person from a title plus a vague description. Required whenever the question names at least one title and describes someone instead of naming them ('the bald guy in Severance', 'the villain in Heat', 'who played the astronaut in Apollo 13'). Intersects the casts of all titles given and scores by the role hint against character names, prominence, and era. It returns the one person the description picks out (mode 'answer', their face is shown with your reply) or, only when the description genuinely fits several, the two to four it fits (mode 'choose'). Pass everything the question said about the person as roleHint.",
       inputSchema: z.object({
         titles: z.array(imdbTitle).min(1).max(4).describe("IMDb ids of the titles mentioned"),
         roleHint: z.string().optional().describe("The description of the person or role, verbatim from the question"),

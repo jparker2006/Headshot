@@ -81,6 +81,37 @@ export interface WatchedInput {
   episodesWatched?: number;
 }
 
+/** The only crawl there is, but the row says which import it belongs to. */
+export type CrawlSource = "letterboxd";
+
+/**
+ * How a crawl went. `running` is the only non-terminal state; `private` and
+ * `not_found` are answers about the profile rather than failures of ours, and
+ * `failed` carries the message in `error`.
+ */
+export type CrawlStatus = "running" | "done" | "private" | "not_found" | "failed";
+
+/** One row of the `crawls` table: the latest crawl for (user, source). */
+export interface CrawlRow {
+  source: CrawlSource;
+  username: string;
+  status: CrawlStatus;
+  /** Rows written; 0 until the crawl finishes. */
+  imported: number;
+  startedAt: string;
+  /** ISO timestamp, or null while the crawl is still running. */
+  finishedAt: string | null;
+  error: string | null;
+}
+
+/** What `finishCrawl` is told: everything the running row did not know yet. */
+export interface CrawlResultInput {
+  username?: string;
+  status: Exclude<CrawlStatus, "running">;
+  imported?: number;
+  error?: string | null;
+}
+
 export interface ServicesRow {
   /** TMDB watch-provider ids (see `src/lib/taste/providers.ts`). */
   providerIds: number[];
@@ -154,9 +185,12 @@ export interface TasteStore {
    * could stand in for a score they never gave.
    */
   setProgress(userId: string, titleImdbId: string, progress: ProgressInput): Promise<void>;
-  /** Tonight's stored picks and deck (any JSON the picks service produced), or null before the first run. */
-  setTonight(userId: string, data: Record<string, unknown>): Promise<void>;
-  getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null>;
+  /** The latest import crawl for this user and source, or null before the first one. */
+  getCrawl(userId: string, source: CrawlSource): Promise<CrawlRow | null>;
+  /** Record a crawl as started: status `running`, the clock's `startedAt`, nothing finished. */
+  startCrawl(userId: string, source: CrawlSource, username: string): Promise<CrawlRow>;
+  /** Close the running crawl with how it went. A crawl that was never started is created finished. */
+  finishCrawl(userId: string, source: CrawlSource, result: CrawlResultInput): Promise<CrawlRow>;
   /** The memory row, or null before the first rewrite. */
   getMemory(userId: string): Promise<MemoryRow | null>;
   /** Partial update: a field the caller omits keeps the value it had. */

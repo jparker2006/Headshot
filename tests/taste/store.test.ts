@@ -34,7 +34,7 @@ afterAll(async () => {
 
 async function truncate() {
   await db.execute(
-    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "tonight", "titles", "memory", "episodes", "threads", "messages"`,
+    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "crawls", "titles", "memory", "episodes", "threads", "messages"`,
   );
 }
 
@@ -293,18 +293,29 @@ function describeStore(name: string, factory: StoreFactory) {
       expect(await store.listEpisodes("u2")).toHaveLength(1);
     });
 
-    it("tonight round-trips a stored result, replaces on write, and is gone after deleteUser", async () => {
+    it("records a crawl, closes it, and drops it with the user", async () => {
       const store = await factory();
-      expect(await store.getTonight("u1")).toBeNull();
-      await store.setTonight("u1", { picks: [{ imdbId: "tt0000002" }], deck: [] });
-      const first = await store.getTonight("u1");
-      expect(first?.data).toEqual({ picks: [{ imdbId: "tt0000002" }], deck: [] });
-      expect(typeof first?.generatedAt).toBe("string");
-      await store.setTonight("u1", { picks: [], deck: ["tt0000001"] });
-      expect((await store.getTonight("u1"))?.data).toEqual({ picks: [], deck: ["tt0000001"] });
-      expect(await store.getTonight("u2")).toBeNull();
+      expect(await store.getCrawl("u1", "letterboxd")).toBeNull();
+
+      const started = await store.startCrawl("u1", "letterboxd", "jake");
+      expect(started).toMatchObject({ source: "letterboxd", username: "jake", status: "running", imported: 0, finishedAt: null, error: null });
+      expect(await store.getCrawl("u1", "letterboxd")).toMatchObject({ status: "running" });
+      // One row per (user, source): the latest crawl is the only crawl.
+      expect(await store.getCrawl("u2", "letterboxd")).toBeNull();
+
+      const done = await store.finishCrawl("u1", "letterboxd", { status: "done", imported: 12 });
+      expect(done).toMatchObject({ username: "jake", status: "done", imported: 12 });
+      expect(done.startedAt).toBe(started.startedAt);
+      expect(typeof done.finishedAt).toBe("string");
+
+      // A private profile closes the row without pretending anything imported.
+      const shy = await store.finishCrawl("u1", "letterboxd", { username: "shy", status: "private" });
+      expect(shy).toMatchObject({ username: "shy", status: "private", imported: 0 });
+      const failed = await store.finishCrawl("u1", "letterboxd", { status: "failed", error: "letterboxd 500" });
+      expect(failed).toMatchObject({ status: "failed", error: "letterboxd 500" });
+
       await store.deleteUser("u1");
-      expect(await store.getTonight("u1")).toBeNull();
+      expect(await store.getCrawl("u1", "letterboxd")).toBeNull();
     });
 
     it("activeUsers lists users with recent watched or services activity", async () => {

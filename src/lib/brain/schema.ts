@@ -183,13 +183,6 @@ export interface TasteFactsJson {
   genresAvoided: string[];
 }
 
-/** Tonight, as the nightly job (or an on-demand refresh) left it: picks, deck, and when. */
-export const tonight = pgTable("tonight", {
-  userId: text("user_id").primaryKey(),
-  data: jsonb("data").$type<Record<string, unknown>>().notNull(),
-  generatedAt: timestamp("generated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-});
-
 /** One row per user: the nightly taste vector plus the facts derived with it. */
 export const taste = pgTable("taste", {
   userId: text("user_id").primaryKey(),
@@ -288,4 +281,28 @@ export const messages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
   (t) => [index("messages_thread_id_idx").on(t.threadId)],
+);
+
+// ---- v5: import crawls ---------------------------------------------------
+// The Letterboxd crawl's state, one row per (user, source): what username was
+// asked for, how it went, and when. The 24h cache and the Log page's
+// "importing from Letterboxd…" both read this row (SPEC v5, "Letterboxd crawl").
+
+export const crawls = pgTable(
+  "crawls",
+  {
+    userId: text("user_id").notNull(),
+    /** letterboxd — the only crawl there is, but the row says so. */
+    source: text("source").$type<"letterboxd">().notNull(),
+    username: text("username").notNull(),
+    /** running | done | private | not_found | failed */
+    status: text("status").$type<"running" | "done" | "private" | "not_found" | "failed">().notNull(),
+    /** Rows written by the finished crawl. */
+    imported: integer("imported").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    /** Null while the crawl is still running. */
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.source] })],
 );

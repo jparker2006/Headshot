@@ -1,8 +1,11 @@
 import { and, asc, desc, eq, gte, ilike, sql } from "drizzle-orm";
 import { drizzle as neonDrizzle } from "drizzle-orm/neon-http";
 import type { BrainDatabase } from "@/lib/brain/postgres";
-import { episodes, memory, services, taste, tonight, watched } from "@/lib/brain/schema";
+import { crawls, episodes, memory, services, taste, watched } from "@/lib/brain/schema";
 import {
+  type CrawlResultInput,
+  type CrawlRow,
+  type CrawlSource,
   type EpisodeInput,
   type EpisodeRow,
   type ImportSource,
@@ -20,6 +23,20 @@ import {
 import { validateScore } from "./score";
 
 type WatchedDbRow = typeof watched.$inferSelect;
+
+type CrawlDbRow = typeof crawls.$inferSelect;
+
+function toCrawlRow(row: CrawlDbRow): CrawlRow {
+  return {
+    source: row.source,
+    username: row.username,
+    status: row.status,
+    imported: row.imported,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    error: row.error,
+  };
+}
 
 /** Monotonic within the process; part of the sortable episode id. */
 let episodeSeq = 0;
@@ -266,17 +283,63 @@ export class PostgresTasteStore implements TasteStore {
       });
   }
 
-  async setTonight(userId: string, data: Record<string, unknown>): Promise<void> {
-    const at = this.now();
-    await this.db
-      .insert(tonight)
-      .values({ userId, data, generatedAt: at })
-      .onConflictDoUpdate({ target: tonight.userId, set: { data: sql`excluded.data`, generatedAt: sql`excluded.generated_at` } });
+  async getCrawl(userId: string, source: CrawlSource): Promise<CrawlRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(crawls)
+      .where(and(eq(crawls.userId, userId), eq(crawls.source, source)))
+      .limit(1);
+    return row ? toCrawlRow(row) : null;
   }
 
-  async getTonight(userId: string): Promise<{ data: Record<string, unknown>; generatedAt: string } | null> {
-    const [row] = await this.db.select().from(tonight).where(eq(tonight.userId, userId)).limit(1);
-    return row ? { data: row.data, generatedAt: row.generatedAt.toISOString() } : null;
+  async startCrawl(userId: string, source: CrawlSource, username: string): Promise<CrawlRow> {
+    const at = this.now();
+    const [row] = await this.db
+      .insert(crawls)
+      .values({ userId, source, username, status: "running", imported: 0, startedAt: at, finishedAt: null, error: null })
+      .onConflictDoUpdate({
+        target: [crawls.userId, crawls.source],
+        set: {
+          username: sql`excluded.username`,
+          status: sql`excluded.status`,
+          imported: sql`excluded.imported`,
+          startedAt: sql`excluded.started_at`,
+          finishedAt: sql`excluded.finished_at`,
+          error: sql`excluded.error`,
+        },
+      })
+      .returning();
+    return toCrawlRow(row);
+  }
+
+  async finishCrawl(userId: string, source: CrawlSource, result: CrawlResultInput): Promise<CrawlRow> {
+    const at = this.now();
+    const [row] = await this.db
+      .insert(crawls)
+      .values({
+        userId,
+        source,
+        username: result.username ?? "",
+        status: result.status,
+        imported: result.imported ?? 0,
+        startedAt: at,
+        finishedAt: at,
+        error: result.error ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [crawls.userId, crawls.source],
+        set: {
+          // A finish keeps the username the run started with unless the caller
+          // names one: the row is about that crawl, not about a later request.
+          ...(result.username === undefined ? {} : { username: sql`excluded.username` }),
+          status: sql`excluded.status`,
+          imported: sql`excluded.imported`,
+          finishedAt: sql`excluded.finished_at`,
+          error: sql`excluded.error`,
+        },
+      })
+      .returning();
+    return toCrawlRow(row);
   }
 
   async activeUsers(since: Date): Promise<string[]> {
@@ -288,7 +351,7 @@ export class PostgresTasteStore implements TasteStore {
   }
 
   async deleteUser(userId: string): Promise<void> {
-    await this.db.delete(tonight).where(eq(tonight.userId, userId));
+    await this.db.delete(crawls).where(eq(crawls.userId, userId));
     await this.db.delete(watched).where(eq(watched.userId, userId));
     await this.db.delete(services).where(eq(services.userId, userId));
     await this.db.delete(taste).where(eq(taste.userId, userId));

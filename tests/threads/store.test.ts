@@ -31,7 +31,7 @@ afterAll(async () => {
 
 async function truncate() {
   await db.execute(
-    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "tonight", "titles", "memory", "episodes", "threads", "messages"`,
+    sql`truncate table "page_revisions", "pages", "nodes", "overlay_edges", "questions", "embeddings", "answers", "watched", "services", "taste", "crawls", "titles", "memory", "episodes", "threads", "messages"`,
   );
 }
 

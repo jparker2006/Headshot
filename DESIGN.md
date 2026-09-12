@@ -83,54 +83,67 @@ Entity names inside prose and bubbles are `font-weight: 500` at `--ink` and are 
 
 ## Layouts
 
-Every screen is `232px | 1fr`: the rail, then one content column with the composer pinned at its bottom. There is no second panel and no resident canvas.
+Every screen is `232px | 1fr`: the rail, then one content column with the composer pinned at its bottom (Log and You carry their own controls instead). There is no second panel and no resident canvas — the sigma brain, `/brain` and its search box were deleted in v5.
 
-### You
+### You (v5)
+
+The receipt, and nothing else (SPEC v5 → You page). Everything that was plumbing moved to **Settings (v5)**; tonight moved into Ask's empty state; recently logged and the charts are the Log page's. Three sections, `38px` apart (`28px` on a phone), no accent anywhere on the screen.
 
 ```
 ┌──────────┬──────────────────────────────────────────────────────────────┐
 │ headshot │ what I know about you   rewritten 3h ago            edit ─── │
-│          │ ┌───────────────┬───────────────┬──────────────────────────┐ │
-│ you      │ │ what you love │ (continues)   │ right now                │ │
-│ history  │ │ prose…        │ what you avoid│ notes                    │ │
-│          │ └───────────────┴───────────────┴──────────────────────────┘ │
-│          │ ──────────────────────────────────────────────────────────── │
-│          │ recently logged   8 of 115                  the whole log ── │
-│          │ just now   ▌ Zodiac                 2007  seen  film · 157m  │
-│          │ 3h ago     ▌ Heat                   1995  liked "the diner…" │
-│          │ ──────────────────────────────────────────────────────────── │
-│          │ tonight   3 picks · all already paid for                     │
-│          │ ▐▌ The Dark Knight Rises makes it 8 for …   [ Play on Max ]  │
-│          │    2012 · 165m · hbo max                                     │
-│          │ ──────────────────────────────────────────────────────────── │
-│          │ numbers   everything Letterboxd never gave you     all of it │
-│          │ what you have watched          by decade                     │
-│          │ films   99 ████████▌           2010s  22 ██████████          │
-│          │ shows   16 ██                  2000s  18 ████████▎           │
+│          │ you are a movies guy, full stop — tv is 12% of what you …    │
+│ log      │ the through-line is Star Wars, all of it. …                  │
+│ ask      │ ──────────────────────────────────────────────────────────── │
+│ you      │ numbers   everything Letterboxd never gave you               │
+│          │ 130 titles, 222 hours. 113 films, 17 shows. mostly 2000s …   │
 │          │ who you keep watching                                        │
-│          │ Nolan 8 ███  Lucas 8 ███  Daniels 7 ██▌  Damon 6 ██          │
-│ jake     │ ──────────────────────────────────────────────────────────── │
-│ 115·202h │ >  log something, or just ask                              ⏎ │
+│          │ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢                                      │
+│          │ Nolan  Lucas  Damon  …                                       │
+│          │ 8      8      6                                              │
+│          │ by decade                                                    │
+│          │ 2010s  22 ██████████                                         │
+│          │ 2000s  18 ████████▎                                          │
+│          │ ──────────────────────────────────────────────────────────── │
+│          │ later   6 saved                              the whole list ─│
+│ jake  ⚙  │ ▌ Andrei Rublev              1966              seen it       │
 └──────────┴──────────────────────────────────────────────────────────────┘
 ```
 
-Order is fixed: memory, recently logged, tonight, numbers, services, imports, later, the swipe button. Rules that matter:
+Order is fixed: memory, numbers, later. Rules that matter:
 
-- **Log field.** It is the composer. There is no separate log box at the top of You: one pinned field at the bottom of every page, `> log something, or just ask`, and typing a title opens the log flow described under **Log field** below. (**Deviation** from v4 chunk A, which put the log input at the top of You; board C puts one prompt at the bottom of all three screens and SPEC's "one home and one composer" rule agrees.)
-- **Memory.** Three columns of `.t-prose`, `6px` between paragraphs, `.t-strong` headings with `4px` under them and `14px` above a second heading in the same column. `rewritten 3h ago` is `.t-meta` beside the heading; `edit` is a `.t-link` pushed right with `margin-left:auto`. The pinned notes (`"I like movies."`, `"the diner scene…"`) are `.t-note` at `--ink`, quoted, in the third column. The memory section has **no** rule under its header — it is the page's opening and needs no seam.
-- **Recently logged.** Ten rows, `.row` at 38px, columns `88px 26px minmax(0,320px) 48px 64px minmax(0,1fr)`. Left gutter is the time (`.t-meta`, `just now` / `1h ago` / `3h ago`) — the Linear "Now" gutter, lifted. Then the 22px poster, the title, the year, the bucket word, then either the mono meta (`film · 157m`, `show · 7 eps`) or, when the entry has a note, the note in Geist 13px `--ink-dim` in quotes. The note beats the metadata; it is the most human line on the page.
-- **Tonight.** Header `tonight` + `.t-meta` `3 picks · all already paid for`. Three `.row-tall` at 68px, columns `34px minmax(0,1fr) 178px`, gap 18. Poster 34×51, then the reason (`.t-reason`, one line, names bold and linked) over a `.t-meta` line `2012 · 165m · hbo max`, then a 44px button in a fixed 178px column. **The first pick's button is `.btn-play`; the second and third are `.btn-quiet`.** Exactly one accent on the page. Every pick carries exactly one reason and it is a graph fact (`graphReason`) — no reason, no pick.
-- **Numbers ledger.** Two columns, `28px 56px` gap, the third block (`who you keep watching`) spanning both. Each block is a `.t-sub` label over `.row-fig` rows: `108px 52px minmax(0,1fr)` gap 14 — label, figure, bar. The bar is 5px tall, width is the value as a percentage of the block's max, and its alpha ranks it (0.55 / 0.48 / 0.34 / 0.22). The last row of a block may swap the bar for a mono aside (`152 finished end to end · tv is 11% of what you like`). The people block is four columns of `minmax(0,1fr) 30px 72px` gap 10. Labels are Geist except decades, which are figures and therefore mono. **No tiles, no boxes, no headline numbers.** The full page is behind `all of it` (`.t-link`).
-- **Services, imports, later.** Same grammar, no new one: a `.section-head`, then rows. Services is a single wrapped line of service names in `.t-prose` with the ones you pay for at `--ink` and the rest at `--ink-ghost` (**deviation** — the board states them as prose in the memory; toggles are rows at 38px: name, then `.t-link` `on` / `off`). Imports is three rows (Letterboxd, Netflix, IMDb), each `name — .t-meta "last imported 3h ago · 412 rows" — .t-link "replace"`. Later is the recently-logged row form with the time gutter replaced by `.t-meta` `added 2d ago`.
-- **Swipe button.** One `.btn-quiet` at the end of Later: `Swipe through 30 you have probably seen`. Not a card, not a banner.
+- **Memory.** `.t-prose` through `MemoryProse`, `rewritten 3h ago` as `.t-meta` beside the heading, `edit` a `.t-link` pushed right with `margin-left:auto`. `edit` writes the pinned block only — the lines the rewrite copies through verbatim — and the same block has a roomier editor in Settings. The memory section has **no** rule under its header: it is the page's opening and needs no seam.
+- **One numbers sentence.** Everything the ledger used to say about totals is one line of `.t-prose`: `130 titles, 222 hours. 113 films, 17 shows. mostly 2000s and 2010s.` Terse, lowercase, no exclamation, three clauses at most, and a decade is only named when more than one title sits in it. The rule is `numbersSentence` in `numbersRules.ts` and it is tested, not eyeballed. **No tiles, no headline numbers, no charts** — the per-month and genre blocks are gone with the route's `months` and `genres`.
+- **People row.** The top twelve, as one row of 52px faces with the name at 12.5px `--ink-dim` and the count in mono `--ink-ghost` under it. No bars: the order is the ranking, and a bar under a face would rank the same fact twice. It scrolls inside its own container on a narrow column rather than wrapping into a wall — the one place other than the log table where anything scrolls sideways.
+- **Decades ledger.** The board's `.row-fig` form, unchanged: `108px 52px minmax(0,1fr)` gap 14 — label, figure, bar, the bar's width the datum and its alpha the rank. Top six. The label is mono, because a decade is a figure.
+- **Later.** The `want` rows, newest first, `.row` at 38px: 22px poster mark, title, year, and one quiet `seen it` (`.t-link`) which writes `{ state: "seen" }` through the same `POST /api/taste/log` every other write goes through. The header's `the whole list` opens the Log on its `want` chip. No `remove`: unlisting something is a state, and the Log is where states are changed.
+- **Signed out** it is the landing: one 26px first-person sentence, one `.t-meta` line, `Sign in` as a `.btn-outline`. Nothing else.
 
-### Numbers
+### Settings (v5)
 
-Full-width content column, no second rail. Blocks in order: per month, film vs TV, hours, people, decades, genres by bucket, then the log table.
+`/settings`, reached from the account row at the bottom of the rail and from nowhere else. It keeps the rail — it is a place inside the product, not a modal — but nothing in the rail is lit, because you are not in Log, Ask or You (`AppShell`, `surface={null}`). Column caps at 880px; sections separate by the page's own rhythm, a `.section-head` with one hairline under it and then rows.
 
-- Every chart is **bars in rows**, the You ledger form at full width: `.t-sub` label, then `.row-fig` rows of `label | figure | bar`. Per-month is the one exception and is a row of 5px-wide vertical bars on a 56px baseline with mono month initials under it at `--ink-ghost`; no axis, no gridlines, no legend, no tooltip chrome beyond a mono readout that replaces the block's `.t-sub` on hover. Hand-drawn SVG, no chart library.
-- Liked-vs-meh in the genres block is two bars in the same row, `--bar-strong` over `--bar-weak`, with the two figures in mono separated by a mono `·`. Not two colors.
-- **The log table** is `.row` at 38px, columns `88px 26px minmax(0,360px) 48px 64px 96px minmax(0,1fr)`: time, poster, title, year, bucket, source (`log` / `letterboxd` / `netflix` / `imdb`, `.t-meta`), meta-or-note. A header row at 24px of `.t-sub` labels, clickable to sort; the active sort key goes to `--ink` with a mono `↓` after it. Filter is a 46px field with a `--line-input` underline, `>` prompt in mono at `--ink-ghost`, and `.t-meta` `115 rows · 8 shown` pushed right. No zebra striping, no row borders, no pagination chrome — it scrolls.
+1. **account** — the email as one 38px row, then `Sign out` as a `.btn-outline` and `delete account` as a `.t-link`. Deleting asks once: the link becomes `delete everything?` at `--danger` with a `.t-meta` aside (`the log, the memory and the chats. no undo.`) and only the second click calls `DELETE /api/me`; then the client signs out and lands on `/`. Blurring puts it back. This and the rail's `×` are the only two places the danger ink appears, and it is text — never a filled surface.
+2. **services** — the checklist as it was on You: 38px rows, the name, `on` / `off` as a `.t-link`, saved on tap. A Save button for six words is chrome.
+3. **imports** — the username first and the file second, because that is the order of effort. `letterboxd` is a 46px field drawn exactly like the log field (mono `>`, one `--line-input` hairline), `Import` as a `.btn-outline`, and one `.t-meta` line beside it carrying the whole progress report: `importing…` / `done. 412 titles.` / `that profile is private. export the CSV instead.` / `no profile by that name.` The CSV control is revealed by that line, or by the `.t-link` `use the CSV export instead`; under it the Netflix and IMDb rows, unchanged.
+4. **in your words** — the pinned block, one textarea on a `--line-note` underline with `Save`, the same PUT as You's `edit`. It is here as well as there because this is where you would come to write a paragraph rather than a line.
+
+### Welcome (v5)
+
+`/welcome/services` → `/welcome/letterboxd` → `/welcome/catch-up` → `/`. Under a minute is the specification, so the whole of onboarding is three pages of one column each, and **no step carries more than one line of copy**.
+
+- No rail: there is nothing to navigate to yet. The wordmark sits top-left at 14/700 and nothing else is in the chrome — the sign-in grammar.
+- One column at 560px (720px for the deck, which needs the poster), a `.t-title` header, a `.t-meta` `step 2 of 3` pushed right on the same baseline, then the step's own control, then `skip` as a `.t-link`. No progress bar, no illustration, no "Welcome back".
+- `skip` goes exactly where `next` goes — skipping a step is finishing it with nothing — and the order, the hrefs and the label are `welcomeModel.ts`, tested.
+- Step 2 says `importing in the background. carry on.` and hands over a `Next`: the crawl is not something to watch.
+- Step 3 is the catch-up deck component the Log page opens inline, reused and never forked.
+- Getting there: sign-in's `next` for a fresh account, or the shell noticing on `/` that a signed-in user has an empty log and no services. That sends them once and remembers it in `localStorage` under `headshot:welcomed` — the rule is `shouldWelcome`, also tested. There is no `/onboarding` any more.
+
+### The log table
+
+The Log page's table, the one place a figure still gets a column of its own. **The charts are gone** (SPEC v5 → Delete list): there is no Numbers page, no per-month bars, no genre block and no `all of it` link — You says the totals in one sentence and this table says the rest.
+
+- `.row` at 38px: poster, title, year, kind, score, date, runtime, folding to two lines on a phone. A 24px `.t-sub` header row. Chips above it for the state, the score and the kind, one at a time, plus a text filter; `.t-meta` `115 rows · 8 shown` pushed right. Arriving from You's Later opens it on the `want` chip. No zebra striping, no row borders, no pagination chrome — it scrolls in its own container.
 
 ### Thread
 
@@ -252,7 +265,7 @@ Class names live in `src/app/globals.css`. Screens compose these with Tailwind f
 - **`.composer-lg`** (v5) — the Ask composer: `display:flex; align-items:center; gap:14px; height:56px; border-bottom: 1px var(--line-input);` (52px / gap 12 on a phone). No top rule, no fill, no box, no send button. Inside: mono `>` at 15px `--ink-ghost`, a transparent borderless textarea at Geist 15, `.t-meta` `⏎` (or the `stop` link while a turn runs) pushed right.
 - **`.nav-row` / `.session-row` / `.rail-row` / `.tab-cell`** (v5) — the rail's four shapes. `.nav-row` is the 32px section row (`grid 16px minmax(0,1fr)`, gap 11, 12px inset, 4px radius); `.session-row` is the 28px chat row (flex, 28px left inset, 12px right); `.rail-row` is any other 32px row (account footer, a menu item); `.tab-cell` is one 54px cell of the phone bar (column, gap 5). Hover on all three rail shapes is `--row-hover`; `.session-row.is-open` takes the same fill. None of them ever gets a pill, a border or an active bar.
 - **`.chip`** — `--bg-elev`, radius 6, padding `8px 14px`, Geist 13 `--ink-dim`; hover lifts to `--bg-raised` / `--ink`. No border, ever.
-- **Table** — see Numbers. `.row` at 38px, a 24px `.t-sub` header row, no striping, no borders, scrolls in its own container.
+- **Table** — see The log table. `.row` at 38px, a 24px `.t-sub` header row, no striping, no borders, scrolls in its own container.
 - **`.ledger-bar`** — `display:block; height:5px; background: var(--bar)`. `.ledger-bar-strong` (0.55) for the top one or two rows of a block, `.ledger-bar-weak` (0.22) for the tail. Width is the datum. Never a hue, never rounded, never animated on load.
 - **`.btn`** — 44px, radius 6, `padding-inline: 22px`, Geist 13.5/600, no shadow, no gradient, 120ms color transition. `.btn-play` (accent fill, `--accent-ink` label) is the only filled accent and appears at most once per view. `.btn-quiet` (transparent, `--line-strong` border, `--ink-dim` 500) is the second and third Play and every secondary action. `.btn-solid` (ink fill, ground label, 14px) is a chosen bucket. `.btn-fill` (`--bg-raised`, `--ink-dim`, 14px/500) is an unchosen bucket. `.btn-outline` (transparent, 26% ink border, `--ink` label, 14px/600, `padding-inline: 26px`) is `log it`, `Send the link`, `Sign in`.
 - **Drawer** — `.sheet` ground plus `border-left: 1px var(--line)`, 420px, internal scroll, no radius, no shadow. `.panel` still exists but is now **only** for a floating overlay (the autocomplete popover): `--bg-elev`, 1px `--line`, radius 6, no blur, no shadow. Never wrap page-flow content in it — that is a bordered card.
