@@ -1,50 +1,65 @@
 import { describe, expect, it } from "vitest";
 import {
-  ONBOARDING_STEPS,
-  SESSION_MIN,
   SESSION_SIZE,
-  canFinish,
+  UNDO_KEY,
+  UNSEEN_ACTION,
+  VERDICTS,
   deckBlurb,
   deckCardMeta,
   deckKindWord,
   diffCount,
   diffLineText,
   diffLines,
-  finishLabel,
-  isNewAccount,
-  nextStep,
+  doneLabel,
   progressLabel,
-  stepLabel,
-  type OnboardingStep,
+  scoreAction,
 } from "@/components/you/swipeRules";
 
-describe("session end rules", () => {
-  it("lets you stop by hand only after ten cards", () => {
-    expect(SESSION_MIN).toBe(10);
-    for (let rated = 0; rated < SESSION_MIN; rated++) expect(canFinish(rated)).toBe(false);
-    expect(canFinish(SESSION_MIN)).toBe(true);
-    expect(canFinish(SESSION_SIZE)).toBe(true);
+describe("a round of ten", () => {
+  it("deals ten, not thirty", () => {
+    expect(SESSION_SIZE).toBe(10);
   });
 
-  it("says what stopping early would cost, then invites you to stop", () => {
-    expect(finishLabel(0)).toBe("10 more and I'll rewrite your profile");
-    expect(finishLabel(7)).toBe("3 more and I'll rewrite your profile");
-    expect(finishLabel(9)).toBe("1 more and I'll rewrite your profile");
-    expect(finishLabel(10)).toBe("done for now");
-    expect(finishLabel(29)).toBe("done for now");
+  it("lets you stop at any point: there is no floor to reach", () => {
+    // The label never changes, because the offer never changes — the rewrite
+    // runs on whatever was committed, including nothing.
+    expect(doneLabel()).toBe("done for now");
+    expect(doneLabel()).not.toContain("more");
   });
 
-  it("counts the card you are looking at, and never past the deck", () => {
-    expect(progressLabel(0, 30)).toBe("1 / 30");
-    expect(progressLabel(11, 30)).toBe("12 / 30");
-    expect(progressLabel(30, 30)).toBe("30 / 30");
+  it("counts the card you are looking at, and never past the ten", () => {
+    expect(progressLabel(0, 10)).toBe("1 / 10");
+    expect(progressLabel(2, 10)).toBe("3 / 10");
+    expect(progressLabel(10, 10)).toBe("10 / 10");
     expect(progressLabel(0, 0)).toBe("0 / 0");
   });
 });
 
+describe("the two-step card", () => {
+  it("asks seen it / not seen first, on s and n", () => {
+    expect(VERDICTS.map((v) => v.label)).toEqual(["seen it", "not seen"]);
+    expect(VERDICTS.map((v) => v.key)).toEqual(["s", "n"]);
+    // Copy rules: lowercase, no punctuation, no shouting.
+    for (const v of VERDICTS) {
+      expect(v.label).toBe(v.label.toLowerCase());
+      expect(v.label).not.toContain("!");
+    }
+    // The keys are distinct from each other and from undo.
+    expect(new Set([...VERDICTS.map((v) => v.key), UNDO_KEY]).size).toBe(3);
+  });
+
+  it("writes a state for not seen and a score for a number", () => {
+    expect(UNSEEN_ACTION).toEqual({ rating: "unseen" });
+    expect(UNSEEN_ACTION).not.toHaveProperty("score");
+    expect(scoreAction(8)).toEqual({ rating: "rated", score: 8 });
+    expect(scoreAction(1)).toEqual({ rating: "rated", score: 1 });
+    expect(scoreAction(10)).toEqual({ rating: "rated", score: 10 });
+  });
+});
+
 describe("deck mode", () => {
-  it("says where the thirty came from, differently when it has nothing on you", () => {
-    expect(deckBlurb("lore")).toBe("unrated things the people you like keep turning up in");
+  it("says where the ten came from, differently when it has nothing on you", () => {
+    expect(deckBlurb("lore")).toBe("things I think you have probably seen, going by who you like");
     expect(deckBlurb("cold")).toBe("the well-known ones, because I have nothing on you yet");
     expect(deckBlurb("lore")).not.toBe(deckBlurb("cold"));
     // Copy rules: one line, sentence-fragment lowercase at the front, no
@@ -92,30 +107,5 @@ describe("the memory diff", () => {
     expect(diffLineText("- you keep coming back to **Michael Mann**")).toBe("you keep coming back to Michael Mann");
     expect(diffLineText("*  a bullet  ")).toBe("a bullet");
     expect(diffLines(["", "## Notes", "   ", "- one"])).toEqual(["Notes", "one"]);
-  });
-});
-
-describe("deck-first onboarding", () => {
-  it("runs the deck first, then services, then imports", () => {
-    expect(ONBOARDING_STEPS).toEqual(["swipe", "services", "imports"]);
-    expect(nextStep("swipe")).toBe("services");
-    expect(nextStep("services")).toBe("imports");
-    expect(nextStep("imports")).toBeNull();
-    expect(nextStep("nope" as OnboardingStep)).toBeNull();
-  });
-
-  it("indexes the steps as a mono figure out of three", () => {
-    expect(stepLabel("swipe")).toBe("1 / 3");
-    expect(stepLabel("services")).toBe("2 / 3");
-    expect(stepLabel("imports")).toBe("3 / 3");
-  });
-
-  it("calls an account new only when the log is read and empty", () => {
-    expect(isNewAccount([])).toBe(true);
-    expect(isNewAccount([{ titleImdbId: "tt0110912" }])).toBe(false);
-    // Not read yet, or the route failed: never new. A hundred titles must not
-    // flash the onboarding deck at their owner.
-    expect(isNewAccount(null)).toBe(false);
-    expect(isNewAccount(undefined)).toBe(false);
   });
 });

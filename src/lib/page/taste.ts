@@ -16,9 +16,6 @@ import { normalizeProviderIds, providerName } from "@/lib/taste/providers";
 import type { TasteStore } from "@/lib/taste/types";
 import { isLiked } from "@/lib/taste/score";
 import type { WatchedRating } from "@/lib/taste/types";
-// TODO(v5-B): the drawer still draws the four bucket words. When it draws the
-// row of ten, `rating` below goes and this import with it.
-import { legacyBucket, type LegacyBucket } from "@/lib/taste/legacy";
 
 export interface PageReason {
   /** One line, plain text. The client bolds the names it can link. */
@@ -40,8 +37,8 @@ export interface PageTaste {
   state: WatchedRating | null;
   /** Their score, 1–10, when they rated it. */
   score: number | null;
-  /** TODO(v5-B): the same row in the old bucket word, for the current drawer. */
-  rating: LegacyBucket | null;
+  /** The season the user is on, for a series they are part way through. */
+  season: number | null;
   /** Names of the streaming services this is on that the user actually pays for. */
   onYourServices: string[];
 }
@@ -152,7 +149,7 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
     likedPeople,
     state: found?.rating ?? null,
     score: found?.score ?? null,
-    rating: found ? legacyBucket(found) : null,
+    season: found?.season ?? null,
     onYourServices: onYourServices(extras?.providers?.flatrate ?? [], services?.providerIds ?? []),
   };
 }

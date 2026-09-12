@@ -41,7 +41,7 @@ beforeEach(() => {
 describe("tonight routes", () => {
   it("refuses signed-out requests", async () => {
     signedInAs = null;
-    for (const r of [handlers.get(get()), handlers.refresh(post("/api/tonight/refresh", {})), handlers.later(post("/api/taste/later", { imdbId: GUMP })), handlers.swipe(post("/api/taste/swipe", { rows: [] })), handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, rating: "liked" }] }))]) {
+    for (const r of [handlers.get(get()), handlers.refresh(post("/api/tonight/refresh", {})), handlers.later(post("/api/taste/later", { imdbId: GUMP })), handlers.swipe(post("/api/taste/swipe", { rows: [] })), handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, score: 8 }] }))]) {
       expect((await r).status).toBe(401);
     }
   });
@@ -107,8 +107,7 @@ describe("tonight routes", () => {
     const res = await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, score: 9 }, { imdbId: "bad", score: 9 }, { imdbId: GUMP, score: 99 }] }));
     expect(await res.json()).toEqual({ ok: true, saved: 1 });
     expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "rated", score: 9, source: "swipe" });
-    // TODO(v5-B): the deck still posts bucket words; they are translated here.
-    await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "meh" }] }));
+    await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, score: 5 }] }));
     expect((await store.listWatched("user-1"))[0].score).toBe(5);
     // The drawer's swipe keeps scheduling the rewrite in the background; it never awaits one.
     expect(rewrites.scheduled).toEqual(["user-1", "user-1"]);
@@ -149,7 +148,7 @@ describe("tonight routes", () => {
   it("a session diffs the memory it had against the one the rewrite returned", async () => {
     await store.setMemory("user-1", { markdown: "You like astronauts.\nYou finish series." });
     rewriteResult = "You finish series.\nYou keep coming back to Gary Sinise.";
-    const body = (await (await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, rating: "liked" }] }))).json()) as {
+    const body = (await (await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, score: 8 }] }))).json()) as {
       before: string;
       after: string;
       diff: { added: string[]; removed: string[] };
@@ -162,7 +161,7 @@ describe("tonight routes", () => {
   it("a skipped or failed rewrite is not an error: rewritten false, empty diff, memory unchanged", async () => {
     await store.setMemory("user-1", { markdown: "You like astronauts." });
     rewriteResult = null; // no model in keyless dev
-    const skipped = (await (await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, rating: "liked" }] }))).json()) as {
+    const skipped = (await (await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: APOLLO, score: 8 }] }))).json()) as {
       before: string;
       after: string;
       diff: unknown;
@@ -175,13 +174,13 @@ describe("tonight routes", () => {
     rewriteResult = () => {
       throw new Error("openrouter down");
     };
-    const failed = await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: GUMP, rating: "liked" }] }));
+    const failed = await handlers.session(post("/api/taste/swipe/session", { rows: [{ imdbId: GUMP, score: 8 }] }));
     expect(failed.status).toBe(200);
     expect((await failed.json()).rewritten).toBe(false);
   });
 
   it("a session with no usable rows is a 400 and writes nothing", async () => {
-    for (const bad of [{}, { rows: "nope" }, { rows: [] }, { rows: [{ imdbId: "bad", rating: "liked" }, { imdbId: APOLLO, rating: "nope" }] }]) {
+    for (const bad of [{}, { rows: "nope" }, { rows: [] }, { rows: [{ imdbId: "bad", score: 8 }, { imdbId: APOLLO, rating: "nope" }, { imdbId: APOLLO, rating: "liked" }] }]) {
       expect((await handlers.session(post("/api/taste/swipe/session", bad))).status).toBe(400);
     }
     expect(await store.listWatched("user-1")).toEqual([]);

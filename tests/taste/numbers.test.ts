@@ -231,8 +231,6 @@ describe("computeNumbers: the log", () => {
       kind: "movie",
       state: "rated",
       score: 8,
-      // TODO(v5-B): the bucket word, until the log table renders the score.
-      rating: "liked",
       watchedAt: "2026-09-02T20:00:00.000Z",
       source: "log",
       season: null,

@@ -42,7 +42,8 @@ describe("tasteForPage", () => {
   it("never lets a title you already liked explain itself", async () => {
     await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: APOLLO, kind: "title" } });
-    expect(taste!.rating).toBe("liked");
+    expect(taste!.state).toBe("rated");
+    expect(taste!.score).toBe(8);
     expect(taste!.reason?.text ?? "").not.toContain("Apollo 13");
     expect(taste!.likedPeople).not.toContain(HANKS);
   });
@@ -73,12 +74,14 @@ describe("tasteForPage", () => {
     expect(taste!.reason?.viaImdbIds).toEqual([GUMP, APOLLO]);
   });
 
-  it("round-trips the user's bucket for the title", async () => {
+  it("round-trips the user's state, score and season for the title", async () => {
+    const mine = (imdbId: string) => tasteForPage({ graph, store, userId: "user-1", node: { imdbId, kind: "title" } });
     await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "want", source: "swipe" }]);
-    expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } }))!.rating).toBe("want");
-    await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "rated", score: 5, source: "swipe" }]);
-    expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } }))!.rating).toBe("meh");
-    expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: APOLLO, kind: "title" } }))!.rating).toBeNull();
+    expect(await mine(GUMP)).toMatchObject({ state: "want", score: null, season: null });
+    await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "rated", score: 5, source: "swipe", season: 2 }]);
+    expect(await mine(GUMP)).toMatchObject({ state: "rated", score: 5, season: 2 });
+    // A title with no row of its own says nothing about itself.
+    expect(await mine(APOLLO)).toMatchObject({ state: null, score: null, season: null });
   });
 
   it("names only the services the user actually pays for", async () => {

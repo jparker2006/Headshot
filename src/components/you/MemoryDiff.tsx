@@ -22,16 +22,16 @@ interface Props {
   after: string;
   /** False when the rewrite decided the session said nothing new. */
   rewritten: boolean;
-  /** Leave: back to You, or on to the next onboarding step. */
+  /** Leave catch-up: back to the log. */
   onExit: () => void;
-  /** The exit button's words. */
+  /** The exit link's words. */
   exitLabel?: string;
-  /** Deal another thirty. */
+  /** Deal another ten. */
   onAgain: () => void;
   onSelectNode?: (imdbId: string) => void;
 }
 
-export function MemoryDiff({ diff, after, rewritten, onExit, exitLabel = "back to you", onAgain, onSelectNode }: Props) {
+export function MemoryDiff({ diff, after, rewritten, onExit, exitLabel = "back to the log", onAgain, onSelectNode }: Props) {
   const added = diffLines(diff.added);
   const removed = diffLines(diff.removed);
   const moved = added.length + removed.length > 0;
@@ -92,11 +92,13 @@ export function MemoryDiff({ diff, after, rewritten, onExit, exitLabel = "back t
       </section>
 
       <div className="flex flex-wrap items-center gap-[18px]">
-        <button type="button" onClick={onExit} className="btn btn-outline">
-          {exitLabel}
+        {/* another ten is the invitation, so it takes the button; leaving is
+            the quiet one. Same two slots as before, the labels swapped. */}
+        <button type="button" onClick={onAgain} className="btn btn-outline">
+          ten more
         </button>
-        <button type="button" onClick={onAgain} className="t-link">
-          keep swiping
+        <button type="button" onClick={onExit} className="t-link">
+          {exitLabel}
         </button>
       </div>
     </div>

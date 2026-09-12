@@ -9,7 +9,6 @@ const row = (over: Partial<NumbersLogRow>): NumbersLogRow => ({
   kind: "movie",
   state: "rated",
   score: 8,
-  rating: "liked",
   watchedAt: "2026-09-02T20:00:00.000Z",
   source: "log",
   season: null,
@@ -28,10 +27,14 @@ describe("numbers log filter", () => {
     expect(keep(row({ kind: "series" }), "shows")).toBe(true);
   });
 
-  it("filters by bucket", () => {
-    expect(keep(row({ rating: "want" }), "want")).toBe(true);
-    expect(keep(row({ rating: "want" }), "liked")).toBe(false);
-    expect(keep(row({ rating: "seen" }), "all")).toBe(true);
+  it("filters by state, and `rated` means it carries a score", () => {
+    const want = row({ state: "want", score: null });
+    expect(keep(want, "want")).toBe(true);
+    expect(keep(want, "rated")).toBe(false);
+    expect(keep(want, "seen")).toBe(false);
+    expect(keep(row({ state: "seen", score: null }), "seen")).toBe(true);
+    expect(keep(row({}), "rated")).toBe(true);
+    expect(keep(row({ state: "seen", score: null }), "all")).toBe(true);
   });
 
   it("matches the text against name and year, case-insensitively", () => {

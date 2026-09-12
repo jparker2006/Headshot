@@ -12,11 +12,11 @@
  * One GET of `/api/taste/numbers` computes all of it server-side; this
  * component draws, it never counts.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { NumbersGenre, NumbersPerson } from "@/lib/taste/numbers";
 import { barClass, barRank, barWidth, rowInk } from "./ledger";
 import { useNumbers, type NumbersResponse } from "./useNumbers";
-import { LOG_FILTERS, LOG_PAGE, logDate, matchesLog, posterThumb, type LogFilter } from "./numbersRules";
+import { LogTable } from "@/components/log/LogTable";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
@@ -139,7 +139,7 @@ export function Numbers({ onSelectNode, version = 0, open, onToggle }: NumbersPr
           <p className="t-prose">
             {data.runtimeFinished === null ? "Not enough runtimes yet to say how long a film you finish runs." : `The average film you finish runs ${data.runtimeFinished} minutes.`}
           </p>
-          <LogTable data={data} onSelectNode={onSelectNode} />
+          <LogTable rows={data.log} onSelectNode={onSelectNode} heading="the log" />
         </div>
       )}
     </section>
@@ -213,122 +213,6 @@ function GenreBlock({ genres }: { genres: NumbersGenre[] }) {
           </span>
         </div>
       ))}
-    </div>
-  );
-}
-
-// ---- the log table ---------------------------------------------------------
-
-type SortKey = "watched" | "title" | "year";
-
-const TABLE_COLS =
-  "grid-cols-[minmax(0,1fr)_64px] sm:grid-cols-[96px_26px_minmax(0,360px)_48px_64px_96px_minmax(0,1fr)] sm:gap-[16px]";
-
-function LogTable({ data, onSelectNode }: { data: NumbersResponse; onSelectNode: (imdbId: string) => void }) {
-  const [filter, setFilter] = useState<LogFilter>("all");
-  const [query, setQuery] = useState("");
-  const [limit, setLimit] = useState(LOG_PAGE);
-  const [sort, setSort] = useState<SortKey>("watched");
-
-  const rows = useMemo(() => {
-    const kept = data.log.filter((r) => matchesLog(r, filter, query));
-    if (sort === "title") return [...kept].sort((a, b) => a.name.localeCompare(b.name));
-    if (sort === "year") return [...kept].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
-    return kept;
-  }, [data.log, filter, query, sort]);
-
-  const head = (key: SortKey, label: string) => (
-    <button type="button" onClick={() => setSort(key)} className={`text-left text-[13px] ${sort === key ? "text-ink" : "text-ink-faint hover:text-ink"}`}>
-      {label}
-      {sort === key && <span className="t-meta ml-1 text-ink-faint">↓</span>}
-    </button>
-  );
-
-  return (
-    <div className="flex flex-col gap-[10px]">
-      <span className="t-sub">the log</span>
-
-      <div className="flex flex-wrap items-center gap-[9px]">
-        {LOG_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            aria-pressed={filter === f}
-            onClick={() => {
-              setFilter(f);
-              setLimit(LOG_PAGE);
-            }}
-            className={`chip ${filter === f ? "bg-raised text-ink" : ""}`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex h-[46px] items-center gap-[12px] border-b border-[color:var(--line-input)]">
-        <span className="tnum text-[15px] leading-none text-ink-ghost">&gt;</span>
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setLimit(LOG_PAGE);
-          }}
-          aria-label="find a title in the log"
-          placeholder="find a title"
-          className="t-input min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-ghost"
-        />
-        <span className="t-meta ml-auto shrink-0">
-          {data.log.length} rows · {rows.length} shown
-        </span>
-      </div>
-
-      <div className="scrollbar-thin overflow-x-auto">
-        <div className="min-w-[720px] sm:min-w-0">
-          <div className={`grid h-[24px] items-center border-b border-line ${TABLE_COLS}`}>
-            <span className="hidden sm:block">{head("watched", "watched")}</span>
-            <span className="hidden sm:block" />
-            <span>{head("title", "title")}</span>
-            <span className="hidden sm:block">{head("year", "year")}</span>
-            <span className="t-sub hidden sm:block">bucket</span>
-            <span className="t-sub hidden sm:block">source</span>
-            <span className="t-sub hidden sm:block">what it was</span>
-          </div>
-          {rows.length === 0 ? (
-            <p className="t-prose py-3">Nothing matches that.</p>
-          ) : (
-            rows.slice(0, limit).map((r) => (
-              <button key={`${r.imdbId}-${r.season ?? 0}`} type="button" onClick={() => onSelectNode(r.imdbId)} className={`row w-full text-left ${TABLE_COLS}`}>
-                <span className="t-meta hidden sm:block">{logDate(r.watchedAt)}</span>
-                <span className="hidden sm:block">
-                  {posterThumb(r.posterPath) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={posterThumb(r.posterPath)!} alt="" className="poster-mark" loading="lazy" />
-                  ) : (
-                    <span className="poster-mark" />
-                  )}
-                </span>
-                <span className="t-row truncate">
-                  {r.name}
-                  {r.season ? <span className="t-meta ml-[6px] text-ink-faint">s{r.season}</span> : null}
-                </span>
-                <span className="t-meta hidden text-ink-faint sm:block">{r.year ?? ""}</span>
-                <span className={`bucket ${r.rating === "liked" ? "bucket-on" : ""}`}>{r.rating}</span>
-                <span className="t-meta hidden sm:block">{r.source}</span>
-                <span className="t-meta hidden truncate sm:block">
-                  {r.kind === "series" ? "show" : "film"}
-                  {r.runtime ? ` · ${r.runtime}m` : ""}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-
-      {rows.length > limit && (
-        <button type="button" onClick={() => setLimit((n) => n + LOG_PAGE)} className="t-link self-start">
-          {rows.length - limit} more
-        </button>
-      )}
     </div>
   );
 }

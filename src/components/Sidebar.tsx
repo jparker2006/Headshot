@@ -1,7 +1,8 @@
 "use client";
 /**
  * The rail, board C (DESIGN.md → Sidebar): 176px, one hairline on the right,
- * padding 22/0/22/24, internal gap 26. Wordmark, then `you` / `history` at
+ * padding 22/0/22/24, internal gap 26. Wordmark, then `log` / `you` /
+ * `history` at
  * 13.5px where the ink level *is* the state (no pill, no icon, no counter),
  * then the threads under History, then the account name pushed to the bottom.
  *
@@ -14,7 +15,7 @@ import { useState } from "react";
 import type { ThreadMeta } from "./chat/threads";
 import { shortAgo } from "./chat/threadMeta";
 import { requireSignIn, signOut, useSessionUser } from "./auth/SignInGate";
-import { accountModel, accountName, navItems, type Surface } from "./navModel";
+import { accountModel, accountName, navItems, type Section, type Surface } from "./navModel";
 
 export type { Surface };
 
@@ -24,13 +25,13 @@ interface Props {
   activeId: string | null;
   collapsed: boolean;
   onToggle: () => void;
-  /** Home. */
-  onYou: () => void;
+  /** Go to a section: Log (home for anyone signed in) or You. */
+  onNavigate: (section: Section) => void;
   onSelectThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
 }
 
-export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou, onSelectThread, onDeleteThread }: Props) {
+export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onNavigate, onSelectThread, onDeleteThread }: Props) {
   const [menu, setMenu] = useState(false);
   const { user, loading } = useSessionUser();
 
@@ -45,7 +46,7 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou
           h
         </button>
         {nav.map((n) => (
-          <button key={n.key} onClick={onYou} title={n.label} aria-label={n.label} className={`t-ui ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"} transition-colors duration-[120ms]`}>
+          <button key={n.key} onClick={() => onNavigate(n.key)} title={n.label} aria-label={n.label} className={`t-ui ${n.active ? "text-ink" : "text-ink-faint hover:text-ink"} transition-colors duration-[120ms]`}>
             {n.label[0]}
           </button>
         ))}
@@ -61,7 +62,7 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou
     // question is readable instead of truncating after four words.
     <aside className="group/rail relative flex h-full w-[260px] shrink-0 flex-col gap-[26px] border-r border-line bg-bg py-[22px] pl-[24px] md:w-[176px]" aria-label="Sidebar">
       <div className="flex items-baseline">
-        <button onClick={onYou} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+        <button onClick={() => onNavigate("log")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
           headshot
         </button>
         <button
@@ -78,7 +79,7 @@ export function Sidebar({ surface, threads, activeId, collapsed, onToggle, onYou
         {nav.map((n) => (
           <button
             key={n.key}
-            onClick={onYou}
+            onClick={() => onNavigate(n.key)}
             className={`t-ui text-left transition-colors duration-[120ms] ${n.active ? "text-ink" : "font-normal text-ink-faint hover:text-ink"}`}
           >
             {n.label}

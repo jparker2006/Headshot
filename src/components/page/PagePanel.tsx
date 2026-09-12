@@ -7,18 +7,25 @@
  * single `border-left`, the same `--bg` ground as the page, no radius, no
  * shadow, no blur. Full-screen sheet on a phone. Inside, the grammar is the Log
  * board's picked-title header — poster mark, name in Geist 16/600, one mono
- * facts line — then one `.btn-play` (the only accent in the view), the four
- * bucket words as the way to rate from here, the graph reason as `.t-reason`,
- * the cast as `.row`s with a 22px face marker and the role in mono, and the
- * brain page as `.t-prose`.
+ * facts line — then one `.btn-play` (the only accent in the view), the Log
+ * page's own row of ten as the way to rate from here, the graph reason as
+ * `.t-reason`, the cast as `.row`s with a 22px face marker and the role in
+ * mono, and the brain page as `.t-prose`.
+ *
+ * v5: rating is a score, not a word. The row of ten (`ScoreRow`, the same
+ * component the Log page and the catch-up deck use, at `sm` and without the
+ * keyboard — a drawer is not a typing surface) replaces the four bucket words,
+ * `want` / `seen` are two quiet links beside it, and a series carries its
+ * season pointer here because the spec edits season progress from the drawer.
+ * Every one of those writes one `/api/taste/log` POST and re-reads the row it
+ * answers with, so the taste line under the row is always the stored truth.
  *
  * Everything per-user arrives on `taste` from /api/page/[imdbId]; `taste: null`
  * means signed out, which is the only signed-out check this panel makes.
  *
  * Deviations from DESIGN.md § Title drawer, both requested in the rebuild brief:
  * the cast rows carry a 22px face marker and the role in mono (DESIGN.md says
- * "no faces"), and `later` / `seen it` sit beside Play as `.btn-quiet` in
- * addition to the four bucket words.
+ * "no faces"), and `want` / `seen` sit under the row of ten as `.t-link`s.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
@@ -26,6 +33,7 @@ import { makeIndex, type EntityIndex } from "@/components/chat/entityLinks";
 import { useImages } from "@/components/chat/useImages";
 import { lookupName } from "@/components/chat/lookup";
 import { requireSignIn } from "@/components/auth/SignInGate";
+import { ScoreRow } from "@/components/log/ScoreRow";
 import { factsLine } from "./facts";
 
 interface Neighbor {
@@ -38,10 +46,18 @@ interface Neighbor {
   character?: string | null;
 }
 
-interface PageTaste {
+/** The user's row for this title: the state, the score, the season pointer. */
+type TasteState = "rated" | "want" | "seen" | "unseen";
+
+interface Mine {
+  state: TasteState | null;
+  score: number | null;
+  season: number | null;
+}
+
+interface PageTaste extends Mine {
   reason: { text: string; viaImdbIds: string[]; viaNames: string[] } | null;
   likedPeople: string[];
-  rating: "liked" | "meh" | "unseen" | "want" | null;
   onYourServices: string[];
 }
 
@@ -104,20 +120,21 @@ interface Props {
   onExpand: (imdbId: string) => void;
 }
 
-/** The four buckets, in the log field's order. Rating is a word, never a colour. */
-const BUCKETS: { bucket: "liked" | "meh" | "want" | "unseen"; label: string }[] = [
-  { bucket: "liked", label: "liked" },
-  { bucket: "meh", label: "meh" },
-  { bucket: "want", label: "want" },
-  { bucket: "unseen", label: "seen" },
-];
+/** The one line under the row of ten: what the store holds, said plainly. */
+function tasteLine(mine: Mine): string {
+  if (mine.state === "rated" && mine.score != null) return `you rated this ${mine.score}`;
+  if (mine.state === "want") return "on your list";
+  if (mine.state === "seen") return "seen, no score";
+  if (mine.state === "unseen") return "never seen";
+  return "";
+}
 
 export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Props) {
   const [data, setData] = useState<PageData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
-  /** Optimistic bucket after the user taps a word; falls back to the server's. */
-  const [bucket, setBucket] = useState<PageTaste["rating"] | undefined>(undefined);
+  /** Optimistic row after the user taps; null means "whatever the server said". */
+  const [mine, setMine] = useState<Mine | null>(null);
 
   // Names on the page that link: the subject and its neighbors.
   const pageEntities = useMemo<EntityIndex>(
@@ -159,6 +176,9 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
   const person = extras?.kind === "person" ? extras : null;
   const providers = title?.providers ?? null;
   const isPerson = data?.node.kind === "person";
+  // A series is what the graph's title type says, or anything TMDB gave seasons.
+  const isSeries =
+    !isPerson && (data?.node.titleType === "tvSeries" || data?.node.titleType === "tvMiniSeries" || (title?.seasons ?? 0) > 0);
   const signedOut = data ? data.taste === null : false;
   const onService = data?.taste?.onYourServices[0] ?? null;
   // Play is TMDB's watch-providers link (the JustWatch page), which forwards to the service.
@@ -179,16 +199,41 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
     return m;
   }, [data]);
 
-  const currentBucket = bucket !== undefined ? bucket : (data?.taste?.rating ?? null);
-  const rate = (rating: "liked" | "meh" | "want" | "unseen") => {
-    if (signedOut) return requireSignIn(`/?open=${imdbId}`);
-    setBucket(rating);
-    const req =
-      rating === "want"
-        ? fetch("/api/taste/later", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId }) })
-        : fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating }] }) });
-    void req.catch(() => setBucket(data?.taste?.rating ?? null));
+  const current: Mine = mine ?? {
+    state: data?.taste?.state ?? null,
+    score: data?.taste?.score ?? null,
+    season: data?.taste?.season ?? null,
   };
+
+  /**
+   * One write, one route: `/api/taste/log` takes `{ imdbId, score }`,
+   * `{ imdbId, state }` and `season` alike, so the drawer never invents a
+   * second way to say the same thing. The optimistic row is shown at once and
+   * replaced by the row the route answers with; a failure puts it back.
+   */
+  const write = (body: Record<string, unknown>, optimistic: Mine) => {
+    if (signedOut) return requireSignIn(`/?open=${imdbId}`);
+    const previous = mine;
+    setMine(optimistic);
+    void fetch("/api/taste/log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imdbId, ...body }) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        const row = ((await r.json()) as { row?: { rating: TasteState; score: number | null; season: number | null } }).row;
+        if (row) setMine({ state: row.rating, score: row.score ?? null, season: row.season ?? null });
+      })
+      .catch(() => setMine(previous));
+  };
+
+  // The season pointer rides along on every write: the log route rewrites the
+  // row whole, so a rating that said nothing about season would clear it.
+  const withSeason = (body: Record<string, unknown>) => (current.season ? { ...body, season: current.season } : body);
+  const rate = (score: number) => write(withSeason({ score }), { ...current, state: "rated", score });
+  const mark = (state: "want" | "seen") => write(withSeason({ state }), { ...current, state, score: null });
+  const setSeason = (season: number) =>
+    write(
+      current.state === "rated" && current.score != null ? { score: current.score, season } : { state: current.state ?? "seen", season },
+      { ...current, state: current.state ?? "seen", season },
+    );
 
   const facts = data
     ? factsLine({
@@ -243,36 +288,27 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
                   {onService ? `Play on ${onService}` : "Where to watch"}
                 </a>
               )}
+              {/* the row of ten: the Log page's control, unchanged, at `sm`.
+                  Under it the stored line, then the two quiet states and — for
+                  a series — the season pointer. */}
               {!isPerson && (
-                <div className="grid grid-cols-2 gap-[10px]">
-                  <button type="button" onClick={() => rate("want")} className="btn btn-quiet px-0">
-                    later
-                  </button>
-                  <button type="button" onClick={() => rate("liked")} className="btn btn-quiet px-0">
-                    seen it
-                  </button>
-                </div>
-              )}
-
-              {/* the four bucket words: rating from the drawer uses the log
-                  field's vocabulary, not a new control. */}
-              {!isPerson && (
-                <div className="flex flex-wrap items-center gap-[16px]">
-                  {BUCKETS.map((b) => (
-                    <button
-                      key={b.bucket}
-                      type="button"
-                      onClick={() => rate(b.bucket)}
-                      className={`bucket transition-colors duration-[120ms] hover:text-ink ${currentBucket === b.bucket ? "bucket-on" : ""}`}
-                    >
-                      {b.label}
+                <div className="flex flex-col gap-[12px]">
+                  <ScoreRow value={current.score} onChange={rate} size="sm" keyboard={false} />
+                  <div className="flex flex-wrap items-center gap-[16px]">
+                    {tasteLine(current) && <span className="t-meta">{tasteLine(current)}</span>}
+                    <button type="button" onClick={() => mark("want")} className={`t-link ${current.state === "want" ? "text-ink" : ""}`}>
+                      want
                     </button>
-                  ))}
-                  {title?.trailer && (
-                    <button type="button" onClick={() => setShowTrailer((v) => !v)} className="t-link ml-auto">
-                      {showTrailer ? "hide trailer" : "trailer"}
+                    <button type="button" onClick={() => mark("seen")} className={`t-link ${current.state === "seen" ? "text-ink" : ""}`}>
+                      seen
                     </button>
-                  )}
+                    {isSeries && <SeasonPointer season={current.season} seasons={title?.seasons ?? null} onChange={setSeason} />}
+                    {title?.trailer && (
+                      <button type="button" onClick={() => setShowTrailer((v) => !v)} className="t-link ml-auto">
+                        {showTrailer ? "hide trailer" : "trailer"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -394,6 +430,40 @@ export function PagePanel({ imdbId, onClose, onSelectNode, onAsk, onExpand }: Pr
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The season pointer: "season 2 ▾", mono, as small as the meta line it sits
+ * in. A native select so the phone gets its own wheel; the options run to the
+ * season count TMDB knows, and when it knows none you can still step one past
+ * where you are, which is the only move a pointer ever needs.
+ */
+function SeasonPointer({ season, seasons, onChange }: { season: number | null; seasons: number | null; onChange: (season: number) => void }) {
+  const max = seasons && seasons > 0 ? seasons : Math.max(season ?? 0, 0) + 1;
+  const options = Array.from({ length: max }, (_, i) => i + 1);
+  return (
+    <label className="t-meta inline-flex items-center gap-[4px] text-ink-dim">
+      <span>season</span>
+      <span className="relative inline-flex items-center">
+        <select
+          value={season ?? ""}
+          onChange={(e) => onChange(Number(e.target.value))}
+          aria-label="season you are on"
+          className="t-meta cursor-pointer appearance-none bg-transparent pr-[12px] text-ink outline-none"
+        >
+          {season == null && <option value="">–</option>}
+          {options.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <span aria-hidden className="pointer-events-none absolute right-0 text-ink-faint">
+          ▾
+        </span>
+      </span>
+    </label>
   );
 }
 

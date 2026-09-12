@@ -11,8 +11,6 @@ import {
   scoreFromStatement,
   validateScore,
 } from "@/lib/taste/score";
-// TODO(v5-B): the bucket words live only in the route translators now.
-import { bucketFromScore, fromLegacyBucket, isLegacyBucket, legacyBucket, scoreFromBucket } from "@/lib/taste/legacy";
 import type { WatchedRating } from "@/lib/taste/types";
 
 const row = (rating: WatchedRating, score: number | null = null) => ({ rating, score });
@@ -80,46 +78,6 @@ describe("score validity", () => {
     expect(() => validateScore({ rating: "unseen", score: 1 })).toThrow(/score/);
     // The message says which title, when the caller passed one.
     expect(() => validateScore({ titleImdbId: "tt0113277", rating: "rated" })).toThrow(/tt0113277/);
-  });
-});
-
-describe("the buckets, while the clients still speak them", () => {
-  it("isLegacyBucket knows the five old words and nothing else", () => {
-    for (const b of ["liked", "meh", "want", "seen", "unseen"]) expect(isLegacyBucket(b)).toBe(true);
-    for (const b of ["rated", "", 8, null, undefined]) expect(isLegacyBucket(b)).toBe(false);
-  });
-
-  it("scoreFromBucket is the migration's mapping", () => {
-    expect(scoreFromBucket("liked")).toBe(8);
-    expect(scoreFromBucket("meh")).toBe(5);
-  });
-
-  it("bucketFromScore splits at the threshold", () => {
-    expect(bucketFromScore(10)).toBe("liked");
-    expect(bucketFromScore(7)).toBe("liked");
-    expect(bucketFromScore(6)).toBe("meh");
-    expect(bucketFromScore(1)).toBe("meh");
-  });
-
-  it("a round trip through the migration's scores keeps the bucket", () => {
-    for (const b of ["liked", "meh"] as const) expect(bucketFromScore(scoreFromBucket(b))).toBe(b);
-  });
-
-  it("legacyBucket says the old word for any row", () => {
-    expect(legacyBucket(row("rated", 8))).toBe("liked");
-    expect(legacyBucket(row("rated", 2))).toBe("meh");
-    expect(legacyBucket(row("want"))).toBe("want");
-    expect(legacyBucket(row("seen"))).toBe("seen");
-    expect(legacyBucket(row("unseen"))).toBe("unseen");
-  });
-
-  it("fromLegacyBucket is its inverse on the states a bucket can name", () => {
-    expect(fromLegacyBucket("liked")).toEqual({ rating: "rated", score: 8 });
-    expect(fromLegacyBucket("meh")).toEqual({ rating: "rated", score: 5 });
-    expect(fromLegacyBucket("want")).toEqual({ rating: "want", score: null });
-    expect(fromLegacyBucket("seen")).toEqual({ rating: "seen", score: null });
-    expect(fromLegacyBucket("unseen")).toEqual({ rating: "unseen", score: null });
-    for (const b of ["liked", "meh", "want", "seen", "unseen"] as const) expect(legacyBucket(fromLegacyBucket(b))).toBe(b);
   });
 });
 

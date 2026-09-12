@@ -1,22 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { accountModel, accountName, navItems, type Surface } from "@/components/navModel";
 
-describe("sidebar nav model (SPEC v4 cuts)", () => {
-  it("is exactly You, on both surfaces", () => {
-    for (const surface of ["you", "chat"] satisfies Surface[]) {
+describe("sidebar nav model (SPEC v5 sections)", () => {
+  it("is Log then You, on every surface", () => {
+    for (const surface of ["log", "you", "chat"] satisfies Surface[]) {
       const items = navItems(surface);
-      expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({ key: "you", label: "you" });
+      expect(items.map((n) => n.key)).toEqual(["log", "you"]);
+      expect(items.map((n) => n.label)).toEqual(["log", "you"]);
     }
   });
 
-  it("marks You active only on the You surface", () => {
-    expect(navItems("you")[0].active).toBe(true);
-    expect(navItems("chat")[0].active).toBe(false);
+  it("marks a section active only on its own surface, and a thread lights neither", () => {
+    expect(navItems("log").map((n) => n.active)).toEqual([true, false]);
+    expect(navItems("you").map((n) => n.active)).toEqual([false, true]);
+    expect(navItems("chat").map((n) => n.active)).toEqual([false, false]);
   });
 
   it("has no New chat, Tonight, Later or taste item left", () => {
-    const labels = navItems("you").map((n) => n.label.toLowerCase());
+    const labels = navItems("log").map((n) => n.label.toLowerCase());
     for (const gone of ["new chat", "tonight", "later", "your taste", "services and imports"]) {
       expect(labels).not.toContain(gone);
     }

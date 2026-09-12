@@ -27,6 +27,24 @@ describe("swipe deck reducer", () => {
     ]);
   });
 
+  it("takes the catch-up deck's two answers: a score, or not seen", () => {
+    let s = initialSwipeState(["a", "b", "c"]);
+    // "seen it" then a digit is one commit, not two: the reveal is UI state.
+    s = swipeReducer(s, { type: "swipe", action: { rating: "rated", score: 7 }, at: 1 });
+    s = swipeReducer(s, { type: "swipe", action: { rating: "unseen" }, at: 2 });
+    expect(committedRows(s)).toEqual([
+      { imdbId: "a", rating: "rated", score: 7 },
+      { imdbId: "b", rating: "unseen", score: null },
+    ]);
+    // Undo takes the card back and un-commits it; answering again wins.
+    s = swipeReducer(s, { type: "undo" });
+    s = swipeReducer(s, { type: "swipe", action: { rating: "rated", score: 3 }, at: 3 });
+    expect(committedRows(s)).toEqual([
+      { imdbId: "a", rating: "rated", score: 7 },
+      { imdbId: "b", rating: "rated", score: 3 },
+    ]);
+  });
+
   it("skip moves the card to the back without recording anything; empty decks are inert", () => {
     let s = initialSwipeState(["a", "b"]);
     s = swipeReducer(s, { type: "skip" });

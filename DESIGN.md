@@ -206,11 +206,11 @@ A region, not a floating card: 420px, right-aligned, `--bg` ground, a single `bo
 - Sign-in: the same sentence shrunk to `.t-title`, then the email field drawn exactly like the log field — 46px, `--line-input` underline, mono `>` prompt, Geist 15px, block caret — then `.btn-outline` `Send the link`, then `.t-meta` `we'll email you a link. no password, ever.` After submit the field is replaced by one line of `.t-prose`: `sent. check your email.`
 - The trivia chat and `/a/…` answer pages keep working signed out and use the Thread grammar unchanged.
 
-### Swipe deck
+### Catch-up deck (v5)
 
 **Deviation** — no board. Posters are the only color, so here the poster *is* the screen; everything around it stays at the board's scale.
 
-One centred column. The poster at **260×390**, no radius, no shadow, no card behind it. Under it: title `.t-row` at 16px/600, `.t-meta` `1984 · film · 107m`. Under that the same four bucket buttons as the log field at 44px, each `1fr` of a 420px row, with mono `1 2 3 4` under them. Top-right of the column: `.t-meta` `7 / 30`; bottom-left: `.t-link` `undo`, `.t-link` `skip`. A card leaving is a 300ms translate-and-fade in the direction of the choice — no colored overlay, no stamp, no rotation beyond 2°. Session end shows the memory diff as two `.t-prose` lists, added lines at `--ink` with a mono `+`, removed at `--ink-ghost` with a mono `−`.
+One centred column. The poster at **260×390**, no radius, no shadow, no card behind it. Under it: title `.t-row` at 16px/600, `.t-meta` `1984 · film · 107m`. Under that two `.btn-fill`s at 44px, `seen it` and `not seen`, with mono `s` / `n` hints; `seen it` reveals the row of ten (`ScoreRow`, 44px cells, five-and-five under the poster) and a digit commits and advances; `not seen` commits and advances. Top-right of the column: `.t-meta` `3 / 10`; bottom-left: `.t-link` `undo`, `.t-link` `done for now` (live from the first card). Rounds are ten. A card leaving is a 300ms translate-and-fade — no colored overlay, no stamp, no rotation beyond 2°. Round end shows the memory diff as two `.t-prose` lists, added lines at `--ink` with a mono `+`, removed at `--ink-faint` with a mono `−`, then `ten more` (`.btn-outline`) and `back to the log` (`.t-link`).
 
 ### Sidebar
 

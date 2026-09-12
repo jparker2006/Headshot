@@ -32,9 +32,6 @@ import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
 import { isValidScore } from "./score";
-// TODO(v5-B): the log field and the review screen still speak the old bucket
-// words. Chunk B replaces them with the row of ten; then this import goes.
-import { fromLegacyBucket, isLegacyBucket } from "./legacy";
 
 /**
  * The graph slice these routes need: name lookup, single-id resolution, and
@@ -84,15 +81,13 @@ type LogWrite = { rating: WatchedRating; score: number | null };
 const LOG_STATES = ["want", "seen", "unseen"] as const;
 
 /**
- * The body's rating, in either vocabulary.
- *
- * TODO(v5-B): drop the `rating` branch when the bucket-word log field is gone;
- * `score` and `state` are the shape v5 speaks.
+ * The body's rating, in the only vocabulary v5 has: a `score` of 1–10, or a
+ * `state` of want / seen / unseen. An old bucket word ("liked", "meh") is not
+ * translated any more — it is simply not a rating, and the caller answers 400.
  */
-function parseLogWrite(body: { score?: unknown; state?: unknown; rating?: unknown }): LogWrite | null {
+function parseLogWrite(body: { score?: unknown; state?: unknown }): LogWrite | null {
   if (body.score !== undefined) return isValidScore(body.score) ? { rating: "rated", score: body.score } : null;
   if (typeof body.state === "string") return (LOG_STATES as readonly string[]).includes(body.state) ? { rating: body.state as WatchedRating, score: null } : null;
-  if (isLegacyBucket(body.rating)) return fromLegacyBucket(body.rating);
   return null;
 }
 
@@ -414,13 +409,13 @@ export function createTasteHandlers(deps: TasteDeps) {
      * `{ imdbId, score?, state?, season?, text? }` writes the row (source
      * "log") and one episode: a `score` of 1–10 is a rating, `state` is one of
      * want / seen / unseen. The optional line is stored verbatim inside the
-     * episode text; nothing is paraphrased on the way in. An old client's
-     * bucket word is still accepted and translated (TODO(v5-B)).
+     * episode text; nothing is paraphrased on the way in. `season` moves the
+     * series pointer, which is how the drawer edits it.
      */
     async log(req: Request): Promise<Response> {
       const who = await withUser(req);
       if ("response" in who) return who.response;
-      let body: { query?: unknown; imdbId?: unknown; score?: unknown; state?: unknown; rating?: unknown; season?: unknown; text?: unknown };
+      let body: { query?: unknown; imdbId?: unknown; score?: unknown; state?: unknown; season?: unknown; text?: unknown };
       try {
         body = (await req.json()) as typeof body;
       } catch {

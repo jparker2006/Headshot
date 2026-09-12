@@ -46,7 +46,7 @@ export function LaterPanel({ onSelectNode }: Props) {
   const images = useImages(ids);
   const names = useNames(ids);
 
-  const act = (imdbId: string, rating: "liked" | "unseen") => {
+  const act = (imdbId: string, rating: "seen" | "unseen") => {
     setGone((g) => new Set(g).add(imdbId));
     void fetch("/api/taste/swipe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: [{ imdbId, rating }] }) }).catch(() => {});
   };
@@ -90,7 +90,7 @@ export function LaterPanel({ onSelectNode }: Props) {
               </button>
               <span className="t-meta hidden text-ink-faint sm:block">{names[id]?.year || ""}</span>
               <span className="flex items-center gap-[14px] justify-self-end">
-                <button type="button" onClick={() => act(id, "liked")} className="t-link">
+                <button type="button" onClick={() => act(id, "seen")} className="t-link">
                   seen it
                 </button>
                 <button type="button" onClick={() => act(id, "unseen")} className="t-link">

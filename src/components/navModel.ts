@@ -1,18 +1,22 @@
 /**
  * The sidebar's nav model, kept pure so the cuts SPEC v4 asked for are a test
- * rather than a screenshot: you, History, account. No New chat, no Tonight, no
- * Later, no taste map, no link to /brain.
+ * rather than a screenshot: log, you, History, account. No New chat, no
+ * Tonight, no Later, no taste map, no link to /brain.
  *
- * There are exactly two surfaces in the column — You (home) and a thread —
- * because everything else either lives inside You or has been retired. Labels
+ * Three surfaces in the column (SPEC v5): Log — the product, and the landing
+ * for anyone signed in — You, and a thread. Labels
  * are lowercase: board C sets every rail item in sentence case (DESIGN.md →
  * Sidebar, Copy).
  */
 
-export type Surface = "you" | "chat";
+export type Surface = "log" | "you" | "chat";
+
+/** The sections the rail lists. Chunk C adds Ask and the session list. */
+export const SECTIONS = ["log", "you"] as const;
+export type Section = (typeof SECTIONS)[number];
 
 export interface NavItem {
-  key: "you";
+  key: Section;
   label: string;
   active: boolean;
 }
@@ -27,9 +31,13 @@ export interface AccountModel {
   menu: ("email" | "sign-out")[];
 }
 
-/** The whole nav: one item, you, active on the You surface. */
+/**
+ * The whole nav: Log — the product, and where a signed-in person lands — then
+ * You. A thread lights neither; `history` still carries that (Chunk C folds
+ * the sessions under Ask).
+ */
 export function navItems(surface: Surface): NavItem[] {
-  return [{ key: "you", label: "you", active: surface === "you" }];
+  return SECTIONS.map((key) => ({ key, label: key, active: surface === key }));
 }
 
 /** The account row at the bottom. Email and Sign out, nothing else. */

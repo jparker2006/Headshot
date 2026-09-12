@@ -16,9 +16,6 @@ import { tasteMap } from "@/lib/taste/map";
 import { tasteFacts } from "./engine";
 import { toEngineRows } from "./service";
 import { isValidScore } from "@/lib/taste/score";
-// TODO(v5-B): the deck still posts the old bucket words. Chunk B replaces it
-// with the catch-up deck's row of ten, and this translation goes with it.
-import { fromLegacyBucket, isLegacyBucket } from "@/lib/taste/legacy";
 
 export interface TonightRouteDeps {
   userId: (req: Request) => Promise<string | null>;
@@ -51,11 +48,10 @@ function parseFilters(body: Record<string, unknown>): Filters {
 }
 
 /**
- * One card's verdict, in either vocabulary: v5's `{ imdbId, score }` or
- * `{ imdbId, rating: "want" | "seen" | "unseen" }`, and — until Chunk B
- * replaces the deck — an old bucket word, translated here at the boundary.
- *
- * TODO(v5-B): drop the bucket branch when the deck posts scores.
+ * One card's verdict, in the only vocabulary v5 has: `{ imdbId, score }` for a
+ * rating of 1–10, or `{ imdbId, rating: "want" | "seen" | "unseen" }` for the
+ * three stateful answers. Anything else — an old bucket word included — is not
+ * a verdict, and the row is dropped.
  */
 function parseSwipeRow(raw: unknown): (WatchedInput & { source: "swipe" }) | null {
   const x = raw as Record<string, unknown>;
@@ -66,7 +62,6 @@ function parseSwipeRow(raw: unknown): (WatchedInput & { source: "swipe" }) | nul
   }
   if (x.rating === "rated") return null; // a rated row without a score says nothing
   if (x.rating === "want" || x.rating === "seen" || x.rating === "unseen") return { titleImdbId, rating: x.rating, score: null, source: "swipe" };
-  if (isLegacyBucket(x.rating)) return { titleImdbId, ...fromLegacyBucket(x.rating), source: "swipe" };
   return null;
 }
 

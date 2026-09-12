@@ -4,8 +4,13 @@
  */
 import type { NumbersLogRow } from "@/lib/taste/numbers";
 
-/** The chips above the table. One at a time; `all` is the default. */
-export const LOG_FILTERS = ["all", "films", "shows", "liked", "meh", "seen", "want"] as const;
+/**
+ * The chips above the log table (SPEC v5 → Log page). One at a time; `all` is
+ * the default. The four bucket words are gone: a row is either rated (it
+ * carries a score of 1-10) or it carries one of the two states a person can
+ * say out loud, `want` and `seen`.
+ */
+export const LOG_FILTERS = ["all", "rated", "want", "seen", "films", "shows"] as const;
 export type LogFilter = (typeof LOG_FILTERS)[number];
 
 /** How many rows the table draws before "show more". */
@@ -13,10 +18,10 @@ export const LOG_PAGE = 100;
 
 /**
  * Does this row survive the chip and the text box? The text matches the title
- * and its year, so "1999" finds a year and "gump" finds a film; the chip is a
- * kind or a bucket, never both.
+ * and its year, so "1999" finds a year and "gump" finds a film; the chip is
+ * either a kind or a state, never both.
  */
-export function matchesLog(row: NumbersLogRow, filter: LogFilter, query: string): boolean {
+export function matchesLog(row: Pick<NumbersLogRow, "name" | "year" | "kind" | "state" | "score">, filter: LogFilter, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q && !`${row.name} ${row.year ?? ""}`.toLowerCase().includes(q)) return false;
   switch (filter) {
@@ -26,8 +31,10 @@ export function matchesLog(row: NumbersLogRow, filter: LogFilter, query: string)
       return row.kind === "movie";
     case "shows":
       return row.kind === "series";
+    case "rated":
+      return row.state === "rated" && row.score != null;
     default:
-      return row.rating === filter;
+      return row.state === filter;
   }
 }
 

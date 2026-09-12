@@ -17,7 +17,6 @@ import type { WatchedRating, WatchedRow, WatchedSource } from "./types";
 import { isLiked, isMeh, isWatched } from "./score";
 // TODO(v5-B): the log table still renders a bucket word. When it renders the
 // score instead, `rating` below goes and this import with it.
-import { legacyBucket, type LegacyBucket } from "./legacy";
 
 /** The slice of the industry graph Numbers needs, so tests can pass a stub. */
 export interface NumbersGraph {
@@ -79,8 +78,6 @@ export interface NumbersLogRow {
   state: WatchedRating;
   /** 1–10 when the row is rated, null otherwise. */
   score: number | null;
-  /** TODO(v5-B): the old bucket word, for the log table that still filters on it. */
-  rating: LegacyBucket;
   watchedAt: string | null;
   source: WatchedSource;
   season: number | null;
@@ -229,7 +226,6 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
       kind,
       state: row.rating,
       score: row.score,
-      rating: legacyBucket(row),
       watchedAt: row.watchedAt,
       source: row.source,
       season: row.season,

@@ -61,7 +61,7 @@ describe("taste routes: sign-in", () => {
       handlers.importCsv(json({ source: "imdb", file: readImport("imdb.csv") })),
       handlers.confirmImport(json({ fixes: [] })),
       handlers.log(json({ query: "Apollo" })),
-      handlers.log(json({ imdbId: "tt0000001", rating: "liked" })),
+      handlers.log(json({ imdbId: "tt0000001", score: 8 })),
       handlers.numbers(get()),
     ];
     for (const res of await Promise.all(calls)) {
@@ -371,13 +371,24 @@ describe("taste routes: log", () => {
     expect(await store.listEpisodes("user-1")).toEqual([]);
   });
 
-  // TODO(v5-B): the bucket-word log field is replaced in Chunk B; until then
-  // the route still takes its four words and translates them.
-  it("still accepts the old bucket words from the current client", async () => {
-    await handlers.log(json({ imdbId: "tt0000001", rating: "liked" }));
-    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "rated", score: 8 }]);
-    await handlers.log(json({ imdbId: "tt0000002", rating: "want" }));
-    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000002")).toMatchObject({ rating: "want", score: null });
+  // v5 speaks one vocabulary. The old bucket words are not translated any
+  // more — they are simply not a rating, and nothing is written.
+  it("refuses an old bucket word with a 400 and writes nothing", async () => {
+    for (const bucket of ["liked", "meh", "want", "seen", "unseen"]) {
+      expect((await handlers.log(json({ imdbId: "tt0000001", rating: bucket }))).status).toBe(400);
+    }
+    expect(await store.listWatched("user-1")).toEqual([]);
+    expect(await store.listEpisodes("user-1")).toEqual([]);
+  });
+
+  it("moves the season pointer from the drawer, with the score it already had", async () => {
+    await handlers.log(json({ imdbId: "tt0000004", score: 8, season: 2 }));
+    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000004")).toMatchObject({ rating: "rated", score: 8, season: 2 });
+    await handlers.log(json({ imdbId: "tt0000004", score: 8, season: 3 }));
+    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000004")).toMatchObject({ rating: "rated", score: 8, season: 3 });
+    // The drawer's two quiet links write the state and drop the score.
+    await handlers.log(json({ imdbId: "tt0000004", state: "want", season: 3 }));
+    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000004")).toMatchObject({ rating: "want", score: null, season: 3 });
   });
 
   it("an import warms the titles cache for everything it matched", async () => {
@@ -434,7 +445,7 @@ describe("taste routes: numbers", () => {
     expect(body.genres.find((g: { genre: string }) => g.genre === "War")).toBeUndefined();
     expect(body.log).toHaveLength(6);
     expect(body.log.at(-1).watchedAt).toBeNull();
-    expect(body.log[0]).toMatchObject({ name: "Apollo 13", kind: "movie", rating: "liked", posterPath: "/a.jpg" });
+    expect(body.log[0]).toMatchObject({ name: "Apollo 13", kind: "movie", state: "rated", score: 8, posterPath: "/a.jpg" });
   });
 
   it("hands the people grid a face and upgrades the role TMDB knows", async () => {

@@ -11,7 +11,7 @@
  * screen (`Prompt`), and it tells this page through `logBus` when it writes.
  */
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { lookupName } from "@/components/chat/lookup";
 import { useImages } from "@/components/chat/useImages";
 import { useNames } from "@/components/chat/useNames";
@@ -22,16 +22,13 @@ import { Numbers } from "./Numbers";
 import { MemoryProse } from "./MemoryProse";
 import { ServicesChecklist } from "./ServicesChecklist";
 import { Imports } from "./Imports";
-import { Onboarding } from "./Onboarding";
 import { SwipeSession } from "./SwipeSession";
 import { bumpLog, useLogVersion } from "./logBus";
 import { terseTime } from "./recent";
-import { isNewAccount } from "./swipeRules";
 import { useNumbers } from "./useNumbers";
 import type { WatchedRow } from "@/lib/taste/types";
 import { isLiked } from "@/lib/taste/score";
-// TODO(v5-B): this list still shows a bucket word; Chunk B shows the score.
-import { legacyBucket } from "@/lib/taste/legacy";
+import { watchedWord } from "@/components/log/scoreRules";
 
 interface Props {
   /** Open a person or title in the drawer. */
@@ -46,32 +43,6 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
   const [allNumbers, setAllNumbers] = useState(false);
   /** "you" is the page; "swipe" is the deck inline, in its place. No route. */
   const [mode, setMode] = useState<"you" | "swipe">("you");
-  /**
-   * Deck-first onboarding for a new account — one whose log is empty. Decided
-   * once, from the first read of the log: the flow's own first step fills the
-   * log, and re-deriving the answer would throw the user out of their own
-   * onboarding halfway through it.
-   */
-  const [flow, setFlow] = useState<"unknown" | "onboarding" | "you">("unknown");
-  const decided = useRef(false);
-  const userId = user?.id ?? null;
-
-  useEffect(() => {
-    if (!userId || decided.current) return;
-    let alive = true;
-    const settle = (rows: unknown[] | null) => {
-      if (!alive || decided.current) return;
-      decided.current = true;
-      setFlow(isNewAccount(rows) ? "onboarding" : "you");
-    };
-    fetch("/api/taste/watched", { cache: "no-store" })
-      .then(async (r) => (r.ok ? ((await r.json()) as { watched: unknown[] }).watched : null))
-      .then(settle)
-      .catch(() => settle(null));
-    return () => {
-      alive = false;
-    };
-  }, [userId]);
 
   if (loading) return <p className="t-meta">…</p>;
 
@@ -89,11 +60,7 @@ export function YouPage({ onSelectNode, onAsk }: Props) {
     );
   }
 
-  // The log has not been read yet: one quiet line rather than a flash of the
-  // empty sections a new account must never see.
-  if (flow === "unknown") return <p className="t-meta">…</p>;
-  if (flow === "onboarding") return <Onboarding onDone={() => setFlow("you")} onSelectNode={onSelectNode} />;
-  if (mode === "swipe") return <SwipeSession onExit={() => setMode("you")} onSelectNode={onSelectNode} />;
+  if (mode === "swipe") return <SwipeSession onDone={() => setMode("you")} onSelectNode={onSelectNode} />;
 
   return (
     <div className="flex flex-col gap-[28px] sm:gap-[38px]" aria-label="You">
@@ -306,11 +273,11 @@ function RecentlyLogged({
                   {year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{year}</span> : null}
                 </span>
                 <span className="t-meta block sm:hidden">
-                  {[terseTime(row.updatedAt), legacyBucket(row), tail].filter(Boolean).join(" · ")}
+                  {[terseTime(row.updatedAt), watchedWord(row), tail].filter(Boolean).join(" · ")}
                 </span>
               </span>
               <span className="t-meta hidden text-ink-faint sm:block">{year}</span>
-              <span className={`bucket hidden sm:block ${isLiked(row) ? "bucket-on" : ""}`}>{legacyBucket(row)}</span>
+              <span className={`hidden sm:block ${row.rating === "rated" ? "tnum text-[13.5px] leading-[1.2] text-ink" : `bucket ${isLiked(row) ? "bucket-on" : ""}`}`}>{watchedWord(row)}</span>
               <span className="t-meta hidden truncate sm:block">{tail}</span>
             </button>
           );

@@ -74,7 +74,7 @@ describe("memory route", () => {
       new Request("https://headshot.test/api/taste/log", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ imdbId: "tt0000001", rating: "liked", text: "still holds up" }),
+        body: JSON.stringify({ imdbId: "tt0000001", score: 8, text: "still holds up" }),
       }),
     );
     expect(res.status).toBe(200);

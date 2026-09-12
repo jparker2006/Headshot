@@ -2,8 +2,10 @@
 /**
  * The shell, board C: `176px | 1fr` — the rail, then one content column with
  * the composer pinned at its bottom, and a 420px drawer behind one hairline on
- * the right (DESIGN.md → Layouts, Rhythm). Two surfaces only (SPEC v4): You
- * (home — the log, the memory, tonight, the numbers, later) and a thread. The
+ * the right (DESIGN.md → Layouts, Rhythm). Three surfaces (SPEC v5): Log (the
+ * product, and where a signed-in person lands), You (the receipt) and a
+ * thread. Log carries its own field, so it is the one surface with no
+ * composer pinned under it. The
  * graph canvas is not part of the product surface and nothing links to it;
  * /brain keeps it for the curious.
  *
@@ -20,8 +22,9 @@ import { BrainStore } from "./canvas/brainStore";
 import { ChatPanel } from "./chat/ChatPanel";
 import { PagePanel } from "./page/PagePanel";
 import { Sidebar } from "./Sidebar";
-import { accountModel, accountName, type Surface } from "./navModel";
+import { accountModel, accountName, type Section, type Surface } from "./navModel";
 import { useSessionUser, requireSignIn } from "./auth/SignInGate";
+import { LogPage } from "./log/LogPage";
 import { YouPage } from "./you/YouPage";
 import { Prompt } from "./you/Prompt";
 import { createThread, deleteThread, listThreads, useThreads } from "./chat/threads";
@@ -34,11 +37,17 @@ export function HeadshotApp() {
   const threads = useThreads();
   const [chosenThread, setChosenThread] = useState<string | null>(null);
   const threadId = chosenThread && threads.some((t) => t.id === chosenThread) ? chosenThread : (threads[0]?.id ?? null);
-  const [surface, setSurface] = useState<Surface>("you");
+  // Where a signed-in person lands is the Log (SPEC v5); signed out there is
+  // no log to land on, so the You sentence and the composer stay the landing.
+  // `chosen` is null until someone navigates, so the default can still change
+  // under it when the session resolves.
+  const { user: sessionUser } = useSessionUser();
+  const [chosen, setChosen] = useState<Surface | null>(null);
+  const surface: Surface = chosen ?? (sessionUser ? "log" : "you");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   // Deleting the open thread drops us home rather than onto an empty column.
-  const shown: Surface = surface === "chat" && threadId ? "chat" : "you";
+  const shown: Surface = surface === "chat" && threadId ? "chat" : surface === "chat" ? "you" : surface;
 
   // Deep links: /?q=<question> prefills the composer, /?open=<imdbId> opens the drawer.
   useEffect(() => {
@@ -76,7 +85,7 @@ export function HeadshotApp() {
     const t = empty ?? createThread();
     setChosenThread(t.id);
     setPrefill({ text, nonce: Date.now(), send: true });
-    setSurface("chat");
+    setChosen("chat");
     setMobileNav(false);
   }, []);
 
@@ -99,16 +108,15 @@ export function HeadshotApp() {
     [select],
   );
 
-  const goYou = () => {
-    // Home is You: the log, the memory, tonight's row, the numbers. No thread
-    // is created on the way back.
-    setSurface("you");
+  const goTo = (section: Section) => {
+    // No thread is created on the way to a section.
+    setChosen(section);
     setMobileNav(false);
     store.clearHighlight();
   };
   const openThread = (id: string) => {
     setChosenThread(id);
-    setSurface("chat");
+    setChosen("chat");
     setMobileNav(false);
   };
 
@@ -119,7 +127,7 @@ export function HeadshotApp() {
       activeId={threadId}
       collapsed={collapsed}
       onToggle={() => setCollapsed((c) => !c)}
-      onYou={goYou}
+      onNavigate={goTo}
       onSelectThread={openThread}
       onDeleteThread={(id) => deleteThread(id)}
     />
@@ -139,7 +147,16 @@ export function HeadshotApp() {
           button, a composer below the fold) would otherwise scroll this column
           programmatically and shift the whole shell out of frame for good. */}
       <main className="relative flex h-full min-w-0 flex-1 flex-col overflow-clip">
-        <TopBar surface={shown} onYou={goYou} onHistory={() => setMobileNav(true)} />
+        <TopBar surface={shown} onNavigate={goTo} onHistory={() => setMobileNav(true)} />
+        {shown === "log" && (
+          <div className="scrollbar-thin flex-1 overflow-y-auto">
+            {/* Log carries its own field at the top, so no composer is pinned
+                under it and the whole column scrolls with the table. */}
+            <div className="w-full px-4 pb-[32px] pt-[22px] md:px-[34px]">
+              <LogPage onSelectNode={select} />
+            </div>
+          </div>
+        )}
         {shown === "you" && (
           <>
             <div className="scrollbar-thin flex-1 overflow-y-auto">
@@ -149,7 +166,7 @@ export function HeadshotApp() {
             </div>
             {/* The composer is on the landing signed in or out: trivia chat is open to everyone. */}
             <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))] sm:px-[34px] sm:pb-[22px]">
-              <Prompt onAsk={ask} onSelectNode={select} />
+              <Prompt onAsk={ask} />
             </div>
           </>
         )}
@@ -185,15 +202,18 @@ export function HeadshotApp() {
  * right. No hamburger (DESIGN.md → Rhythm); `history` opens the rail as a
  * sheet, which is where the threads live.
  */
-function TopBar({ surface, onYou, onHistory }: { surface: Surface; onYou: () => void; onHistory: () => void }) {
+function TopBar({ surface, onNavigate, onHistory }: { surface: Surface; onNavigate: (section: Section) => void; onHistory: () => void }) {
   const { user, loading } = useSessionUser();
   const account = accountModel(user, loading);
   return (
     <div className="flex h-[44px] shrink-0 items-center gap-[16px] border-b border-line px-4 md:hidden">
-      <button onClick={onYou} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
+      <button onClick={() => onNavigate("log")} className="text-[14px] font-bold leading-none tracking-[-0.02em] text-ink">
         headshot
       </button>
-      <button onClick={onYou} className={`t-ui ${surface === "you" ? "text-ink" : "font-normal text-ink-faint"}`}>
+      <button onClick={() => onNavigate("log")} className={`t-ui ${surface === "log" ? "text-ink" : "font-normal text-ink-faint"}`}>
+        log
+      </button>
+      <button onClick={() => onNavigate("you")} className={`t-ui ${surface === "you" ? "text-ink" : "font-normal text-ink-faint"}`}>
         you
       </button>
       <button onClick={onHistory} className={`t-ui ${surface === "chat" ? "text-ink" : "font-normal text-ink-faint"}`}>
