@@ -1,0 +1,33 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1200, "h": 260, "title": "v5 — the shell and the log" },
+    { "file": "Shell.dc.html", "x": 0, "y": 440, "w": 1440, "h": 1000, "title": "Shell — Ask active, 1440" },
+    { "file": "Log.dc.html", "x": 1600, "y": 440, "w": 1440, "h": 1000, "title": "Log — 1440" },
+    { "file": "Shell-phone.dc.html", "x": 3200, "y": 440, "w": 390, "h": 844, "title": "Shell — 390" },
+    { "file": "Log-phone.dc.html", "x": 3730, "y": 440, "w": 390, "h": 844, "title": "Log — 390" }
+  ],
+  "annotations": [
+    {
+      "id": "shell-rules",
+      "x": -420,
+      "y": 440,
+      "w": 340,
+      "text": "Shell decisions (design/research-v5.md → Synthesis):\n\n· sidebar 232px, same ground as the page, one hairline\n· three sections — log / ask / you — 32px rows, 16px icons, active = ink level, no pill\n· sessions only under the active section, indented to 28px, one line each, under one dim 'chats' header\n· account row pinned at the bottom, one hairline above it\n· Ask column 720px centered\n· composer one tier, 56px, full column, hairline under it — no send button, no model selector\n· the empty state is the tonight opener, and its Play is the only accent in the view"
+    },
+    {
+      "id": "content-note",
+      "x": -420,
+      "y": 900,
+      "w": 340,
+      "text": "Every word on these boards is real: the memory and the 'what do I like?' answer are Jake's, the logged rows are his log with the buckets converted (liked → 8, seen → seen, want → want), the note on Heat is his, and the posters are the real TMDB artwork.\n\nStanding rules held: no bordered cards, no stat tiles, no uppercase tracked labels, mono for figures only, posters the only colour, one accent doing one job."
+    },
+    {
+      "id": "phone-note",
+      "x": 3200,
+      "y": 1360,
+      "w": 500,
+      "text": "At 390 the sidebar becomes a bottom tab bar with the same three sections; sessions move inside Ask, reached from the top bar. Rows go two-line at 52px, the row of ten goes five and five at 44px, the tonight pick becomes a block with Play full-width, and the chip and filter rows scroll sideways — cut at the screen edge on purpose."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
