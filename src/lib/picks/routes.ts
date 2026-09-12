@@ -62,7 +62,7 @@ function parseSwipeRows(rows: unknown[]): { titleImdbId: string; rating: SwipeRa
 /** One episode per session, not per card: "swiped: liked X, Y; meh Z". */
 function swipeEpisodeText(graph: IndustryGraph, rows: { titleImdbId: string; rating: SwipeRating }[]): string {
   const name = (id: string) => graph.nodeByImdbId(id)?.name ?? id;
-  const parts = ([["liked", "liked"], ["meh", "meh"], ["unseen", "never seen"], ["want", "want"]] as const)
+  const parts = ([["liked", "liked"], ["meh", "meh"], ["seen", "seen but no opinion"], ["unseen", "never seen"], ["want", "want"]] as const)
     .map(([rating, label]) => {
       const names = rows.filter((r) => r.rating === rating).map((r) => name(r.titleImdbId));
       return names.length ? `${label} ${names.join(", ")}` : "";

@@ -19,4 +19,6 @@ Rules:
 
 "Right now" is what they are watching or want to watch. "Notes" is verbatim things they said that are worth keeping, in quotes.
 
+The four buckets mean exactly this: "liked" is a like; "meh" is a watched-and-didn't-love; "seen" (or "seen but no opinion") means they watched it and said nothing about it — it is not a dislike and not a pass, so never write it up as avoiding or passing on those titles; "want" is on their list; "never seen" is just that. Only "meh" belongs under "What you avoid".
+
 Output only the markdown. No code fence, no commentary.
