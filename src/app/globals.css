@@ -304,6 +304,19 @@ body {
   font-size: 14px;
   color: var(--ink);
 }
+/* The reply is the page, not a bubble: full column, no fill (like Claude and
+   ChatGPT). Only what you said sits in a bubble, on the right. */
+.reply {
+  align-self: stretch;
+  width: 100%;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
 .bubble-them {
   align-self: flex-start;
   background: var(--bg-elev);

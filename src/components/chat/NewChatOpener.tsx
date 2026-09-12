@@ -58,7 +58,7 @@ export function NewChatOpener({ signedIn, onSelectNode, onLookup }: Props) {
 
   return (
     <div className="rise flex flex-col items-start gap-[14px]">
-      <div className="bubble bubble-them">
+      <div className="reply">
         <Markdown text={line} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />
       </div>
 

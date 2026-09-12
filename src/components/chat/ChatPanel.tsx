@@ -341,7 +341,7 @@ function Message({
     if (saidDone || !sawText || said.length === 0) return;
     saidDone = true;
     blocks.push(
-      <div key="said" className="bubble bubble-them">
+      <div key="said" className="reply">
         <Markdown text={said} entities={entities} onSelectNode={onSelectNode} onLookup={onLookup} />
       </div>,
     );
