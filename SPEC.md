@@ -504,3 +504,28 @@ A) research note + two boards (stop for Jake), then migration 0005 + score model
 ## Out of scope (v5)
 
 Streaming-account logins, social, YouTube history, episode-level logging, hosted agent harness, pricing, a taste map, a nightly job.
+
+# v5.1 — Ask polish (the quick round)
+
+Decided 2026-09-12 from Jake's first real chats after seeding his account. No grilling: five fixes that his transcripts and the screen showed.
+
+## User stories (v5.1)
+
+81. As a viewer, I want the chat box to behave like a real one — grows for a pasted list, visible focus, Enter sends, Shift+Enter breaks, a send/stop control — so that logging thirty shows in one message feels normal.
+82. As a viewer, I want the answers in proper sentences, capitalised, with no filler ("ok so", "hmm", "I'll pull up your record") and at most three short paragraphs, so that it reads like a friend, not a bot doing a bit.
+83. As a viewer, I want to rate 9.7 and have it stored as 9.7, so that my scores mean what I typed.
+84. As a viewer, I want "log these shows: …" to log the series, not a film with the same name, and an unscored title to land as seen instead of a question back.
+85. As a viewer, I want "a good drama I haven't seen" to get a drama I haven't seen, so that the tonight pick answers the question asked.
+
+## Implementation decisions (v5.1)
+
+- **Scores are one-decimal.** `watched.score` becomes `real` (migration 0008, existing integers unchanged). `validateScore` accepts 1.0–10.0 in tenths; `isLiked` ≥ 7, `isMeh` ≤ 6.9. The row of ten stays whole numbers (a tap) but the log field, the drawer and the log tool accept decimals; the table shows one decimal only when the value has one. Imports: Letterboxd stars×2 still whole; IMDb whole.
+- **Log tool kind hint.** `log` gains `kind?: "film" | "show"`; the model passes `show` when the message says shows/series/season or the title carries a season. Resolution prefers that kind; a name with two strong candidates of the asked kind returns `ambiguous` with both and the model asks once. `season` on `log` sets the season pointer. A title with no score in a "shows I've seen" list logs as `seen`.
+- **Tonight tool filters.** `tonight` gains `kind?: "film" | "show"`, `genre?: string` (matched against graph genres), `unseen: true` by default (never a title with any row). The engine gets the same `Filters` fields. The opener uses the user's provider *name* cleaned: "HBO Max Amazon Channel" → "HBO Max" (strip "Amazon Channel", "Apple TV Channel", "with Ads").
+- **System prompt voice.** Sentence case, ordinary capitalisation, no lowercase affectation. No preamble lines before a tool call; the first sentence is the answer. Three short paragraphs at most, no headings or bullets in a bubble. After logging: one line naming what was logged and the scores, no analysis unless asked. Ask a question back only for an ambiguous title. Names still bold.
+- **Composer (`.composer-lg`).** Textarea auto-grows to six lines then scrolls; focus turns the hairline to `--line-strong`; Enter sends, Shift+Enter newline; a 32px send glyph (ink) at the right that becomes stop while streaming; disabled state while sending; on phone it sits above the tab bar with 12px air. The mono `>` stays; the `⏎` hint goes.
+- **Stored answers.** Empty text parts and tool-step gaps are collapsed when rendering and when saving; a message renders as one bubble.
+
+## Testing decisions (v5.1)
+
+Score seam: migration keeps old rows, 9.7 round-trips through both stores and the log route; `isLiked(6.9)` false. Log tool: kind preference, ambiguity, unscored → seen, season pointer. Tonight tool: kind/genre filters and unseen default on the fixture. Opener: provider-name cleaning. Client: composer rules (Enter/Shift+Enter, growth cap) as pure helpers; bubble collapsing of empty parts.
