@@ -157,7 +157,8 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
         energy: params.get("energy") ?? undefined,
       });
       const [graph, store] = await Promise.all([deps.graph(), deps.store()]);
-      const result = await pickNow({ graph, tmdb: deps.tmdb(), store, log: deps.log }, userId, filters);
+      const titles = deps.titles ? await deps.titles() : null;
+      const result = await pickNow({ graph, tmdb: deps.tmdb(), store, titles, log: deps.log }, userId, filters);
       if (!result) return Response.json({ error: "no_taste_yet" }, { status: 404 });
       return Response.json({ pick: result.pick, line: openerLine(result.pick) });
     },

@@ -4,6 +4,8 @@ import { pickNow } from "@/lib/picks/service";
 import { createTonightHandlers, openerLine } from "@/lib/picks/routes";
 import type { PickView } from "@/lib/picks/view";
 import { fixtureGraph } from "../agent/helpers";
+import { MemoryTitlesStore } from "@/lib/titles/memory";
+import type { TitleRow } from "@/lib/titles/types";
 
 const APOLLO = "tt0000001";
 
@@ -42,6 +44,39 @@ describe("tonight on demand (v5)", () => {
     // Nothing is stored: no tonight row, no derived facts written.
     expect(await store.getTonight("u1")).toBeNull();
     expect(await store.getTaste("u1")).toBeNull();
+  });
+
+  it("pickNow fills a pick's poster and Play link from the titles cache and leads with a playable one", async () => {
+    const graph = await fixtureGraph();
+    const store = await tasted();
+    const bare = await pickNow({ graph, tmdb: null, store }, "u1");
+    expect(bare).not.toBeNull();
+    // Without TMDB the pool carries nothing, so no pick can be played.
+    expect(bare!.picks.every((p) => p.playUrl === null && p.posterUrl === null)).toBe(true);
+
+    // Cache a row for the last pick only: it becomes the opener.
+    const target = bare!.picks[bare!.picks.length - 1];
+    const titles = new MemoryTitlesStore();
+    const row: TitleRow = {
+      imdbId: target.imdbId,
+      tmdbId: 1,
+      kind: target.titleType.startsWith("tv") ? "series" : "movie",
+      name: target.name,
+      year: target.year,
+      runtime: 120,
+      seasons: null,
+      genres: [],
+      posterPath: "/poster.jpg",
+      providers: { link: "https://www.themoviedb.org/watch/1", flatrate: [{ provider_id: 15, provider_name: "Hulu" }] },
+      fetchedAt: new Date().toISOString(),
+    };
+    await titles.upsertMany([row]);
+    const filled = await pickNow({ graph, tmdb: null, store, titles }, "u1");
+    expect(filled!.pick.imdbId).toBe(target.imdbId);
+    expect(filled!.pick.playUrl).toBe("https://www.themoviedb.org/watch/1");
+    expect(filled!.pick.posterUrl).toContain("/poster.jpg");
+    expect(filled!.pick.providerNames).toEqual(["Hulu"]);
+    expect(filled!.pick.playLabel).toBe("Play on Hulu");
   });
 
   it("pickNow is null until the user has rated or wanted something", async () => {
