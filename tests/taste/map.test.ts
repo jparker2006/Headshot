@@ -6,11 +6,11 @@ describe("taste map", () => {
   it("puts you at the center, the people you keep watching on ring 1 with a tone, their rated titles on ring 2", async () => {
     const graph = await fixtureGraph();
     const m = tasteMap(graph, [
-      { titleImdbId: "tt0000001", rating: "liked", source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
-      { titleImdbId: "tt0000002", rating: "liked", source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
-      { titleImdbId: "tt0000003", rating: "meh", source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
-      { titleImdbId: "tt0000004", rating: "meh", source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
-      { titleImdbId: "tt0000005", rating: "want", source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
+      { titleImdbId: "tt0000001", rating: "rated", score: 8, source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
+      { titleImdbId: "tt0000002", rating: "rated", score: 8, source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
+      { titleImdbId: "tt0000003", rating: "rated", score: 5, source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
+      { titleImdbId: "tt0000004", rating: "rated", score: 5, source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
+      { titleImdbId: "tt0000005", rating: "want", score: null, source: "swipe", watchedAt: null, season: null, episodesWatched: 0, updatedAt: "" },
     ]);
     expect(m.center).toBe(ME);
     const center = m.nodes.find((n) => n.ring === 0)!;

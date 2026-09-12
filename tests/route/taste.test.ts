@@ -219,10 +219,10 @@ describe("taste routes: import — IMDb", () => {
 
     const rows = new Map((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r]));
     expect([...rows.values()].every((r) => r.source === "imdb")).toBe(true);
-    expect(rows.get("tt0000001")?.rating).toBe("liked");
-    expect(rows.get("tt0000003")?.rating).toBe("liked");
-    expect(rows.get("tt0000002")?.rating).toBe("meh");
-    expect(rows.get("tt0000004")?.rating).toBe("meh");
+    expect(rows.get("tt0000001")?.score).toBe(8);
+    expect(rows.get("tt0000003")?.score).toBe(8);
+    expect(rows.get("tt0000002")?.score).toBe(5);
+    expect(rows.get("tt0000004")?.score).toBe(5);
     expect(rows.get("tt0000001")?.watchedAt).toBe("2026-02-01T00:00:00.000Z");
   });
 
@@ -261,8 +261,8 @@ describe("taste routes: import confirm", () => {
 
     const rows = await store.listWatched("user-1");
     expect(rows.find((r) => r.titleImdbId === "tt0000003")).toBeUndefined();
-    // tt0000004 was already "meh" from the unrated Long Runner row and stays so.
-    expect(rows.find((r) => r.titleImdbId === "tt0000004")?.rating).toBe("meh");
+    // tt0000004 was already a 5 from the unrated Long Runner row and stays so.
+    expect(rows.find((r) => r.titleImdbId === "tt0000004")?.score).toBe(5);
   });
 
   it("drops a row when the user says none of the matches are it", async () => {
@@ -272,13 +272,13 @@ describe("taste routes: import confirm", () => {
     expect((await store.listWatched("user-1")).some((r) => r.titleImdbId === "tt0000006")).toBe(false);
   });
 
-  it("files a previously unmatched row under the bucket the client names", async () => {
+  it("files a previously unmatched row under the state and score the client names", async () => {
     await handlers.importCsv(json(files));
     const res = await handlers.confirmImport(
-      json({ fixes: [{ name: "Good Night, and Good Luck.", year: 2005, imdbId: "tt0000011", rating: "liked" }] }),
+      json({ fixes: [{ name: "Good Night, and Good Luck.", year: 2005, imdbId: "tt0000011", rating: "rated", score: 8 }] }),
     );
     expect(await res.json()).toMatchObject({ corrected: 1 });
-    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000011")?.rating).toBe("liked");
+    expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === "tt0000011")?.score).toBe(8);
   });
 
   it("rejects a body without fixes", async () => {
@@ -288,11 +288,11 @@ describe("taste routes: import confirm", () => {
 
 describe("taste routes: watched", () => {
   it("lists what the store holds for the signed-in user", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: "tt0000001", rating: "liked", source: "swipe" }]);
-    await store.upsertWatched("someone-else", [{ titleImdbId: "tt0000002", rating: "meh", source: "swipe" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: "tt0000001", rating: "rated", score: 8, source: "swipe" }]);
+    await store.upsertWatched("someone-else", [{ titleImdbId: "tt0000002", rating: "rated", score: 5, source: "swipe" }]);
 
     const body = await (await handlers.listWatched(get())).json();
-    expect(body.watched).toMatchObject([{ titleImdbId: "tt0000001", rating: "liked", source: "swipe" }]);
+    expect(body.watched).toMatchObject([{ titleImdbId: "tt0000001", rating: "rated", score: 8, source: "swipe" }]);
   });
 });
 
@@ -339,10 +339,10 @@ describe("taste routes: log", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.row).toMatchObject({ titleImdbId: "tt0000001", rating: "liked", source: "log" });
+    expect(body.row).toMatchObject({ titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log" });
     expect(typeof body.row.watchedAt).toBe("string");
 
-    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "liked", source: "log" }]);
+    expect(await store.listWatched("user-1")).toMatchObject([{ titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log" }]);
     const episodes = await store.listEpisodes("user-1");
     expect(episodes).toHaveLength(1);
     expect(episodes[0]).toMatchObject({ kind: "log", titleImdbId: "tt0000001" });
@@ -405,10 +405,10 @@ describe("taste routes: numbers", () => {
     const now = new Date().toISOString();
     await seedTitles();
     await store.upsertWatched("user-1", [
-      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: now },
-      { titleImdbId: "tt0000002", rating: "meh", source: "letterboxd", watchedAt: now },
+      { titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log", watchedAt: now },
+      { titleImdbId: "tt0000002", rating: "rated", score: 5, source: "letterboxd", watchedAt: now },
       { titleImdbId: "tt0000004", rating: "seen", source: "netflix", watchedAt: now, season: 2 },
-      { titleImdbId: "tt0000009", rating: "liked", source: "log", watchedAt: now, episodesWatched: 5 },
+      { titleImdbId: "tt0000009", rating: "rated", score: 8, source: "log", watchedAt: now, episodesWatched: 5 },
       { titleImdbId: "tt0000006", rating: "want", source: "log" },
       { titleImdbId: "tt0000011", rating: "seen", source: "imdb" },
     ]);
@@ -428,7 +428,7 @@ describe("taste routes: numbers", () => {
   it("hands the people grid a face and upgrades the role TMDB knows", async () => {
     await seedTitles();
     await store.upsertWatched("user-1", [
-      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: new Date().toISOString() },
+      { titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log", watchedAt: new Date().toISOString() },
     ]);
     faces = {
       "nm0000002": { url: "https://image.tmdb.test/hanks.jpg", knownAs: "Acting" },
@@ -445,7 +445,7 @@ describe("taste routes: numbers", () => {
 
   it("answers from the graph when the titles cache is cold, and warms it after", async () => {
     await store.upsertWatched("user-1", [
-      { titleImdbId: "tt0000001", rating: "liked", source: "log", watchedAt: new Date().toISOString() },
+      { titleImdbId: "tt0000001", rating: "rated", score: 8, source: "log", watchedAt: new Date().toISOString() },
     ]);
     const body = await (await handlers.numbers(get())).json();
     expect(body.log[0]).toMatchObject({ name: "Apollo 13", year: 1995, kind: "movie", runtime: null });

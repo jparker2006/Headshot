@@ -31,6 +31,7 @@ import type { ImportSource, TasteStore, WatchedRating, WatchedRow } from "./type
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
 import { getTitles, type TitleRow, type TitlesStore } from "@/lib/titles";
+import { fromLegacyBucket } from "./score";
 
 /**
  * The graph slice these routes need: name lookup, single-id resolution, and
@@ -107,6 +108,8 @@ export interface ImportFix {
    * being re-pointed keep the bucket they already had.
    */
   rating?: WatchedRating;
+  /** The score that goes with a `rated` fix; ignored for every other state. */
+  score?: number | null;
 }
 
 const unauthorized = () => Response.json({ error: "sign_in_required" }, { status: 401 });
@@ -423,7 +426,9 @@ export function createTasteHandlers(deps: TasteDeps) {
 
       const at = new Date().toISOString();
       await store.upsertWatched(who.userId, [
-        { titleImdbId: imdbId, rating, source: "log", watchedAt: at, season },
+        // The log field still offers the old four words; the store wants a
+        // state plus a score, so the bucket is translated on the way in.
+        { titleImdbId: imdbId, ...fromLegacyBucket(rating), source: "log", watchedAt: at, season },
       ]);
       await store.addEpisodes(who.userId, [
         {
@@ -491,7 +496,11 @@ export function createTasteHandlers(deps: TasteDeps) {
             titleImdbId: fix.imdbId,
             // The corrected row keeps the bucket it already had; only a row
             // that never matched needs the client to say which bucket it is.
-            rating: prev?.rating ?? fix.rating ?? (source === "netflix" ? "seen" : "meh"),
+            ...(prev
+              ? { rating: prev.rating, score: prev.score }
+              : fix.rating
+                ? { rating: fix.rating, score: fix.score ?? null }
+                : fromLegacyBucket(source === "netflix" ? "seen" : "meh")),
             source,
             watchedAt: prev?.watchedAt ?? null,
             season: prev?.season ?? null,

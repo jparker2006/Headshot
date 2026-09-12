@@ -7,6 +7,7 @@
 import type { IndustryGraph } from "@/lib/graph/engine";
 import type { EgoNetwork, EgoNode } from "@/lib/graph/ego";
 import type { WatchedRow } from "./types";
+import { isLiked } from "./score";
 
 export const ME = "me";
 
@@ -21,7 +22,7 @@ export function tasteMap(graph: IndustryGraph, watched: WatchedRow[], opts: Tast
   const maxPeople = opts.people ?? 16;
   const titlesEach = opts.titlesEach ?? 4;
   const rated = new Map<string, WatchedRow>();
-  for (const w of watched) if (w.rating === "liked" || w.rating === "meh") rated.set(w.titleImdbId, w);
+  for (const w of watched) if (w.rating === "rated") rated.set(w.titleImdbId, w);
 
   // People by how many rated titles they touch, and how many of those were liked.
   const people = new Map<number, { liked: number; meh: number; titles: { id: number; rating: "liked" | "meh" }[] }>();
@@ -32,9 +33,9 @@ export function tasteMap(graph: IndustryGraph, watched: WatchedRow[], opts: Tast
       if (c.node.kind !== "person") continue;
       let p = people.get(c.node.id);
       if (!p) people.set(c.node.id, (p = { liked: 0, meh: 0, titles: [] }));
-      if (w.rating === "liked") p.liked++;
+      if (isLiked(w)) p.liked++;
       else p.meh++;
-      p.titles.push({ id, rating: w.rating as "liked" | "meh" });
+      p.titles.push({ id, rating: isLiked(w) ? "liked" : "meh" });
     }
   }
   const ranked = [...people]

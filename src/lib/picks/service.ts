@@ -13,6 +13,7 @@ import { buildCandidates } from "./candidates";
 import { pickTonight, tasteFacts, type Filters, type WatchedRow } from "./engine";
 import { narrateReasons } from "./narrate";
 import { toPickView, TONIGHT_VERSION, type TonightData } from "./view";
+import { legacyBucket } from "@/lib/taste/score";
 
 export interface TonightDeps {
   graph: IndustryGraph;
@@ -31,13 +32,14 @@ export interface TonightDeps {
 }
 
 export function toEngineRows(rows: Awaited<ReturnType<TasteStore["listWatched"]>>): WatchedRow[] {
-  return rows.map((r) => ({ imdbId: r.titleImdbId, rating: r.rating, season: r.season, episodesWatched: r.episodesWatched }));
+  // The engine still speaks buckets; `legacyBucket` is the only translation.
+  return rows.map((r) => ({ imdbId: r.titleImdbId, rating: legacyBucket(r), season: r.season, episodesWatched: r.episodesWatched }));
 }
 
 /** True when the user has told us enough to pick: at least one rated title. */
 export async function hasTaste(store: TasteStore, userId: string): Promise<boolean> {
   const rows = await store.listWatched(userId);
-  return rows.some((r) => r.rating === "liked" || r.rating === "want" || r.rating === "meh");
+  return rows.some((r) => r.rating === "rated" || r.rating === "want");
 }
 
 export async function computeTonight(deps: TonightDeps, userId: string, filters: Filters | null = null): Promise<TonightData | null> {

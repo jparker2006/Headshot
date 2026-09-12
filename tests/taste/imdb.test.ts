@@ -75,12 +75,12 @@ describe("matchImdb", () => {
     const rows = new Map(toImdbInputs(matched).map((r) => [r.titleImdbId, r]));
 
     expect([...rows.values()].every((r) => r.source === "imdb")).toBe(true);
-    expect(rows.get("tt0000001")).toMatchObject({ rating: "liked", watchedAt: "2026-02-01T00:00:00.000Z" });
-    expect(rows.get("tt0000003")?.rating).toBe("liked");
-    expect(rows.get("tt0000009")?.rating).toBe("liked");
-    expect(rows.get("tt0000006")?.rating).toBe("liked");
-    expect(rows.get("tt0000002")?.rating).toBe("meh");
-    expect(rows.get("tt0000004")?.rating).toBe("meh");
+    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 8, watchedAt: "2026-02-01T00:00:00.000Z" });
+    expect(rows.get("tt0000003")?.score).toBe(8);
+    expect(rows.get("tt0000009")?.score).toBe(8);
+    expect(rows.get("tt0000006")?.score).toBe(8);
+    expect(rows.get("tt0000002")?.score).toBe(5);
+    expect(rows.get("tt0000004")?.score).toBe(5);
   });
 });
 

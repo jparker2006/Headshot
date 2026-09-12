@@ -11,7 +11,8 @@
  */
 import type { NodeInfo } from "@/lib/graph/engine";
 import type { NodeKind } from "@/lib/graph/format";
-import type { WatchedInput, WatchedRating } from "./types";
+import type { WatchedInput } from "./types";
+import { fromLegacyBucket, type LegacyBucket } from "./score";
 
 /** One parsed row, before it has been matched to anything. */
 export interface LetterboxdRow {
@@ -203,7 +204,7 @@ export function parseLetterboxd(files: LetterboxdFiles): LetterboxdRow[] {
  * you logged it. Calling that "liked" would put words in the user's mouth, so
  * it lands in `meh` — seen, not endorsed — and the review screen says so.
  */
-export function bucketFor(row: LetterboxdRow): WatchedRating {
+export function bucketFor(row: LetterboxdRow): LegacyBucket {
   if (row.list === "watchlist") return "want";
   if (row.rating === null) return "meh";
   return row.rating >= 3.5 ? "liked" : "meh";
@@ -213,7 +214,7 @@ export function bucketFor(row: LetterboxdRow): WatchedRating {
 export function toWatchedInputs(matched: MatchedRow[]): WatchedInput[] {
   return matched.map((m) => ({
     titleImdbId: m.imdbId,
-    rating: bucketFor(m.row),
+    ...fromLegacyBucket(bucketFor(m.row)),
     source: "letterboxd" as const,
     watchedAt: m.row.watchedAt ? `${m.row.watchedAt}T00:00:00.000Z` : null,
   }));

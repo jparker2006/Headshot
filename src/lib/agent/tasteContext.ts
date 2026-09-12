@@ -4,10 +4,11 @@
  * (two reads), explicit-only (nothing inferred), and absent when signed out.
  */
 import type { IndustryGraph } from "@/lib/graph/engine";
-import type { TasteStore, WatchedRow } from "@/lib/taste/types";
+import type { TasteStore } from "@/lib/taste/types";
 import { providerName } from "@/lib/taste/providers";
 import { tasteFacts } from "@/lib/picks/engine";
 import { toEngineRows } from "@/lib/picks/service";
+import { isLiked, isMeh, legacyBucket, type LegacyBucket } from "@/lib/taste/score";
 
 export interface TasteSummary {
   counts: { liked: number; meh: number; want: number; unseen: number };
@@ -18,7 +19,7 @@ export interface TasteSummary {
   avgRuntimeFinished: number | null;
   genresAvoided: string[];
   /** Most recently rated titles, newest first, with the bucket. */
-  recent: { name: string; year: number; rating: WatchedRow["rating"] }[];
+  recent: { name: string; year: number; rating: LegacyBucket }[];
   /** Titles marked "want" (Later), newest first. */
   later: { name: string; year: number }[];
   /** Series the user is in the middle of. */
@@ -36,8 +37,8 @@ export async function tasteSummary(graph: IndustryGraph, store: TasteStore, user
   const byRecent = [...rows].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return {
     counts: {
-      liked: rows.filter((r) => r.rating === "liked").length,
-      meh: rows.filter((r) => r.rating === "meh").length,
+      liked: rows.filter((r) => isLiked(r)).length,
+      meh: rows.filter((r) => isMeh(r)).length,
       want: rows.filter((r) => r.rating === "want").length,
       unseen: rows.filter((r) => r.rating === "unseen").length,
     },
@@ -48,9 +49,9 @@ export async function tasteSummary(graph: IndustryGraph, store: TasteStore, user
     avgRuntimeFinished: facts.avgRuntimeFinished,
     genresAvoided: facts.genresAvoided,
     recent: byRecent
-      .filter((r) => r.rating === "liked" || r.rating === "meh")
+      .filter((r) => r.rating === "rated")
       .slice(0, 20)
-      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId), rating: r.rating })),
+      .map((r) => ({ name: name(r.titleImdbId), year: year(r.titleImdbId), rating: legacyBucket(r) })),
     later: byRecent
       .filter((r) => r.rating === "want")
       .slice(0, 12)

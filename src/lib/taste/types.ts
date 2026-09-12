@@ -8,11 +8,13 @@
  */
 
 /**
- * SPEC v3: four buckets, plus v4's neutral `seen` — watched, no opinion. A
- * Netflix import and a "just seen it" log land there rather than being called
- * liked, which would put words in the user's mouth.
+ * SPEC v5: the *state* of a row. The opinion moved out of the word and into
+ * `score` (1–10), so `rated` covers everything v3/v4 called liked or meh;
+ * `seen` stays the neutral "watched, no opinion" a Netflix import lands in,
+ * `want` is Later and `unseen` is "never seen". Helpers in `./score.ts`
+ * answer the questions the old words used to ("liked" is `score >= 7`).
  */
-export type WatchedRating = "liked" | "meh" | "unseen" | "want" | "seen";
+export type WatchedRating = "rated" | "want" | "seen" | "unseen";
 
 /** Where a row came from. Only explicit signals exist; nothing is inferred. */
 export type WatchedSource = "letterboxd" | "swipe" | "chat" | "log" | "netflix" | "imdb";
@@ -55,6 +57,8 @@ export interface MemoryInput {
 export interface WatchedRow {
   titleImdbId: string;
   rating: WatchedRating;
+  /** 1–10, and non-null exactly when `rating` is `rated`. */
+  score: number | null;
   /** ISO timestamp, or null when the user never told us when. */
   watchedAt: string | null;
   source: WatchedSource;
@@ -70,6 +74,8 @@ export interface WatchedInput {
   titleImdbId: string;
   rating: WatchedRating;
   source: WatchedSource;
+  /** 1–10, required when `rating` is `rated` and rejected otherwise. */
+  score?: number | null;
   watchedAt?: string | null;
   season?: number | null;
   episodesWatched?: number;
@@ -141,7 +147,12 @@ export interface TasteStore {
   getServices(userId: string): Promise<ServicesRow | null>;
   setTaste(userId: string, input: TasteInput): Promise<TasteRow>;
   getTaste(userId: string): Promise<TasteRow | null>;
-  /** Bump series progress on an existing row; a missing row is created as `liked`. */
+  /**
+   * Bump series progress on an existing row. A missing row is created as
+   * `seen` (watched, no opinion): "one more episode of X" says they are
+   * watching it, not what they think of it, and v5 has no bucket left that
+   * could stand in for a score they never gave.
+   */
   setProgress(userId: string, titleImdbId: string, progress: ProgressInput): Promise<void>;
   /** Tonight's stored picks and deck (any JSON the picks service produced), or null before the first run. */
   setTonight(userId: string, data: Record<string, unknown>): Promise<void>;

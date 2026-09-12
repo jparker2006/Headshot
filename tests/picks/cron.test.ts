@@ -28,9 +28,9 @@ describe("nightly cron", () => {
     const graph = await fixtureGraph();
     let clock = new Date("2026-07-01T00:00:00.000Z");
     const store = new MemoryTasteStore({ now: () => clock });
-    await store.upsertWatched("stale", [{ titleImdbId: APOLLO, rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("stale", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
     clock = new Date("2026-09-10T00:00:00.000Z");
-    await store.upsertWatched("jake", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("jake", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     await store.setServices("jake", { providerIds: [15] });
     await store.setServices("empty", { providerIds: [8] }); // services but nothing rated
 

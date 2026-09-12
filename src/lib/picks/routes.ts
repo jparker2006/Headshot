@@ -5,7 +5,7 @@
 import type { LanguageModel } from "ai";
 import type { IndustryGraph } from "@/lib/graph/engine";
 import type { TmdbClient } from "@/lib/tmdb/client";
-import type { TasteStore } from "@/lib/taste/types";
+import type { TasteStore, WatchedInput } from "@/lib/taste/types";
 import type { TitlesStore } from "@/lib/titles";
 import type { Filters } from "./engine";
 import { computeTonight, loadTonight } from "./service";
@@ -15,6 +15,7 @@ import { memoryText } from "@/lib/memory";
 import { tasteMap } from "@/lib/taste/map";
 import { tasteFacts } from "./engine";
 import { toEngineRows } from "./service";
+import { fromLegacyBucket } from "@/lib/taste/score";
 
 export interface TonightRouteDeps {
   userId: (req: Request) => Promise<string | null>;
@@ -50,21 +51,22 @@ function parseFilters(body: Record<string, unknown>): Filters {
 type SwipeRating = "liked" | "meh" | "unseen" | "want";
 
 /** The rows a swipe body actually carries, junk dropped. */
-function parseSwipeRows(rows: unknown[]): { titleImdbId: string; rating: SwipeRating; source: "swipe" }[] {
+function parseSwipeRows(rows: unknown[]): (WatchedInput & { source: "swipe"; bucket: SwipeRating })[] {
   return rows
     .filter((r): r is { imdbId: string; rating: SwipeRating } => {
       const x = r as Record<string, unknown>;
       return typeof x.imdbId === "string" && /^tt\d+$/.test(x.imdbId) && ["liked", "meh", "unseen", "want"].includes(String(x.rating));
     })
-    .map((r) => ({ titleImdbId: r.imdbId, rating: r.rating, source: "swipe" as const }));
+    // The deck still speaks buckets; the store wants a state plus a score.
+    .map((r) => ({ titleImdbId: r.imdbId, ...fromLegacyBucket(r.rating), bucket: r.rating, source: "swipe" as const }));
 }
 
 /** One episode per session, not per card: "swiped: liked X, Y; meh Z". */
-function swipeEpisodeText(graph: IndustryGraph, rows: { titleImdbId: string; rating: SwipeRating }[]): string {
+function swipeEpisodeText(graph: IndustryGraph, rows: { titleImdbId: string; bucket: SwipeRating }[]): string {
   const name = (id: string) => graph.nodeByImdbId(id)?.name ?? id;
   const parts = ([["liked", "liked"], ["meh", "meh"], ["seen", "seen but no opinion"], ["unseen", "never seen"], ["want", "want"]] as const)
     .map(([rating, label]) => {
-      const names = rows.filter((r) => r.rating === rating).map((r) => name(r.titleImdbId));
+      const names = rows.filter((r) => r.bucket === rating).map((r) => name(r.titleImdbId));
       return names.length ? `${label} ${names.join(", ")}` : "";
     })
     .filter(Boolean);
@@ -126,7 +128,7 @@ export function createTonightHandlers(deps: TonightRouteDeps) {
       const watched = await store.listWatched(userId);
       const stored = await store.getTaste(userId);
       const facts = stored?.facts ?? tasteFacts(graph, toEngineRows(watched));
-      return Response.json({ network: tasteMap(graph, watched), facts, rated: watched.filter((w) => w.rating === "liked" || w.rating === "meh").length, later: watched.filter((w) => w.rating === "want").length });
+      return Response.json({ network: tasteMap(graph, watched), facts, rated: watched.filter((w) => w.rating === "rated").length, later: watched.filter((w) => w.rating === "want").length });
     },
 
     /** POST /api/taste/later { imdbId } — "not tonight": the title joins Later (bucket `want`). */

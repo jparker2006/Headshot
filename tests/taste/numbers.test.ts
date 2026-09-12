@@ -10,6 +10,7 @@ const NOW = new Date("2026-09-11T12:00:00.000Z");
 
 function watched(row: Partial<WatchedRow> & { titleImdbId: string; rating: WatchedRow["rating"] }): WatchedRow {
   return {
+    score: row.rating === "rated" ? 8 : null,
     watchedAt: null,
     source: "log",
     season: null,
@@ -34,18 +35,18 @@ function title(row: Partial<TitleRow> & { imdbId: string; name: string; kind: Ti
 }
 
 const ROWS: WatchedRow[] = [
-  watched({ titleImdbId: "tt0000001", rating: "liked", watchedAt: "2026-09-02T20:00:00.000Z" }),
-  watched({ titleImdbId: "tt0000002", rating: "meh", watchedAt: "2026-08-15T20:00:00.000Z", source: "letterboxd" }),
+  watched({ titleImdbId: "tt0000001", rating: "rated", score: 8, watchedAt: "2026-09-02T20:00:00.000Z" }),
+  watched({ titleImdbId: "tt0000002", rating: "rated", score: 5, watchedAt: "2026-08-15T20:00:00.000Z", source: "letterboxd" }),
   // A show with a season pointer and no counter: every episode up to season 2.
   watched({ titleImdbId: "tt0000004", rating: "seen", watchedAt: "2026-09-05T20:00:00.000Z", season: 2, source: "netflix" }),
   // A show with both: the counter wins over the pointer.
-  watched({ titleImdbId: "tt0000009", rating: "liked", watchedAt: "2026-09-06T20:00:00.000Z", season: 1, episodesWatched: 5 }),
+  watched({ titleImdbId: "tt0000009", rating: "rated", score: 8, watchedAt: "2026-09-06T20:00:00.000Z", season: 1, episodesWatched: 5 }),
   // Want is a plan, not a watch.
   watched({ titleImdbId: "tt0000006", rating: "want" }),
   // Watched, but the user never said when.
   watched({ titleImdbId: "tt0000011", rating: "seen" }),
   // Older than the window, and a title the industry graph does not carry.
-  watched({ titleImdbId: "tt0000005", rating: "liked", watchedAt: "2020-01-01T20:00:00.000Z" }),
+  watched({ titleImdbId: "tt0000005", rating: "rated", score: 8, watchedAt: "2020-01-01T20:00:00.000Z" }),
   // The swipe's removal verb: invisible to Numbers.
   watched({ titleImdbId: "tt0000007", rating: "unseen" }),
 ];
@@ -108,7 +109,7 @@ describe("computeNumbers: totals", () => {
 
   it("never guesses an hour it does not have", () => {
     const noRuntime = computeNumbers({
-      watched: [watched({ titleImdbId: "tt0000001", rating: "liked", watchedAt: "2026-09-02T20:00:00.000Z" })],
+      watched: [watched({ titleImdbId: "tt0000001", rating: "rated", score: 8, watchedAt: "2026-09-02T20:00:00.000Z" })],
       titles: new Map([["tt0000001", title({ imdbId: "tt0000001", name: "Apollo 13", kind: "movie" })]]),
       graph,
       now: NOW,

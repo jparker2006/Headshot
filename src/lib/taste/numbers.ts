@@ -13,7 +13,8 @@
  */
 import type { CastEntry, NodeInfo } from "@/lib/graph/engine";
 import type { TitleRow, TitleSeason } from "@/lib/titles";
-import type { WatchedRating, WatchedRow, WatchedSource } from "./types";
+import type { WatchedRow, WatchedSource } from "./types";
+import { isLiked, isMeh, isWatched, legacyBucket, type LegacyBucket } from "./score";
 
 /** The slice of the industry graph Numbers needs, so tests can pass a stub. */
 export interface NumbersGraph {
@@ -71,7 +72,7 @@ export interface NumbersLogRow {
   name: string;
   year: number | null;
   kind: "movie" | "series";
-  rating: WatchedRating;
+  rating: LegacyBucket;
   watchedAt: string | null;
   source: WatchedSource;
   season: number | null;
@@ -107,9 +108,6 @@ export interface ComputeNumbersInput {
 /** How many months the chart shows, including the current one. */
 export const MONTHS_WINDOW = 24;
 const TOP_PEOPLE = 12;
-
-/** The buckets that mean "I watched this". `want` is a plan; `unseen` is a no. */
-const WATCHED_RATINGS = new Set<WatchedRating>(["liked", "meh", "seen"]);
 
 /** TMDB's `known_for_department` in the three shapes Numbers cares about. */
 export function roleFromDepartment(department: string | null | undefined): PersonRole | null {
@@ -211,8 +209,8 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
     totals.titles++;
     if (kind === "series") totals.shows++;
     else totals.films++;
-    if (row.rating === "liked") totals.liked++;
-    else if (row.rating === "meh") totals.meh++;
+    if (isLiked(row)) totals.liked++;
+    else if (isMeh(row)) totals.meh++;
     else if (row.rating === "seen") totals.seen++;
     else if (row.rating === "want") totals.want++;
 
@@ -221,7 +219,7 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
       name: title?.name ?? node?.name ?? row.titleImdbId,
       year,
       kind,
-      rating: row.rating,
+      rating: legacyBucket(row),
       watchedAt: row.watchedAt,
       source: row.source,
       season: row.season,
@@ -230,7 +228,8 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
       posterPath: title?.posterPath ?? null,
     });
 
-    if (!WATCHED_RATINGS.has(row.rating)) continue;
+    // `want` is a plan and `unseen` is a no: neither is watching.
+    if (!isWatched(row)) continue;
 
     const minutes = minutesOf(row, title, kind);
     totalMinutes += minutes;
@@ -259,8 +258,8 @@ export function computeNumbers(input: ComputeNumbersInput): NumbersData {
 
     for (const genre of genresOf(title, node)) {
       const g = genres.get(genre) ?? { genre, liked: 0, meh: 0, seen: 0 };
-      if (row.rating === "liked") g.liked++;
-      else if (row.rating === "meh") g.meh++;
+      if (isLiked(row)) g.liked++;
+      else if (isMeh(row)) g.meh++;
       else g.seen++;
       genres.set(genre, g);
     }

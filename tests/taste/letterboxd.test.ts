@@ -120,12 +120,12 @@ describe("matchToGraph", () => {
     const { matched } = matchToGraph(graph, parseLetterboxd(files()));
     const rows = new Map(toWatchedInputs(matched).map((r) => [r.titleImdbId, r]));
 
-    expect(rows.get("tt0000001")).toMatchObject({ rating: "liked", source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
-    expect(rows.get("tt0000002")?.rating).toBe("meh");
-    expect(rows.get("tt0000009")?.rating).toBe("liked");
-    expect(rows.get("tt0000006")?.rating).toBe("liked");
-    expect(rows.get("tt0000003")?.rating).toBe("meh");
-    expect(rows.get("tt0000004")).toMatchObject({ rating: "meh", watchedAt: "2024-06-20T00:00:00.000Z" });
+    expect(rows.get("tt0000001")).toMatchObject({ rating: "rated", score: 8, source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
+    expect(rows.get("tt0000002")?.score).toBe(5);
+    expect(rows.get("tt0000009")?.score).toBe(8);
+    expect(rows.get("tt0000006")?.score).toBe(8);
+    expect(rows.get("tt0000003")?.score).toBe(5);
+    expect(rows.get("tt0000004")).toMatchObject({ rating: "rated", score: 5, watchedAt: "2024-06-20T00:00:00.000Z" });
     expect(rows.get("tt0000011")).toMatchObject({ rating: "want", watchedAt: null });
   });
 });
@@ -151,7 +151,7 @@ describe("re-upload", () => {
     const store = new MemoryTasteStore();
     const { matched } = matchToGraph(graph, parseLetterboxd(files()));
 
-    await store.upsertWatched("u1", [{ titleImdbId: "tt0000005", rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: "tt0000005", rating: "rated", score: 8, source: "swipe" }]);
     await store.replaceImport("u1", "letterboxd", toWatchedInputs(matched));
     expect(await store.listWatched("u1")).toHaveLength(8);
 

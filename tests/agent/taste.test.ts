@@ -16,9 +16,9 @@ describe("taste in the chat", () => {
     expect(await tasteSummary(graph, store, "u1")).toBeNull();
     await store.setServices("u1", { providerIds: [8, 15] });
     await store.upsertWatched("u1", [
-      { titleImdbId: APOLLO, rating: "liked", source: "letterboxd" },
-      { titleImdbId: GUMP, rating: "liked", source: "swipe" },
-      { titleImdbId: GOOD_SERIES, rating: "liked", source: "chat", season: 2, episodesWatched: 3 },
+      { titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" },
+      { titleImdbId: GUMP, rating: "rated", score: 8, source: "swipe" },
+      { titleImdbId: GOOD_SERIES, rating: "rated", score: 8, source: "chat", season: 2, episodesWatched: 3 },
       { titleImdbId: "tt0000006", rating: "want", source: "swipe" },
     ]);
     const t = (await tasteSummary(graph, store, "u1"))!;
@@ -36,14 +36,14 @@ describe("taste in the chat", () => {
   it("the model sees the block when signed in, and rate writes a chat-sourced row", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
     const model = scriptedModel([{ tool: "rate", input: { imdbId: GUMP, rating: "liked" } }, { text: "noted, **Forrest Gump** in the liked pile." }]);
     const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("i loved forrest gump")], followups: false, userId: "u1", taste: store }));
     const system = String(model.doStreamCalls[0].prompt.find((m) => m.role === "system")?.content);
     expect(system).toContain("This user is signed in");
     expect(system).toContain("Apollo 13");
     expect(ofType(chunks, "tool-output-available")[0].output).toMatchObject({ ok: true, rating: "liked" });
-    expect((await store.listWatched("u1")).find((r) => r.titleImdbId === GUMP)).toMatchObject({ rating: "liked", source: "chat" });
+    expect((await store.listWatched("u1")).find((r) => r.titleImdbId === GUMP)).toMatchObject({ rating: "rated", score: 8, source: "chat" });
   });
 
   it("signed out: no taste block and no taste tools", async () => {
@@ -60,7 +60,7 @@ describe("taste in the chat", () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
     await store.setServices("u1", { providerIds: [15] });
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
     const model = scriptedModel([{ tool: "tonight_picks", input: {} }, { text: "ok" }]);
     const chunks = await collect(runAgent({ model, graph, brain: new MemoryBrain(), tmdb: null, messages: [userMessage("what should i watch")], followups: false, userId: "u1", taste: store }));
     const out = ofType(chunks, "tool-output-available")[0].output as { picks: { title: string; reason: string }[] };

@@ -145,7 +145,7 @@ describe("re-upload", () => {
     const store = new MemoryTasteStore();
     const { matched } = matchNetflix(graph, parseNetflix(CSV));
 
-    await store.upsertWatched("u1", [{ titleImdbId: "tt0000004", rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: "tt0000004", rating: "rated", score: 8, source: "letterboxd" }]);
     await store.replaceImport("u1", "netflix", toNetflixInputs(matched));
     expect(await store.listWatched("u1")).toHaveLength(7);
 

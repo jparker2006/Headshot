@@ -10,6 +10,7 @@ import { describe } from "../context";
 import { loadTonight } from "@/lib/picks/service";
 import { tasteSummary } from "../tasteContext";
 import { memoryText } from "@/lib/memory";
+import { fromLegacyBucket, legacyBucket } from "@/lib/taste/score";
 
 const imdbTitle = z.string().regex(/^tt\d+$/, "an IMDb title id like tt0113277");
 
@@ -47,7 +48,7 @@ export function tasteTools(ctx: AgentContext): ToolSet {
       execute: async ({ imdbId }) => {
         const row = (await store.listWatched(userId)).find((r) => r.titleImdbId === imdbId);
         const node = ctx.graph.nodeByImdbId(imdbId);
-        return row ? { title: node ? describe(node) : imdbId, rating: row.rating, season: row.season, episodesWatched: row.episodesWatched, source: row.source } : { title: node ? describe(node) : imdbId, rating: null };
+        return row ? { title: node ? describe(node) : imdbId, rating: legacyBucket(row), score: row.score, season: row.season, episodesWatched: row.episodesWatched, source: row.source } : { title: node ? describe(node) : imdbId, rating: null };
       },
     }),
 
@@ -57,7 +58,8 @@ export function tasteTools(ctx: AgentContext): ToolSet {
       execute: async ({ imdbId, rating }) => {
         const node = ctx.graph.nodeByImdbId(imdbId);
         if (!node || node.kind !== "title") return { error: "unknown_title" };
-        await store.upsertWatched(userId, [{ titleImdbId: imdbId, rating, source: "chat" }]);
+        // The tool still offers the old four words; the store wants a score.
+        await store.upsertWatched(userId, [{ titleImdbId: imdbId, ...fromLegacyBucket(rating), source: "chat" }]);
         // Every write is evidence: the memory rewrite reads episodes, not rows.
         await store.addEpisodes(userId, [
           { kind: "chat", titleImdbId: imdbId, text: `${VERB[rating]} ${node.name}${node.year ? ` (${node.year})` : ""}` },

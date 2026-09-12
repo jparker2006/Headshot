@@ -144,14 +144,16 @@ export const pageRevisionsRelations = relations(pageRevisions, ({ one }) => ({
 // holding only what the user told us explicitly. Deleting an account deletes
 // all three rows sets (`TasteStore.deleteUser`). Nothing else is kept.
 
-/** Four buckets, per SPEC v3: Letterboxd stars and swipes both land here. */
+/** The log (SPEC v5): a state plus a 1–10 score. Imports, swipes and chat all land here. */
 export const watched = pgTable(
   "watched",
   {
     userId: text("user_id").notNull(),
     titleImdbId: text("title_imdb_id").notNull(),
-    /** liked | meh | unseen | want | seen (v4: watched, no opinion) */
-    rating: text("rating").$type<"liked" | "meh" | "unseen" | "want" | "seen">().notNull(),
+    /** v5 state: rated | want | seen | unseen. The opinion lives in `score`. */
+    rating: text("rating").$type<"rated" | "want" | "seen" | "unseen">().notNull(),
+    /** 1–10, non-null exactly when `rating` is `rated` (SPEC v5, migration 0005). */
+    score: integer("score"),
     watchedAt: timestamp("watched_at", { withTimezone: true, mode: "date" }),
     /** letterboxd | swipe | chat | log | netflix | imdb */
     source: text("source").$type<"letterboxd" | "swipe" | "chat" | "log" | "netflix" | "imdb">().notNull(),

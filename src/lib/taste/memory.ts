@@ -14,6 +14,7 @@ import {
   type WatchedInput,
   type WatchedRow,
 } from "./types";
+import { validateScore } from "./score";
 
 /**
  * The taste store in process memory. Used by keyless dev, by the route seam
@@ -52,6 +53,7 @@ export class MemoryTasteStore implements TasteStore {
       target.set(row.titleImdbId, {
         titleImdbId: row.titleImdbId,
         rating: row.rating,
+        score: validateScore(row),
         watchedAt: row.watchedAt ?? null,
         source: row.source,
         season: row.season ?? null,
@@ -156,9 +158,12 @@ export class MemoryTasteStore implements TasteStore {
     const prev = target.get(titleImdbId);
     target.set(titleImdbId, {
       titleImdbId,
-      // "One more episode of X" is an explicit positive tap, so a series the
-      // store has not seen before starts as liked rather than as a guess.
-      rating: prev?.rating ?? "liked",
+      // "One more episode of X" says they are watching it, not what they think
+      // of it, so a series the store has not seen before starts as `seen`
+      // (watched, no opinion). Inventing a score would put a number in their
+      // mouth, and v5 has no bucket left that could stand in for one.
+      rating: prev?.rating ?? "seen",
+      score: prev?.score ?? null,
       watchedAt: prev?.watchedAt ?? null,
       source: prev?.source ?? "chat",
       season: progress.season ?? prev?.season ?? null,

@@ -53,8 +53,8 @@ describe("tonight routes", () => {
   it("computes three picks with reasons for a fixture user, stores them, and replays the stored result", async () => {
     await store.setServices("user-1", { providerIds: [HULU] });
     await store.upsertWatched("user-1", [
-      { titleImdbId: APOLLO, rating: "liked", source: "letterboxd" },
-      { titleImdbId: GOOD_SERIES, rating: "liked", source: "chat", season: 2, episodesWatched: 3 },
+      { titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" },
+      { titleImdbId: GOOD_SERIES, rating: "rated", score: 8, source: "chat", season: 2, episodesWatched: 3 },
     ]);
     const res = await handlers.get(get());
     expect(res.status).toBe(200);
@@ -75,7 +75,7 @@ describe("tonight routes", () => {
   });
 
   it("later adds the title to Later and a refresh reflects the count and filters", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     expect((await handlers.later(post("/api/taste/later", { imdbId: GUMP }))).status).toBe(200);
     expect((await store.listWatched("user-1")).find((r) => r.titleImdbId === GUMP)).toMatchObject({ rating: "want", source: "swipe" });
     expect((await handlers.later(post("/api/taste/later", { imdbId: "nm0000001" }))).status).toBe(400);
@@ -88,7 +88,7 @@ describe("tonight routes", () => {
   });
 
   it("the deck skips titles already rated, reports its mode and honours ?size=", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" }]);
     const res = await handlers.deck(get("/api/taste/deck"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { cards: { imdbId: string; name: string; year: number; kind: string }[]; mode: string };
@@ -106,9 +106,9 @@ describe("tonight routes", () => {
   it("swipe stores committed rows with last action wins, ignoring junk", async () => {
     const res = await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "liked" }, { imdbId: "bad", rating: "liked" }, { imdbId: GUMP, rating: "nope" }] }));
     expect(await res.json()).toEqual({ ok: true, saved: 1 });
-    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "liked", source: "swipe" });
+    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "rated", score: 8, source: "swipe" });
     await handlers.swipe(post("/api/taste/swipe", { rows: [{ imdbId: APOLLO, rating: "meh" }] }));
-    expect((await store.listWatched("user-1"))[0].rating).toBe("meh");
+    expect((await store.listWatched("user-1"))[0].score).toBe(5);
     // The drawer's swipe keeps scheduling the rewrite in the background; it never awaits one.
     expect(rewrites.scheduled).toEqual(["user-1", "user-1"]);
     expect(rewrites.awaited).toEqual([]);
@@ -127,9 +127,9 @@ describe("tonight routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { before: string; after: string; diff: { added: string[]; removed: string[] }; rewritten: boolean };
 
-    expect((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r.rating, r.source])).toEqual([
-      [APOLLO, "liked", "swipe"],
-      [GUMP, "meh", "swipe"],
+    expect((await store.listWatched("user-1")).map((r) => [r.titleImdbId, r.score, r.source])).toEqual([
+      [APOLLO, 8, "swipe"],
+      [GUMP, 5, "swipe"],
     ]);
     const episodes = await store.listEpisodes("user-1");
     expect(episodes).toHaveLength(1);
@@ -169,7 +169,7 @@ describe("tonight routes", () => {
     };
     expect(skipped).toEqual({ before: "You like astronauts.", after: "You like astronauts.", diff: { added: [], removed: [] }, rewritten: false });
     // The rows still landed; only the prose is missing.
-    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "liked" });
+    expect((await store.listWatched("user-1"))[0]).toMatchObject({ titleImdbId: APOLLO, rating: "rated", score: 8 });
 
     rewriteResult = () => {
       throw new Error("openrouter down");

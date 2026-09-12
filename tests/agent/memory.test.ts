@@ -28,7 +28,7 @@ describe("memory rewrite", () => {
   it("writes the model's markdown and keeps the pinned block verbatim", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     await store.setMemory("u1", { markdown: "old notes", pinned: "i will never watch a musical.\n- **Heat** is the best film ever made." });
     await store.addEpisodes("u1", [{ kind: "log", titleImdbId: APOLLO, text: "liked Apollo 13 (1995)" }]);
 
@@ -51,7 +51,7 @@ describe("memory rewrite", () => {
   it("caps the body at 40 lines before the pinned block", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     await store.setMemory("u1", { pinned: "pinned line" });
     await store.addEpisodes("u1", [{ kind: "log", text: "liked Apollo 13" }]);
     const long = Array.from({ length: 80 }, (_, i) => `- line ${i + 1}`).join("\n");
@@ -70,7 +70,7 @@ describe("memory rewrite", () => {
     let tick = Date.parse("2026-09-11T20:00:00.000Z");
     const clock = () => new Date((tick += 1000));
     const store = new MemoryTasteStore({ now: clock });
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     await store.addEpisodes("u1", [{ kind: "log", text: "liked Apollo 13" }]);
     await store.setMemory("u1", { markdown: "notes" });
     const model = textModel("new notes");
@@ -91,7 +91,7 @@ describe("memory rewrite", () => {
   it("never throws when the model fails", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     const model = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("boom"); } });
     await expect(rewriteMemory({ store, graph, model }, "u1")).resolves.toBeNull();
   });
@@ -164,7 +164,7 @@ describe("memory in the chat", () => {
   it("carries the memory under its heading and runs recall newest-first", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     await store.setMemory("u1", { markdown: "## What you love\n- space procedurals", pinned: "no musicals, ever" });
     await store.addEpisodes("u1", [
       { kind: "log", titleImdbId: APOLLO, text: "liked Apollo 13 (1995)", at: "2026-01-01T00:00:00.000Z" },
@@ -198,7 +198,7 @@ describe("memory in the chat", () => {
   it("after the turn: the message becomes episodes and the memory is rewritten", async () => {
     const graph = await fixtureGraph();
     const store = new MemoryTasteStore();
-    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "liked", source: "log" }]);
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
     const model = scriptedModel([{ text: "nice." }]);
     // The background half runs on the side model: extraction first, then the rewrite.
     let call = 0;

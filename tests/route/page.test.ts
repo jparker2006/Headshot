@@ -23,12 +23,12 @@ beforeEach(async () => {
 
 describe("tasteForPage", () => {
   it("is null for a signed-out reader", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     expect(await tasteForPage({ graph, store, userId: null, node: { imdbId: GUMP, kind: "title" } })).toBeNull();
   });
 
   it("explains a title through the people you already liked, and rings them", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } });
     expect(taste).not.toBeNull();
     expect(taste!.reason?.text).toContain("Tom Hanks");
@@ -40,7 +40,7 @@ describe("tasteForPage", () => {
   });
 
   it("never lets a title you already liked explain itself", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: APOLLO, kind: "title" } });
     expect(taste!.rating).toBe("liked");
     expect(taste!.reason?.text ?? "").not.toContain("Apollo 13");
@@ -48,14 +48,14 @@ describe("tasteForPage", () => {
   });
 
   it("has no reason when nothing on the title touches your taste", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: "tt0000005", rating: "liked", source: "swipe" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: "tt0000005", rating: "rated", score: 8, source: "swipe" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } });
     expect(taste!.reason).toBeNull();
     expect(taste!.likedPeople).toEqual([]);
   });
 
   it("explains a person through their titles you liked", async () => {
-    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "liked", source: "letterboxd" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" }]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: HANKS, kind: "person" } });
     expect(taste!.reason?.text).toBe("you liked Apollo 13");
     expect(taste!.reason?.viaImdbIds).toEqual([APOLLO]);
@@ -64,8 +64,8 @@ describe("tasteForPage", () => {
 
   it("counts a person's liked titles when there is more than one", async () => {
     await store.upsertWatched("user-1", [
-      { titleImdbId: APOLLO, rating: "liked", source: "letterboxd" },
-      { titleImdbId: GUMP, rating: "liked", source: "letterboxd" },
+      { titleImdbId: APOLLO, rating: "rated", score: 8, source: "letterboxd" },
+      { titleImdbId: GUMP, rating: "rated", score: 8, source: "letterboxd" },
     ]);
     const taste = await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: HANKS, kind: "person" } });
     // Forrest Gump first: more votes.
@@ -76,7 +76,7 @@ describe("tasteForPage", () => {
   it("round-trips the user's bucket for the title", async () => {
     await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "want", source: "swipe" }]);
     expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } }))!.rating).toBe("want");
-    await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "meh", source: "swipe" }]);
+    await store.upsertWatched("user-1", [{ titleImdbId: GUMP, rating: "rated", score: 5, source: "swipe" }]);
     expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: GUMP, kind: "title" } }))!.rating).toBe("meh");
     expect((await tasteForPage({ graph, store, userId: "user-1", node: { imdbId: APOLLO, kind: "title" } }))!.rating).toBeNull();
   });

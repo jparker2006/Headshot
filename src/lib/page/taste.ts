@@ -13,7 +13,8 @@
 import type { IndustryGraph, NodeInfo } from "@/lib/graph/engine";
 import { graphReason, sharedPeople } from "@/lib/picks/engine";
 import { normalizeProviderIds, providerName } from "@/lib/taste/providers";
-import type { TasteStore, WatchedRating } from "@/lib/taste/types";
+import type { TasteStore } from "@/lib/taste/types";
+import { isLiked, legacyBucket, type LegacyBucket } from "@/lib/taste/score";
 
 export interface PageReason {
   /** One line, plain text. The client bolds the names it can link. */
@@ -32,7 +33,7 @@ export interface PageTaste {
    */
   likedPeople: string[];
   /** The user's bucket for this title, when they have one. */
-  rating: WatchedRating | null;
+  rating: LegacyBucket | null;
   /** Names of the streaming services this is on that the user actually pays for. */
   onYourServices: string[];
 }
@@ -97,12 +98,13 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
   if (!userId) return null;
 
   const [watched, services] = await Promise.all([store.listWatched(userId), store.getServices(userId)]);
-  const rating = watched.find((w) => w.titleImdbId === node.imdbId)?.rating ?? null;
+  const found = watched.find((w) => w.titleImdbId === node.imdbId);
+  const rating = found ? legacyBucket(found) : null;
 
   // The pick engine's liked set: what you finished and loved, plus what you saved for later.
   const likedIds = new Set(
     watched
-      .filter((w) => w.rating === "liked" || w.rating === "want")
+      .filter((w) => isLiked(w) || w.rating === "want")
       .map((w) => graph.idOf(w.titleImdbId))
       .filter((id): id is number => id !== undefined),
   );
@@ -124,7 +126,7 @@ export async function tasteForPage(input: PageTasteInput): Promise<PageTaste | n
     // Their titles the user actually liked (not merely saved), most famous first.
     const likedOnly = new Set(
       watched
-        .filter((w) => w.rating === "liked")
+        .filter((w) => isLiked(w))
         .map((w) => graph.idOf(w.titleImdbId))
         .filter((x): x is number => x !== undefined),
     );

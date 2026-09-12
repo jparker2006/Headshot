@@ -59,39 +59,39 @@ function describeStore(name: string, factory: StoreFactory) {
     it("upsertWatched inserts, updates in place, and keeps users apart", async () => {
       const store = await factory();
       await store.upsertWatched("u1", [
-        { titleImdbId: "tt2", rating: "liked", source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" },
+        { titleImdbId: "tt2", rating: "rated", score: 8, source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" },
         { titleImdbId: "tt1", rating: "want", source: "swipe" },
       ]);
-      await store.upsertWatched("u2", [{ titleImdbId: "tt1", rating: "meh", source: "chat" }]);
-      await store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);
+      await store.upsertWatched("u2", [{ titleImdbId: "tt1", rating: "rated", score: 5, source: "chat" }]);
+      await store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" }]);
 
       const rows = await store.listWatched("u1");
       // Ordered by title id so the list is stable between reads.
       expect(rows.map((r) => r.titleImdbId)).toEqual(["tt1", "tt2"]);
-      expect(rows[0]).toMatchObject({ rating: "liked", source: "swipe", watchedAt: null, season: null, episodesWatched: 0 });
-      expect(rows[1]).toMatchObject({ rating: "liked", source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
+      expect(rows[0]).toMatchObject({ rating: "rated", score: 8, source: "swipe", watchedAt: null, season: null, episodesWatched: 0 });
+      expect(rows[1]).toMatchObject({ rating: "rated", score: 8, source: "letterboxd", watchedAt: "2024-01-05T00:00:00.000Z" });
       expect(rows.every((r) => typeof r.updatedAt === "string")).toBe(true);
 
-      expect(await store.listWatched("u2")).toMatchObject([{ titleImdbId: "tt1", rating: "meh", source: "chat" }]);
+      expect(await store.listWatched("u2")).toMatchObject([{ titleImdbId: "tt1", rating: "rated", score: 5, source: "chat" }]);
       expect(await store.listWatched("nobody")).toEqual([]);
     });
 
     it("the last row wins when one call mentions a title twice", async () => {
       const store = await factory();
       await store.upsertWatched("u1", [
-        { titleImdbId: "tt1", rating: "meh", source: "swipe" },
-        { titleImdbId: "tt1", rating: "liked", source: "swipe" },
+        { titleImdbId: "tt1", rating: "rated", score: 5, source: "swipe" },
+        { titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" },
       ]);
-      expect(await store.listWatched("u1")).toMatchObject([{ titleImdbId: "tt1", rating: "liked" }]);
+      expect(await store.listWatched("u1")).toMatchObject([{ titleImdbId: "tt1", rating: "rated", score: 8 }]);
     });
 
     it("deleteWatched removes one row for one user", async () => {
       const store = await factory();
       await store.upsertWatched("u1", [
-        { titleImdbId: "tt1", rating: "liked", source: "swipe" },
-        { titleImdbId: "tt2", rating: "meh", source: "swipe" },
+        { titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" },
+        { titleImdbId: "tt2", rating: "rated", score: 5, source: "swipe" },
       ]);
-      await store.upsertWatched("u2", [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);
+      await store.upsertWatched("u2", [{ titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" }]);
       await store.deleteWatched("u1", "tt1");
 
       expect((await store.listWatched("u1")).map((r) => r.titleImdbId)).toEqual(["tt2"]);
@@ -101,28 +101,28 @@ function describeStore(name: string, factory: StoreFactory) {
     it("replaceImport drops only the previous rows of that source", async () => {
       const store = await factory();
       await store.upsertWatched("u1", [
-        { titleImdbId: "tt-swipe", rating: "liked", source: "swipe" },
+        { titleImdbId: "tt-swipe", rating: "rated", score: 8, source: "swipe" },
         { titleImdbId: "tt-chat", rating: "want", source: "chat" },
       ]);
       await store.replaceImport("u1", "letterboxd", [
-        { titleImdbId: "tt-a", rating: "liked", source: "letterboxd" },
-        { titleImdbId: "tt-b", rating: "meh", source: "letterboxd" },
+        { titleImdbId: "tt-a", rating: "rated", score: 8, source: "letterboxd" },
+        { titleImdbId: "tt-b", rating: "rated", score: 5, source: "letterboxd" },
       ]);
-      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "meh", source: "letterboxd" }]);
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "rated", score: 5, source: "letterboxd" }]);
 
       const rows = await store.listWatched("u1");
       expect(rows.map((r) => r.titleImdbId)).toEqual(["tt-a", "tt-chat", "tt-swipe"]);
-      expect(rows.find((r) => r.titleImdbId === "tt-a")).toMatchObject({ rating: "meh", source: "letterboxd" });
+      expect(rows.find((r) => r.titleImdbId === "tt-a")).toMatchObject({ rating: "rated", score: 5, source: "letterboxd" });
     });
 
     it("one import source never disturbs another", async () => {
       const store = await factory();
-      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-lb", rating: "liked", source: "letterboxd" }]);
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-lb", rating: "rated", score: 8, source: "letterboxd" }]);
       await store.replaceImport("u1", "netflix", [
         { titleImdbId: "tt-nf1", rating: "seen", source: "netflix" },
         { titleImdbId: "tt-nf2", rating: "seen", source: "netflix" },
       ]);
-      await store.replaceImport("u1", "imdb", [{ titleImdbId: "tt-imdb", rating: "meh", source: "imdb" }]);
+      await store.replaceImport("u1", "imdb", [{ titleImdbId: "tt-imdb", rating: "rated", score: 5, source: "imdb" }]);
 
       // A Netflix re-upload replaces only the Netflix rows.
       await store.replaceImport("u1", "netflix", [{ titleImdbId: "tt-nf2", rating: "seen", source: "netflix" }]);
@@ -133,7 +133,7 @@ function describeStore(name: string, factory: StoreFactory) {
 
     it("replaceImport stamps the source even when the caller forgot", async () => {
       const store = await factory();
-      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "liked", source: "swipe" }]);
+      await store.replaceImport("u1", "letterboxd", [{ titleImdbId: "tt-a", rating: "rated", score: 8, source: "swipe" }]);
       expect(await store.listWatched("u1")).toMatchObject([{ source: "letterboxd" }]);
     });
 
@@ -209,11 +209,12 @@ function describeStore(name: string, factory: StoreFactory) {
       ]);
     });
 
-    it("setProgress creates a series row and then bumps only what it is given", async () => {
+    it("setProgress creates a series row as `seen` and then bumps only what it is given", async () => {
       const store = await factory();
       await store.setProgress("u1", "tt-series", { season: 2, episodesWatched: 3 });
+      // "One more episode of X" is not a score: the new row is watched, no opinion.
       expect(await store.listWatched("u1")).toMatchObject([
-        { titleImdbId: "tt-series", rating: "liked", source: "chat", season: 2, episodesWatched: 3 },
+        { titleImdbId: "tt-series", rating: "seen", score: null, source: "chat", season: 2, episodesWatched: 3 },
       ]);
 
       await store.setProgress("u1", "tt-series", { episodesWatched: 4 });
@@ -223,20 +224,20 @@ function describeStore(name: string, factory: StoreFactory) {
       expect(await store.listWatched("u1")).toMatchObject([{ season: 3, episodesWatched: 4 }]);
     });
 
-    it("setProgress keeps an existing row's rating and source", async () => {
+    it("setProgress keeps an existing row's score and source", async () => {
       const store = await factory();
-      await store.upsertWatched("u1", [{ titleImdbId: "tt-series", rating: "meh", source: "letterboxd" }]);
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-series", rating: "rated", score: 5, source: "letterboxd" }]);
       await store.setProgress("u1", "tt-series", { episodesWatched: 2 });
       expect(await store.listWatched("u1")).toMatchObject([
-        { rating: "meh", source: "letterboxd", episodesWatched: 2 },
+        { rating: "rated", score: 5, source: "letterboxd", episodesWatched: 2 },
       ]);
     });
 
     it("a rating that says nothing about episodes does not erase the counter", async () => {
       const store = await factory();
       await store.setProgress("u1", "tt-series", { episodesWatched: 6 });
-      await store.upsertWatched("u1", [{ titleImdbId: "tt-series", rating: "liked", source: "swipe" }]);
-      expect(await store.listWatched("u1")).toMatchObject([{ rating: "liked", episodesWatched: 6 }]);
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-series", rating: "rated", score: 8, source: "swipe" }]);
+      expect(await store.listWatched("u1")).toMatchObject([{ rating: "rated", score: 8, episodesWatched: 6 }]);
     });
 
     it("services round-trip, default to US, and replace on write", async () => {
@@ -271,7 +272,7 @@ function describeStore(name: string, factory: StoreFactory) {
     it("deleteUser empties every per-user table for that user only", async () => {
       const store = await factory();
       for (const u of ["u1", "u2"]) {
-        await store.upsertWatched(u, [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);
+        await store.upsertWatched(u, [{ titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" }]);
         await store.setServices(u, { providerIds: [8] });
         await store.setTaste(u, { vector: vec(1), facts: FACTS });
         await store.setMemory(u, { markdown: "- something", pinned: "- pinned" });
@@ -309,17 +310,49 @@ function describeStore(name: string, factory: StoreFactory) {
     it("activeUsers lists users with recent watched or services activity", async () => {
       let clock = new Date("2026-09-01T00:00:00.000Z");
       const store = await factory({ now: () => clock });
-      await store.upsertWatched("old", [{ titleImdbId: "tt0000001", rating: "liked", source: "swipe" }]);
+      await store.upsertWatched("old", [{ titleImdbId: "tt0000001", rating: "rated", score: 8, source: "swipe" }]);
       clock = new Date("2026-09-10T00:00:00.000Z");
       await store.setServices("fresh-services", { providerIds: [8] });
-      await store.upsertWatched("fresh-watched", [{ titleImdbId: "tt0000002", rating: "meh", source: "chat" }]);
+      await store.upsertWatched("fresh-watched", [{ titleImdbId: "tt0000002", rating: "rated", score: 5, source: "chat" }]);
       expect(await store.activeUsers(new Date("2026-09-05T00:00:00.000Z"))).toEqual(["fresh-services", "fresh-watched"]);
       expect(await store.activeUsers(new Date("2026-08-01T00:00:00.000Z"))).toEqual(["fresh-services", "fresh-watched", "old"]);
     });
 
+    it("a score round-trips, and a re-rate replaces it", async () => {
+      const store = await factory();
+      await store.upsertWatched("u1", [
+        { titleImdbId: "tt-10", rating: "rated", score: 10, source: "log" },
+        { titleImdbId: "tt-1", rating: "rated", score: 1, source: "log" },
+      ]);
+      expect(await store.listWatched("u1")).toMatchObject([
+        { titleImdbId: "tt-1", score: 1 },
+        { titleImdbId: "tt-10", score: 10 },
+      ]);
+
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-10", rating: "rated", score: 6, source: "log" }]);
+      expect((await store.listWatched("u1")).find((r) => r.titleImdbId === "tt-10")).toMatchObject({ rating: "rated", score: 6 });
+
+      // A state with no opinion carries no score, and dropping the score is
+      // how "actually I have not rated it" is written.
+      await store.upsertWatched("u1", [{ titleImdbId: "tt-10", rating: "want", source: "log" }]);
+      expect((await store.listWatched("u1")).find((r) => r.titleImdbId === "tt-10")).toMatchObject({ rating: "want", score: null });
+    });
+
+    it("upsertWatched rejects a score that does not match the state", async () => {
+      const store = await factory();
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: null, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 0, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 11, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 7.5, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "want", score: 8, source: "log" }])).rejects.toThrow(/score/);
+      await expect(store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "seen", score: 3, source: "log" }])).rejects.toThrow(/score/);
+      expect(await store.listWatched("u1")).toEqual([]);
+    });
+
     it("the injected clock stamps updatedAt", async () => {
       const store = await factory({ now: () => new Date("2026-09-11T10:00:00.000Z") });
-      await store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "liked", source: "swipe" }]);
+      await store.upsertWatched("u1", [{ titleImdbId: "tt1", rating: "rated", score: 8, source: "swipe" }]);
       const services = await store.setServices("u1", { providerIds: [8] });
       const taste = await store.setTaste("u1", { vector: null, facts: EMPTY_TASTE_FACTS });
 

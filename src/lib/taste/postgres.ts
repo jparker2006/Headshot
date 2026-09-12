@@ -17,6 +17,7 @@ import {
   type WatchedInput,
   type WatchedRow,
 } from "./types";
+import { validateScore } from "./score";
 
 type WatchedDbRow = typeof watched.$inferSelect;
 
@@ -32,6 +33,7 @@ function toWatchedRow(row: WatchedDbRow): WatchedRow {
   return {
     titleImdbId: row.titleImdbId,
     rating: row.rating,
+    score: row.score,
     watchedAt: row.watchedAt ? row.watchedAt.toISOString() : null,
     source: row.source,
     season: row.season,
@@ -80,6 +82,7 @@ export class PostgresTasteStore implements TasteStore {
           userId,
           titleImdbId: row.titleImdbId,
           rating: row.rating,
+          score: validateScore(row),
           watchedAt: row.watchedAt ? new Date(row.watchedAt) : null,
           source: row.source,
           season: row.season ?? null,
@@ -91,6 +94,7 @@ export class PostgresTasteStore implements TasteStore {
         target: [watched.userId, watched.titleImdbId],
         set: {
           rating: sql`excluded.rating`,
+          score: sql`excluded.score`,
           watchedAt: sql`excluded.watched_at`,
           source: sql`excluded.source`,
           season: sql`excluded.season`,
@@ -239,9 +243,11 @@ export class PostgresTasteStore implements TasteStore {
       .values({
         userId,
         titleImdbId,
-        // "One more episode of X" is an explicit positive tap, so a series the
-        // store has not seen before starts as liked rather than as a guess.
-        rating: "liked",
+        // "One more episode of X" says they are watching it, not what they
+        // think of it, so a series the store has not seen before starts as
+        // `seen` (watched, no opinion) with no score invented for them.
+        rating: "seen",
+        score: null,
         watchedAt: null,
         source: "chat",
         season: progress.season ?? null,

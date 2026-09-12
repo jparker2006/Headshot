@@ -29,9 +29,10 @@ describe("relativeTime", () => {
 });
 
 describe("recentlyLogged", () => {
-  const row = (titleImdbId: string, updatedAt: string, rating: WatchedRow["rating"] = "liked"): WatchedRow => ({
+  const row = (titleImdbId: string, updatedAt: string, rating: WatchedRow["rating"] = "rated"): WatchedRow => ({
     titleImdbId,
     rating,
+    score: rating === "rated" ? 8 : null,
     watchedAt: null,
     source: "log",
     season: null,
@@ -46,7 +47,7 @@ describe("recentlyLogged", () => {
   });
 
   it("keeps every bucket and does not mutate the input", () => {
-    const rows = [row("tt1", "2026-09-01T00:00:00Z", "want"), row("tt2", "2026-09-02T00:00:00Z", "meh")];
+    const rows = [row("tt1", "2026-09-01T00:00:00Z", "want"), row("tt2", "2026-09-02T00:00:00Z", "seen")];
     expect(recentlyLogged(rows)).toHaveLength(2);
     expect(rows[0].titleImdbId).toBe("tt1");
   });

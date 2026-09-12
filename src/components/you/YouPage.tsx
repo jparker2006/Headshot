@@ -29,6 +29,7 @@ import { terseTime } from "./recent";
 import { isNewAccount } from "./swipeRules";
 import { useNumbers } from "./useNumbers";
 import type { WatchedRow } from "@/lib/taste/types";
+import { isLiked, legacyBucket } from "@/lib/taste/score";
 
 interface Props {
   /** Open a person or title in the drawer. */
@@ -303,11 +304,11 @@ function RecentlyLogged({
                   {year ? <span className="t-meta ml-[6px] text-ink-faint sm:hidden">{year}</span> : null}
                 </span>
                 <span className="t-meta block sm:hidden">
-                  {[terseTime(row.updatedAt), row.rating, tail].filter(Boolean).join(" · ")}
+                  {[terseTime(row.updatedAt), legacyBucket(row), tail].filter(Boolean).join(" · ")}
                 </span>
               </span>
               <span className="t-meta hidden text-ink-faint sm:block">{year}</span>
-              <span className={`bucket hidden sm:block ${row.rating === "liked" ? "bucket-on" : ""}`}>{row.rating}</span>
+              <span className={`bucket hidden sm:block ${isLiked(row) ? "bucket-on" : ""}`}>{legacyBucket(row)}</span>
               <span className="t-meta hidden truncate sm:block">{tail}</span>
             </button>
           );
