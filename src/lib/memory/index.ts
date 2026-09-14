@@ -15,6 +15,7 @@ export {
 } from "./rewrite";
 export {
   validateClaims,
+  backs,
   renderClaimsMarkdown,
   capSentence,
   emptyClaims,

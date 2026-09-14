@@ -142,6 +142,7 @@ export async function rewriteMemory(deps: RewriteDeps, userId: string): Promise<
     // actually read, and a rejected claim can never come back.
     const claims = validateClaims(raw, {
       knownIds: [...rendered.ids, ...people.map((p) => p.imdbId)],
+      scores: new Map(watched.map((w) => [w.titleImdbId, w.rating === "rated" ? w.score : null])),
       previous: previousClaims,
     });
     if (!claims.sentence && claims.claims.length === 0) {
@@ -152,12 +153,14 @@ export async function rewriteMemory(deps: RewriteDeps, userId: string): Promise<
     const body = capLines(renderClaimsMarkdown(claims, lookupEvidence(graph, watched)), MAX_LINES);
     const markdown = pinned ? `${body}\n\n${PINNED_HEADING}\n${pinned}` : body;
 
-    // What the log no longer holds: the titles the last memory named, from the
-    // previous claims' evidence and from the bold names in the old prose.
-    const dropped = mergeDropped(
-      droppedFromClaims(graph, previousClaims, rendered.ids),
-      droppedTitles(graph, previous, rendered.names),
-    );
+    // What the log no longer holds: the titles the last memory named. With
+    // claims stored, their evidence ids are exact and the bold-name scan of the
+    // old prose is skipped — that prose is rendered from the same claims and
+    // names people too, and a person's name can collide with a title's
+    // ("Stan Lee" is also a documentary). The scan is only for a pre-v5.3 row.
+    const dropped = previousClaims
+      ? droppedFromClaims(graph, previousClaims, rendered.ids)
+      : droppedTitles(graph, previous, rendered.names);
     // Anything the user has not seen yet stays on the list until they dismiss it.
     const carried = mergeDropped(row?.dropped ?? [], dropped);
     await store.setMemory(userId, { markdown, claims, dropped: carried, rowsHash });

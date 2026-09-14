@@ -12,6 +12,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type { Claim, ClaimPolarity, MemoryClaims } from "@/lib/taste/types";
+import { LIKED_MIN } from "@/lib/taste/score";
 
 /** At most this many claims survive one rewrite. */
 export const MAX_CLAIMS = 8;
@@ -41,6 +42,14 @@ export interface ValidateContext {
   knownIds: Iterable<string>;
   /** The claims stored before this rewrite: ids are reused from here, and its `rejected` is carried forward. */
   previous?: MemoryClaims | null;
+  /**
+   * Every title row's score by id (`null` for a want / seen / unseen row). The
+   * polarity guard reads it: a title scored 7 or over can only back `love`, a
+   * title under 7 can only back `avoid`, and a title with no score backs
+   * nothing — they said nothing about it. An id not in the map (a person, who
+   * is never scored) backs `love` only. The rewrite always passes the whole log.
+   */
+  scores?: ReadonlyMap<string, number | null>;
   /** Injectable for tests; defaults to crypto. */
   newId?: () => string;
 }
@@ -69,6 +78,7 @@ function generateId(): string {
  */
 export function validateClaims(raw: RawClaims | null | undefined, ctx: ValidateContext): MemoryClaims {
   const known = new Set(ctx.knownIds);
+  const scores = ctx.scores ?? new Map<string, number | null>();
   const previous = ctx.previous ?? null;
   const newId = ctx.newId ?? generateId;
 
@@ -101,17 +111,21 @@ export function validateClaims(raw: RawClaims | null | undefined, ctx: ValidateC
     // burns, whatever the genre" after the user said no to it.
     if (rejectedKeys.some((r) => key.includes(r) || r.includes(key))) continue;
 
+    const polarity: ClaimPolarity = candidate.polarity === "avoid" ? "avoid" : "love";
+
     // Evidence must be rows. An id the log no longer holds is dropped, and a
-    // claim with nothing left to point at is not a claim.
+    // claim with nothing left to point at is not a claim. A row's score must
+    // also agree with the claim's polarity: a 5 is not proof of a love, a 9 is
+    // not proof of an avoid, and a row with no score is proof of nothing.
     const evidence: string[] = [];
     for (const id of Array.isArray(candidate.evidence) ? candidate.evidence : []) {
       if (typeof id !== "string") continue;
       if (!known.has(id) || evidence.includes(id)) continue;
+      if (!backs(polarity, scores.has(id) ? scores.get(id)! : undefined)) continue;
       evidence.push(id);
     }
     if (evidence.length === 0) continue;
 
-    const polarity: ClaimPolarity = candidate.polarity === "avoid" ? "avoid" : "love";
     if (polarity === "avoid") {
       if (avoid >= MAX_AVOID) continue;
       avoid++;
@@ -131,6 +145,17 @@ export function validateClaims(raw: RawClaims | null | undefined, ctx: ValidateC
   }
 
   return { sentence: capSentence(typeof raw?.sentence === "string" ? raw.sentence : ""), claims: out, rejected };
+}
+
+/**
+ * Does a row with this score back a claim of this polarity? `undefined` is an
+ * id the log has no score for at all — a person — and a person's presence in
+ * the log is a liking, never an avoiding.
+ */
+export function backs(polarity: ClaimPolarity, score: number | null | undefined): boolean {
+  if (score === undefined) return polarity === "love";
+  if (score === null) return false;
+  return polarity === "love" ? score >= LIKED_MIN : score < LIKED_MIN;
 }
 
 /** The sentence: no bold, and truncated (not dropped) at the word cap. */

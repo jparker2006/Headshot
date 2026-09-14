@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import { MemoryTasteStore } from "@/lib/taste/memory";
-import { parseClaims, renderClaimsMarkdown, rewriteMemory, validateClaims } from "@/lib/memory";
+import { backs, parseClaims, renderClaimsMarkdown, rewriteMemory, validateClaims } from "@/lib/memory";
 import { fixtureGraph } from "./helpers";
 
 const usage = { inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 1, text: 1, reasoning: undefined } };
@@ -19,6 +19,10 @@ function textModel(text: string | (() => string)) {
 
 const APOLLO = "tt0000001";
 const GUMP = "tt0000002";
+/** Rated 5: proof of an avoid, never of a love. */
+const MEH = "tt0000003";
+/** A `want` row: no score, proof of nothing. */
+const WANT = "tt0000004";
 const STALE = "tt9999999";
 
 /** Deterministic ids, so a test can say which claim is which. */
@@ -28,7 +32,13 @@ function counter() {
 }
 
 const ctx = (over: Partial<Parameters<typeof validateClaims>[1]> = {}) => ({
-  knownIds: [APOLLO, GUMP],
+  knownIds: [APOLLO, GUMP, MEH, WANT],
+  scores: new Map<string, number | null>([
+    [APOLLO, 9.9],
+    [GUMP, 10],
+    [MEH, 5],
+    [WANT, null],
+  ]),
   newId: counter(),
   ...over,
 });
@@ -49,6 +59,55 @@ describe("validateClaims", () => {
   it("cites a person id the summary knows", () => {
     const out = validateClaims({ claims: [{ text: "keeps turning up for the same faces", evidence: ["nm0000001"], polarity: "love" }] }, ctx({ knownIds: [APOLLO, "nm0000001"] }));
     expect(out.claims[0].evidence).toEqual(["nm0000001"]);
+  });
+
+  it("keeps a love claim to rows rated 7 or over, and an avoid to rows under 7", () => {
+    const out = validateClaims(
+      {
+        claims: [
+          // A 5 under a love: the id goes, the claim stays on what is left.
+          { text: "momentum and craft in the same film", evidence: [APOLLO, MEH], polarity: "love" },
+          // A 10 under an avoid: same rule the other way round.
+          { text: "costume spectacle falls flat", evidence: [GUMP, MEH], polarity: "avoid" },
+          // Only a 5 behind a love: nothing left, so no claim.
+          { text: "crime in the Midwest, dry and patient", evidence: [MEH], polarity: "love" },
+        ],
+      },
+      ctx(),
+    );
+    expect(out.claims.map((c) => [c.text, c.evidence])).toEqual([
+      ["momentum and craft in the same film", [APOLLO]],
+      ["costume spectacle falls flat", [MEH]],
+    ]);
+  });
+
+  it("treats a row with no score as proof of nothing, and a person as a liking", () => {
+    const out = validateClaims(
+      {
+        claims: [
+          { text: "westerns, every time", evidence: [WANT, APOLLO], polarity: "love" },
+          { text: "long-running shows that stall", evidence: [WANT], polarity: "avoid" },
+          { text: "keeps turning up for the same faces", evidence: ["nm0000001"], polarity: "love" },
+          { text: "avoids the same faces", evidence: ["nm0000001"], polarity: "avoid" },
+        ],
+      },
+      ctx({ knownIds: [APOLLO, WANT, "nm0000001"] }),
+    );
+    expect(out.claims.map((c) => [c.text, c.evidence])).toEqual([
+      ["westerns, every time", [APOLLO]],
+      ["keeps turning up for the same faces", ["nm0000001"]],
+    ]);
+  });
+
+  it("scores by threshold: 7 backs a love, 6.9 backs an avoid", () => {
+    expect(backs("love", 7)).toBe(true);
+    expect(backs("love", 6.9)).toBe(false);
+    expect(backs("avoid", 6.9)).toBe(true);
+    expect(backs("avoid", 7)).toBe(false);
+    expect(backs("love", null)).toBe(false);
+    expect(backs("avoid", null)).toBe(false);
+    expect(backs("love", undefined)).toBe(true);
+    expect(backs("avoid", undefined)).toBe(false);
   });
 
   it("never lets a rejected claim back, in any wording", () => {
@@ -72,7 +131,7 @@ describe("validateClaims", () => {
     const nine = Array.from({ length: 9 }, (_, i) => ({ text: `pattern number ${i}`, evidence: [APOLLO], polarity: "love" as const }));
     expect(validateClaims({ claims: nine }, ctx()).claims).toHaveLength(8);
 
-    const avoids = Array.from({ length: 3 }, (_, i) => ({ text: `dislike number ${i}`, evidence: [APOLLO], polarity: "avoid" as const }));
+    const avoids = Array.from({ length: 3 }, (_, i) => ({ text: `dislike number ${i}`, evidence: [MEH], polarity: "avoid" as const }));
     const out = validateClaims({ claims: avoids }, ctx());
     expect(out.claims).toHaveLength(2);
     expect(out.claims.every((c) => c.polarity === "avoid")).toBe(true);
@@ -218,6 +277,28 @@ describe("rewrite with claims end to end", () => {
     const prompt = JSON.stringify(model.doGenerateCalls[0].prompt);
     expect(prompt).toContain("rejected");
     expect(prompt).toContain("musicals");
+  });
+
+  it("with claims stored, only their evidence can be dropped — the prose is not scanned", async () => {
+    const graph = await fixtureGraph();
+    const store = new MemoryTasteStore();
+    await store.upsertWatched("u1", [{ titleImdbId: APOLLO, rating: "rated", score: 8, source: "log" }]);
+    // The stored markdown is rendered from the claims and names people in bold
+    // exactly as it names titles. A person's name can be a title's too ("Stan
+    // Lee" is a documentary), so the bold scan of the prose would report a
+    // person as a dropped title. Here the prose names a bold title that is not
+    // a row, and it must still not be reported: the claims say what fell out.
+    await store.setMemory("u1", {
+      markdown: "## What you love\nkeeps turning up for the same faces: **Tom Hanks**, **Forrest Gump**.",
+      claims: {
+        sentence: "",
+        claims: [{ id: "c_1", text: "keeps turning up for the same faces", evidence: ["nm0000002"], polarity: "love" }],
+        rejected: [],
+      },
+    });
+    const model = textModel(JSON.stringify({ sentence: "you like a countdown", claims: [{ text: "space procedurals", evidence: [APOLLO], polarity: "love" }] }));
+    const result = (await rewriteMemory({ store, graph, model }, "u1"))!;
+    expect(result.dropped).toEqual([]);
   });
 
   it("a rejected claim does not come back on the next rewrite", async () => {

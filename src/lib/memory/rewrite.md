@@ -24,7 +24,9 @@ Rules for the claims:
 - At most 8 claims, at most 2 of them `"avoid"`. Put the claims that say the most about them first — everything past the eighth is discarded.
 - `text` is a phrase, not a sentence: at most 12 words, no trailing full stop, no title names, no scores, no `**`. The evidence names the titles; the text names the pattern. "crime with a long fuse", "women who are not the love interest", "westerns, every time".
 - A claim is a pattern with two or more rows behind it wherever you can find one. Two to five evidence ids each, strongest first.
-- `"avoid"` is only for titles rated 6 or under. "seen" (or "seen but no opinion") means they watched it and said nothing — never an avoid. "want" is on their list, "never seen" is just that.
+- Every evidence title must actually be the thing the text says. Read the text back against each title before you cite it: a Los Angeles film is not evidence for "crime in the Midwest", a war film is not evidence for "westerns". If a title fits the pattern loosely, leave it out; if only one title fits, it is not a pattern — find the one that is.
+- Evidence and polarity must agree, and the code enforces it: a `"love"` claim cites only titles rated 7 or higher (and people), an `"avoid"` claim cites only titles rated 6 or lower. A 5 under a love claim is thrown away, and a claim with nothing left is thrown away with it.
+- Titles with no score prove nothing. "seen" (or "seen but no opinion") means they watched it and said nothing — never evidence of a love and never an avoid. "want" is on their list, "never seen" is just that; neither is evidence.
 - A claim whose evidence are people ids (`nm…`) is a claim about people; say it as such ("keeps turning up for the same faces").
 - `sentence` is at most 20 words, no `**`, no scores, no title names unless one really is the answer.
 - Never restate a rejected claim, in any wording. They told you no; a synonym is the same claim.
